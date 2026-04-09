@@ -1,6 +1,5 @@
 function Show-Menu {
-    Write-Host "
-=== GIT WORKFLOW MENU ===" -ForegroundColor Cyan
+    Write-Host "`n=== GIT WORKFLOW MENU ===" -ForegroundColor Cyan
     Write-Host "1. Create Feature"
     Write-Host "2. Create Bugfix"
     Write-Host "3. Create Hotfix"
@@ -37,7 +36,7 @@ function Create-Branch($type) {
     Write-Host "🚀 Pushing branch..." -ForegroundColor Green
     git push origin $branch
 
-    Write-Host "✅ Done! Create PR: $branch → develop" -ForegroundColor Cyan
+    Write-Host "✅ Done! Create PR: $branch -> develop" -ForegroundColor Cyan
 }
 
 function Cleanup-Branch {
@@ -63,12 +62,16 @@ while ($true) {
     Show-Menu
     $choice = Read-Host "Select option"
 
+    if ($choice -eq '0') {
+        Write-Host "👋 Exiting..." -ForegroundColor Cyan
+        break
+    }
+
     switch ($choice) {
         '1' { Create-Branch "feature" }
         '2' { Create-Branch "bugfix" }
         '3' { Create-Branch "hotfix" }
         '4' { Cleanup-Branch }
-        '0' { break }
         default { Write-Host "❌ Invalid option" -ForegroundColor Red }
     }
 }
