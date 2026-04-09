@@ -1,77 +1,89 @@
 function Show-Menu {
-    Write-Host "`n=== GIT WORKFLOW MENU ===" -ForegroundColor Cyan
-    Write-Host "1. Create Feature"
-    Write-Host "2. Create Bugfix"
-    Write-Host "3. Create Hotfix"
-    Write-Host "4. Cleanup Branch"
+    Write-Host "`n=== GIT WORKFLOW MENU ==="
+    Write-Host "1. Create Branch"
+    Write-Host "2. Commit"
+    Write-Host "3. Push"
+    Write-Host "4. Cleanup"
     Write-Host "0. Exit"
 }
 
-function Update-Develop {
-    Write-Host "🔄 Updating develop..." -ForegroundColor Yellow
-    git checkout develop
-    git pull origin develop
+function Get-Current-Branch {
+    git branch --show-current
 }
 
-function Create-Branch($type) {
-    $name = Read-Host "Enter branch name (e.g., login-api)"
-    $msg  = Read-Host "Enter commit message"
+function Update-Base {
+    $base = "develop"
+    git rev-parse --verify develop 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        $base = "main"
+    }
 
-    if (-not $name -or -not $msg) {
-        Write-Host "❌ Branch name and commit message are required" -ForegroundColor Red
+    git checkout $base
+    git pull origin $base
+
+    return $base
+}
+
+function Create-Branch {
+    $type = Read-Host "Type (feature/bugfix/hotfix)"
+    $name = Read-Host "Branch name"
+
+    if (-not $type -or -not $name) {
+        Write-Host "Invalid input"
         return
     }
 
     $branch = "$type/$name"
+    Update-Base
 
-    Update-Develop
-
-    Write-Host "🌱 Creating branch $branch" -ForegroundColor Green
     git checkout -b $branch
-
-    Write-Host "💾 Committing code..." -ForegroundColor Yellow
-    git add .
-    git commit -m $msg
-
-    Write-Host "🚀 Pushing branch..." -ForegroundColor Green
-    git push origin $branch
-
-    Write-Host "✅ Done! Create PR: $branch -> develop" -ForegroundColor Cyan
+    Write-Host "Created $branch"
 }
 
-function Cleanup-Branch {
-    $branch = Read-Host "Enter branch to delete (e.g., feature/login-api)"
-    if (-not $branch) {
-        Write-Host "❌ Branch is required" -ForegroundColor Red
+function Commit-Changes {
+    $branch = Get-Current-Branch
+    $msg = Read-Host "Commit message (feat:, fix:...)"
+
+    if (-not $msg) {
+        Write-Host "Message required"
         return
     }
 
-    Update-Develop
-
-    Write-Host "🧹 Deleting local branch..." -ForegroundColor Yellow
-    git branch -d $branch
-
-    Write-Host "☁️ Deleting remote branch..." -ForegroundColor Yellow
-    git push origin --delete $branch
-
-    Write-Host "✅ Cleanup complete" -ForegroundColor Green
-}
-
-# ===== MAIN LOOP =====
-while ($true) {
-    Show-Menu
-    $choice = Read-Host "Select option"
-
-    if ($choice -eq '0') {
-        Write-Host "👋 Exiting..." -ForegroundColor Cyan
-        break
+    if ($msg -notmatch "^(feat|fix|refactor|docs|style|test|chore):") {
+        Write-Host "Invalid format! Use feat:, fix:, ..."
+        return
     }
 
-    switch ($choice) {
-        '1' { Create-Branch "feature" }
-        '2' { Create-Branch "bugfix" }
-        '3' { Create-Branch "hotfix" }
-        '4' { Cleanup-Branch }
-        default { Write-Host "❌ Invalid option" -ForegroundColor Red }
+    git add .
+    git commit -m $msg
+}
+
+function Push-Branch {
+    $branch = Get-Current-Branch
+    git push origin $branch
+    Write-Host "Pushed $branch"
+}
+
+function Cleanup-Branch {
+    $branch = Read-Host "Branch to delete"
+    if (-not $branch) { return }
+
+    Update-Base
+    git branch -d $branch
+    git push origin --delete $branch
+}
+
+while ($true) {
+    Show-Menu
+    $c = Read-Host "Choose"
+
+    if ($c -eq "0") { break }
+
+    switch ($c) {
+        "1" { Create-Branch }
+        "2" { Commit-Changes }
+        "3" { Push-Branch }
+        "4" { Cleanup-Branch }
+        default { Write-Host "Invalid" }
     }
 }

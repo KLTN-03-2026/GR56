@@ -1,17 +1,8 @@
 function Show-Menu {
-    Write-Host "
-=== GIT WORKFLOW MENU ===" -ForegroundColor Cyan
-    Write-Host "1. Create Feature"
-    Write-Host "2. Create Bugfix"
-    Write-Host "3. Create Hotfix"
-    Write-Host "4. Cleanup Branch"
-    Write-Host "0. Exit"
-}
+    git checkout $defaultBranch
+    git pull origin $defaultBranch
 
-function Update-Develop {
-    Write-Host "🔄 Updating develop..." -ForegroundColor Yellow
-    git checkout develop
-    git pull origin develop
+    return $defaultBranch
 }
 
 function Create-Branch($type) {
@@ -19,25 +10,25 @@ function Create-Branch($type) {
     $msg  = Read-Host "Enter commit message"
 
     if (-not $name -or -not $msg) {
-        Write-Host "❌ Branch name and commit message are required" -ForegroundColor Red
+        Write-Host "[ERROR] Branch name and commit message are required" -ForegroundColor Red
         return
     }
 
     $branch = "$type/$name"
 
-    Update-Develop
+    $base = Update-Develop
 
-    Write-Host "🌱 Creating branch $branch" -ForegroundColor Green
+    Write-Host "Creating branch $branch" -ForegroundColor Green
     git checkout -b $branch
 
-    Write-Host "💾 Committing code..." -ForegroundColor Yellow
+    Write-Host "Committing code..." -ForegroundColor Yellow
     git add .
     git commit -m $msg
 
-    Write-Host "🚀 Pushing branch..." -ForegroundColor Green
+    Write-Host "Pushing branch..." -ForegroundColor Green
     git push origin $branch
 
-    Write-Host "✅ Done! Create PR: $branch → develop" -ForegroundColor Cyan
+    Write-Host "[DONE] Create PR: $branch -> $base" -ForegroundColor Cyan
 }
 
 function Cleanup-Branch {
@@ -63,12 +54,16 @@ while ($true) {
     Show-Menu
     $choice = Read-Host "Select option"
 
+    if ($choice -eq '0') {
+        Write-Host "👋 Exiting..." -ForegroundColor Cyan
+        break
+    }
+
     switch ($choice) {
         '1' { Create-Branch "feature" }
         '2' { Create-Branch "bugfix" }
         '3' { Create-Branch "hotfix" }
         '4' { Cleanup-Branch }
-        '0' { break }
         default { Write-Host "❌ Invalid option" -ForegroundColor Red }
     }
 }
