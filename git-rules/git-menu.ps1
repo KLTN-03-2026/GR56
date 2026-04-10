@@ -136,8 +136,8 @@ function Pull-Branch {
     Write-Host "`nFetching branches..." -ForegroundColor Cyan
     git fetch --all
 
-    $branches = git branch -r | Where-Object { $_ -notmatch "HEAD" } | ForEach-Object {
-        $_.Trim() -replace "origin/", ""
+    $branches = git ls-remote --heads origin | ForEach-Object {
+        ($_ -split "refs/heads/")[1]
     }
 
     if (-not $branches) {
@@ -160,7 +160,7 @@ function Pull-Branch {
 
     Write-Host "`nSelected: $selectedBranch" -ForegroundColor Yellow
 
-    $confirm = Read-Choice "⚠️ Reset local changes? (y/n)"
+    $confirm = Read-Choice " Reset local changes? (y/n)"
     if (-not $confirm -or $confirm -ne "y") {
         Write-Host "Cancelled"
         return
