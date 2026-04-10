@@ -1,12 +1,32 @@
 function Show-Menu {
-    Write-Host "`n=== GIT WORKFLOW MENU ==="
-    Write-Host "1. Create Branch"
-    Write-Host "2. Commit (auto prefix)"
-    Write-Host "3. Push"
-    Write-Host "4. Cleanup"
-    Write-Host "0. Exit"
-}
+    Clear-Host
+    Write-Host "====================================" -ForegroundColor DarkCyan
+    Write-Host "      GIT WORKFLOW MENU        " -ForegroundColor Cyan
+    Write-Host "====================================" -ForegroundColor DarkCyan
 
+    Write-Host "[1]" -NoNewline -ForegroundColor Yellow
+    Write-Host " Create Branch" -ForegroundColor White
+
+    Write-Host "[2]" -NoNewline -ForegroundColor Yellow
+    Write-Host " Commit (auto prefix)" -ForegroundColor White
+
+    Write-Host "[3]" -NoNewline -ForegroundColor Yellow
+    Write-Host " Push" -ForegroundColor White
+
+    Write-Host "[4]" -NoNewline -ForegroundColor Yellow
+    Write-Host " Pull" -ForegroundColor White
+
+    Write-Host "[5]" -NoNewline -ForegroundColor Yellow
+    Write-Host " Cleanup Branch" -ForegroundColor White
+
+    Write-Host "[6]" -NoNewline -ForegroundColor Yellow
+    Write-Host " Checkout Branch" -ForegroundColor White
+
+    Write-Host "[0]" -NoNewline -ForegroundColor Red
+    Write-Host " Exit" -ForegroundColor White
+
+    Write-Host "------------------------------------" -ForegroundColor DarkGray
+}
 function Get-Current-Branch {
     return (git branch --show-current)
 }
@@ -131,6 +151,33 @@ function Cleanup-Branch {
 
     Write-Host "Deleted: $branch"
 }
+function Checkout-Branch {
+    Write-Host "`n Available branches:" -ForegroundColor Cyan
+
+    $branches = git branch --format="%(refname:short)"
+
+    if (-not $branches) {
+        Write-Host "No branches found"
+        return
+    }
+
+    for ($i = 0; $i -lt $branches.Count; $i++) {
+        Write-Host "[$($i + 1)] $($branches[$i])"
+    }
+
+    $choice = Read-Host "Select branch number"
+
+    if (-not $choice -or $choice -lt 1 -or $choice -gt $branches.Count) {
+        Write-Host "Invalid selection"
+        return
+    }
+
+    $selectedBranch = $branches[$choice - 1]
+
+    git checkout $selectedBranch
+
+    Write-Host " Switched to $selectedBranch" -ForegroundColor Green
+}
 
 # ===== MAIN LOOP =====
 while ($true) {
@@ -147,6 +194,8 @@ while ($true) {
         "2" { Commit-Changes }
         "3" { Push-Branch }
         "4" { Cleanup-Branch }
+        "5" { Pull-Branch } 
+        "6" { Checkout-Branch }
         default { Write-Host "Invalid option" }
     }
 }
