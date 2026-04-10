@@ -27,29 +27,30 @@ function Show-Menu {
 
     Write-Host "------------------------------------" -ForegroundColor DarkGray
 }
+
+# ===== INPUT HELPER =====
+function Read-Choice($message) {
+    Write-Host "$message" -ForegroundColor Cyan
+    Write-Host "[0] Cancel" -ForegroundColor Red
+
+    $input = Read-Host "Your choice"
+
+    if ($input -eq "0") {
+        Write-Host "Cancelled." -ForegroundColor DarkYellow
+        return $null
+    }
+
+    return $input
+}
+
 function Get-Current-Branch {
     return (git branch --show-current)
 }
 
-function Update-Base {
-    Write-Host "Updating base branch..."
-
-    $base = "develop"
-    git rev-parse --verify develop 2>$null
-
-    if ($LASTEXITCODE -ne 0) {
-        $base = "main"
-    }
-
-    git checkout $base
-    git pull origin $base
-
-    return $base
-}
-
+# ===== CREATE BRANCH =====
 function Create-Branch {
-    Write-Host "Type (1=feature, 2=bugfix, 3=hotfix)"
-    $typeChoice = Read-Host "Choose"
+    $typeChoice = Read-Choice "Type (1=feature, 2=bugfix, 3=hotfix)"
+    if (-not $typeChoice) { return }
 
     switch ($typeChoice) {
         "1" { $type = "feature" }
@@ -61,38 +62,37 @@ function Create-Branch {
         }
     }
 
-    $name = Read-Host "Branch name"
-    if (-not $name) {
-        Write-Host "Branch name required"
-        return
-    }
+    $name = Read-Choice "Branch name"
+    if (-not $name) { return }
 
     $branch = "$type/$name"
 
-    Update-Base
+    git checkout develop 2>$null
+    git pull origin develop
 
     git checkout -b $branch
-    Write-Host "Created branch: $branch"
+    Write-Host "Created branch: $branch" -ForegroundColor Green
 }
 
+# ===== COMMIT =====
 function Commit-Changes {
     $branch = Get-Current-Branch
-
     if (-not $branch) {
         Write-Host "No branch detected"
         return
     }
 
     Write-Host "`nSelect commit type:"
-    Write-Host "1. feat (new feature)"
-    Write-Host "2. fix (bug fix)"
+    Write-Host "1. feat"
+    Write-Host "2. fix"
     Write-Host "3. refactor"
     Write-Host "4. docs"
     Write-Host "5. style"
     Write-Host "6. test"
     Write-Host "7. chore"
 
-    $choice = Read-Host "Choose type"
+    $choice = Read-Choice "Choose type"
+    if (-not $choice) { return }
 
     switch ($choice) {
         "1" { $type = "feat" }
@@ -108,51 +108,93 @@ function Commit-Changes {
         }
     }
 
-    $msg = Read-Host "Enter message (without prefix)"
+    $msg = Read-Choice "Enter message"
+    if (-not $msg) { return }
 
-    if (-not $msg) {
-        Write-Host "Message required"
-        return
-    }
-
-    # FIX lỗi PowerShell dấu :
     $finalMsg = "${type}: $msg"
-
-    Write-Host "Committing: $finalMsg"
 
     git add .
     git commit -m $finalMsg
+
+    Write-Host "Committed: $finalMsg" -ForegroundColor Green
 }
 
+# ===== PUSH =====
 function Push-Branch {
     $branch = Get-Current-Branch
-
     if (-not $branch) {
         Write-Host "No branch detected"
         return
     }
 
     git push origin $branch
-    Write-Host "Pushed: $branch"
+    Write-Host "Pushed: $branch" -ForegroundColor Green
 }
 
-function Cleanup-Branch {
-    $branch = Read-Host "Branch to delete"
+# ===== PULL =====
+function Pull-Branch {
+    Write-Host "`nFetching branches..." -ForegroundColor Cyan
+    git fetch --all
 
-    if (-not $branch) {
-        Write-Host "Branch required"
+    $branches = git branch -r | Where-Object { $_ -notmatch "HEAD" } | ForEach-Object {
+        $_.Trim() -replace "origin/", ""
+    }
+
+    if (-not $branches) {
+        Write-Host "No branches found"
         return
     }
 
-    Update-Base
+    Write-Host "`nSelect branch to pull:" -ForegroundColor Cyan
+    for ($i = 0; $i -lt $branches.Count; $i++) {
+        Write-Host "[$($i + 1)] $($branches[$i])"
+    }
+
+    $choice = Read-Choice "Choose branch"
+    if (-not $choice -or $choice -lt 1 -or $choice -gt $branches.Count) {
+        Write-Host "Invalid selection"
+        return
+    }
+
+    $selectedBranch = $branches[$choice - 1]
+
+    Write-Host "`nSelected: $selectedBranch" -ForegroundColor Yellow
+
+    $confirm = Read-Choice "⚠️ Reset local changes? (y/n)"
+    if (-not $confirm -or $confirm -ne "y") {
+        Write-Host "Cancelled"
+        return
+    }
+
+    git checkout $selectedBranch 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        git checkout -b $selectedBranch origin/$selectedBranch
+    }
+
+    git reset --hard
+    git clean -df
+    git pull origin $selectedBranch
+
+    Write-Host "Updated: $selectedBranch" -ForegroundColor Green
+}
+
+# ===== CLEANUP =====
+function Cleanup-Branch {
+    $branch = Read-Choice "Branch to delete"
+    if (-not $branch) { return }
+
+    git checkout develop 2>$null
+    git pull origin develop
 
     git branch -d $branch
     git push origin --delete $branch
 
-    Write-Host "Deleted: $branch"
+    Write-Host "Deleted: $branch" -ForegroundColor Green
 }
+
+# ===== CHECKOUT =====
 function Checkout-Branch {
-    Write-Host "`n Available branches:" -ForegroundColor Cyan
+    Write-Host "`nAvailable branches:" -ForegroundColor Cyan
 
     $branches = git branch --format="%(refname:short)"
 
@@ -165,8 +207,7 @@ function Checkout-Branch {
         Write-Host "[$($i + 1)] $($branches[$i])"
     }
 
-    $choice = Read-Host "Select branch number"
-
+    $choice = Read-Choice "Select branch number"
     if (-not $choice -or $choice -lt 1 -or $choice -gt $branches.Count) {
         Write-Host "Invalid selection"
         return
@@ -176,7 +217,7 @@ function Checkout-Branch {
 
     git checkout $selectedBranch
 
-    Write-Host " Switched to $selectedBranch" -ForegroundColor Green
+    Write-Host "Switched to $selectedBranch" -ForegroundColor Green
 }
 
 # ===== MAIN LOOP =====
@@ -193,9 +234,11 @@ while ($true) {
         "1" { Create-Branch }
         "2" { Commit-Changes }
         "3" { Push-Branch }
-        "4" { Cleanup-Branch }
-        "5" { Pull-Branch } 
+        "4" { Pull-Branch }
+        "5" { Cleanup-Branch }
         "6" { Checkout-Branch }
         default { Write-Host "Invalid option" }
     }
+
+    Pause
 }
