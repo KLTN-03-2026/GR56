@@ -96,7 +96,7 @@ function commit_changes() {
     local final_msg="${type}: ${msg}"
     echo "Committing: $final_msg"
 
-    git add .
+    git add --all
     git commit -m "$final_msg"
 }
 
