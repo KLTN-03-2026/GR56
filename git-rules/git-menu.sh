@@ -1,5 +1,11 @@
 #!/bin/bash
 
+# Tự động nhảy ra thư mục gốc của dự án để lệnh Git nhận diện được toàn bộ code
+git_root="$(git rev-parse --show-toplevel 2>/dev/null)"
+if [[ -n "$git_root" ]]; then
+    cd "$git_root" || exit
+fi
+
 function show_menu() {
     echo -e "\n=== GIT WORKFLOW MENU ==="
     echo "1. Create Branch"
@@ -96,7 +102,7 @@ function commit_changes() {
     local final_msg="${type}: ${msg}"
     echo "Committing: $final_msg"
 
-    git add .
+    git add --all
     git commit -m "$final_msg"
 }
 
