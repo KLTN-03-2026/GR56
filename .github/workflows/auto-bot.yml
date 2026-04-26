@@ -1,0 +1,30 @@
+name: Auto Bot
+
+on:
+  push:
+    branches:
+      - '**' # Chạy trên mọi nhánh
+  workflow_dispatch: # Cho phép chạy thủ công từ giao diện
+
+# Đây là dòng quan trọng nhất để cấp quyền ghi cho Bot
+permissions:
+  contents: write
+
+jobs:
+  auto-bot-action:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Bot ghi log
+        run: |
+          echo "Bot đã hoạt động vào lúc $(date)" >> .github-bot-log.txt
+
+      - name: Bot Commit và Push
+        run: |
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add .github-bot-log.txt
+          git commit -m "chore: bot tự động cập nhật file log" || echo "Không có thay đổi nào"
+          git push
