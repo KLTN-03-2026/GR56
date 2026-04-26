@@ -23,17 +23,26 @@
   
   <br/>
   
-  <a href="CONTRIBUTING.md">🤝 Đóng Góp</a> •
-  <a href="CHANGELOG.md">📜 Changelog</a>
+  <a href="docs/GIT_COMMIT_RULE.md">🤝 Đóng Góp</a> •
+  <a href="https://github.com/KLTN-03-2026/GR56/commits/master">📜 Changelog</a>
 
 </div>
 
-![Banner](FE/src/assets/logoFood.png) 
-<!-- Thay ảnh Banner của bạn vào đây -->
+<div align="center">
+  <img src="FE/src/assets/hero.png" alt="FoodBee Banner" width="600"/>
 
-> _"Mang đến bữa ăn ngon - Nhanh chóng - Tiện lợi"_
+  <br/>
+
+  <p><i>"Mang đến bữa ăn ngon - Nhanh chóng - Tiện lợi"</i></p>
+</div>
+
+---
+
+<div align="center">
 
 ## 📖 Tổng Quan
+
+</div>
 
 **FoodBee** là một dự án ứng dụng đặt và giao đồ ăn trực tuyến hiện đại. Dự án được thiết kế trong lĩnh vực **F&B và thương mại điện tử**, với các mục tiêu:
 
@@ -176,7 +185,7 @@ Dự án không chỉ dừng lại ở giao nhận thực phẩm mà còn hướ
 ## 🗂️ Cấu trúc dự án
 
 ```text
-SHOPEFOOD_FE/
+FoodBee/
 ├── public/                 # Tài nguyên static, hình ảnh
 ├── src/                    # Source Code React
 │   ├── assets/             # Hình ảnh (logo, backgrounds...)
@@ -206,7 +215,7 @@ SHOPEFOOD_FE/
 
 ```bash
 # 1. Clone repository
-git clone https://github.com/IzooBeeee/FE_VER2_SHOPEFOOD_FAKE.git
+git clone git@github.com:KLTN-03-2026/GR56.git
 
 # 2. Cài đặt packages
 npm install
@@ -235,7 +244,7 @@ Dự án sẽ xuất ra thư mục `dist/` để bạn deploy lên Nginx, Vercel
 
 **1. Fork Repository**
 ```bash
-git clone https://github.com/IzooBeeee/FE_VER2_SHOPEFOOD_FAKE.git
+git clone git@github.com:KLTN-03-2026/GR56.git
 ```
 
 **2. Tạo Branch Mới**
