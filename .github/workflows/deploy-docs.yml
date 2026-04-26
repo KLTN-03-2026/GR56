@@ -3,32 +3,33 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches:
-      - master # Hoặc nhánh chính của bạn
+      - master
     paths:
-      - 'foodbee-docs/**' # Chỉ chạy khi có thay đổi trong thư mục tài liệu
+      - 'foodbee-docs/**'
 
 permissions:
   contents: write
 
 jobs:
   deploy:
-    name: Deploy to GitHub Pages
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v4
+      
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
           node-version: 18
-          cache: 'npm'
-          cache-dependency-path: foodbee-docs/package-lock.json
 
       - name: Install dependencies
-        run: cd foodbee-docs && npm install
+        run: |
+          cd foodbee-docs
+          npm install
 
       - name: Build website
-        run: cd foodbee-docs && npm run build
+        run: |
+          cd foodbee-docs
+          npm run build
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
