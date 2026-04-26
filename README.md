@@ -8,8 +8,8 @@
   <a href="https://foodbee.io.vn/">
     <img src="https://img.shields.io/badge/🚀_Website-FoodBee-00C853?style=for-the-badge" alt="Website"/>
   </a>
-  <a href="docs/intro.md">
-    <img src="https://img.shields.io/badge/📚_Documentation-FoodBee-blue?style=for-the-badge" alt="Documentation"/>
+  <a href="https://KLTN-03-2026.github.io/GR56/">
+    <img src="https://img.shields.io/badge/📚_Documentation-FoodBee-blue?style=for-the-badge&logo=read-the-docs&logoColor=white" alt="Documentation"/>
   </a>
   <a href="https://be.foodbee.io.vn/api/documentation">
     <img src="https://img.shields.io/badge/🖥️_API_Docs-FoodBee-1976D2?style=for-the-badge" alt="API Documentation"/>
