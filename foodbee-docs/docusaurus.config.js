@@ -5,7 +5,7 @@ const {themes: prismThemes} = require('prism-react-renderer');
 const config = {
   title: 'FoodBee Documentation',
   tagline: 'Hệ thống đặt và giao đồ ăn đa nền tảng tích hợp AI',
-  favicon: 'img/favicon.svg',
+  favicon: 'img/favicon.png',
 
   url: 'https://KLTN-03-2026.github.io',
   baseUrl: '/GR56/',
