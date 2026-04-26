@@ -28,6 +28,21 @@
 
 ---
 
+### 📌 Thông tin dự án (Project Information)
+
+| **Danh mục** | **Chi tiết** |
+| :--- | :--- |
+| 🌐 **Website** | [foodbee.io.vn](https://foodbee.io.vn/) |
+| 📄 **Tài liệu** | [Readme](README.md) |
+| 🤝 **Đóng góp** | [Contributing Guide](CONTRIBUTING.md) |
+| ⚖️ **Quy tắc** | [Code of Conduct](CODE_OF_CONDUCT.md) |
+| 🚀 **Phiên bản** | `v1.0.0-stable` |
+| 🛠️ **Trạng thái** | ![Build Status](https://img.shields.io/badge/Status-Active-brightgreen) |
+
+---
+
+---
+
 ## 📖 Tổng Quan Dự Án
 
 **FoodBee** không chỉ là một ứng dụng đặt món, mà là một **Hệ sinh thái F&B** hoàn chỉnh được xây dựng trên kiến trúc Micro-services và giao tiếp thời gian thực. Dự án bao gồm các nền tảng:
