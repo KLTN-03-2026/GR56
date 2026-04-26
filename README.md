@@ -14,7 +14,8 @@
   
   <br/>
   
-  <a href="docs/GIT_COMMIT_RULE.md">🤝 Đóng Góp</a> •
+  <a href="CONTRIBUTING.md">🤝 Đóng Góp</a> •
+  <a href="CODE_OF_CONDUCT.md">⚖️ Quy tắc ứng xử</a> •
   <a href="https://github.com/KLTN-03-2026/GR56/commits/master">📜 Lịch sử thay đổi</a>
 </div>
 
