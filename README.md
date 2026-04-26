@@ -36,13 +36,23 @@
 
 ---
 
+---
+
 ## 📸 Giao diện Hệ thống
 
+### 🖥️ Dashboard Quản Trị Quán Ăn
+*Hệ thống quản lý đơn hàng, doanh thu và thực đơn trực quan dành cho Đối tác.*
 <p align="center">
-  <img src="FE/src/assets/dashboard.png" alt="Dashboard Quán Ăn" width="45%"/>
-  <img src="FE/src/assets/web-home.png" alt="Trang chủ Web" width="45%"/>
+  <img src="FE/src/assets/dashboard.png" alt="Dashboard Quán Ăn" width="100%" style="border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.2);"/>
 </p>
-<p align="center"><i>Giao diện quản trị Quán ăn và Trang chủ Website cho Khách hàng</i></p>
+
+<br/>
+
+### 🌐 Giao diện Khách hàng (Desktop)
+*Trải nghiệm đặt món mượt mà với đầy đủ tính năng tìm kiếm, lọc và thanh toán.*
+<p align="center">
+  <img src="FE/src/assets/web-home.png" alt="Trang chủ Web" width="100%" style="border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.2);"/>
+</p>
 
 ---
 
@@ -52,13 +62,27 @@ Dự án được tổ chức theo cấu trúc đa thư mục, quản lý các M
 
 ```text
 GR56/
-├── ⚙️ BE/                # Laravel 11 - Hệ thống API & Database trung tâm
-├── 💻 FE/                # ReactJS + Vite - Giao diện Web dành cho người dùng
-├── 📱 APP/               # React Native - Ứng dụng di động (Customer & Shipper)
-├── 📱 IOS/               # React Native - Module tối ưu riêng cho nền tảng iOS
-├── 🤖 Chatbot/           # Python AI - Xử lý ngôn ngữ tự nhiên và gợi ý món ăn
-├── 📜 docs/              # Tài liệu hướng dẫn, quy chuẩn commit
-└── 🛠️ git-rules/         # Công cụ hỗ trợ workflow (git-menu.sh , git-menu.ps1)
+├── ⚙️ BE (Backend - Laravel 11)
+│   ├── app/                # Core logic: Controllers, Models, Providers
+│   ├── database/           # Migrations & Seeders (Dữ liệu mẫu)
+│   ├── routes/             # Định nghĩa API endpoints (api.php)
+│   └── config/             # Cấu hình hệ thống (Mail, PayOS, Reverb...)
+├── 💻 FE (Frontend - ReactJS)
+│   ├── src/
+│   │   ├── components/     # Các thành phần giao diện tái sử dụng
+│   │   ├── pages/          # Giao diện Khách hàng, Quán ăn, Shipper
+│   │   ├── context/        # Quản lý trạng thái (Auth, Cart...)
+│   │   └── utils/          # Gọi API (Axios) và các hàm bổ trợ
+│   └── public/             # Tài nguyên tĩnh
+├── 📱 APP & IOS (Mobile - React Native)
+│   ├── src/                # Source code chính của ứng dụng di động
+│   ├── android/            # Cấu hình nền tảng Android
+│   └── ios/                # Cấu hình nền tảng iOS (Xcode)
+├── 🤖 Chatbot (AI Component)
+│   ├── simple_chatbot_ai.py # Logic xử lý ngôn ngữ tự nhiên (Python)
+│   └── chatbotApi.js        # API bridge kết nối Chatbot với hệ thống
+├── 📜 docs/                 # Quy chuẩn Commit và tài liệu hướng dẫn
+└── 🛠️ git-rules/            # Script hỗ trợ workflow (git-menu.sh, git-menu.ps1)
 ```
 
 ---
