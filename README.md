@@ -38,14 +38,12 @@
 
 ---
 
----
-
 ## 📸 Giao diện Hệ thống
 
 ### 🖥️ Dashboard Quản Trị Quán Ăn
 *Hệ thống quản lý đơn hàng, doanh thu và thực đơn trực quan dành cho Đối tác.*
 <p align="center">
-  <img src="FE/src/assets/dashboard.png" alt="Dashboard Quán Ăn" width="100%" style="border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.2);"/>
+  <img src="FE/src/assets/dashboard.png" alt="Dashboard Quán Ăn" width="80%" style="border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.2);"/>
 </p>
 
 <br/>
@@ -53,7 +51,7 @@
 ### 🌐 Giao diện Khách hàng (Desktop)
 *Trải nghiệm đặt món mượt mà với đầy đủ tính năng tìm kiếm, lọc và thanh toán.*
 <p align="center">
-  <img src="FE/src/assets/web-home.png" alt="Trang chủ Web" width="100%" style="border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.2);"/>
+  <img src="FE/src/assets/web-home.png" alt="Trang chủ Web" width="80%" style="border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.2);"/>
 </p>
 
 ---
