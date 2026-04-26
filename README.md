@@ -1,4 +1,4 @@
-# 🍔 FoodBee Ecosystem — Hệ Sinh Thái Giao Đồ Ăn Toàn Diện
+# 🍔 FOODBEE - HỆ THỐNG ĐẶT VÀ GIAO ĐỒ ĂN ĐA NỀN TẢNG TÍCH HỢP GỢI Ý MÓN ĂN BẰNG AI
 
 <div align="center">
   <img src="FE/src/assets/logoFood.png" alt="FoodBee Logo" width="180"/>
@@ -19,7 +19,9 @@
 </div>
 
 <div align="center">
-  <img src="FE/src/assets/hero.png" alt="FoodBee Banner" width="650"/>
+  <a href="https://foodbee.io.vn/">
+    <img src="FE/src/assets/logoFood.png" alt="FoodBee Banner" width="650"/>
+  </a>
   <p><i>"Giải pháp công nghệ kết nối Khách hàng - Quán ăn - Shipper trên đa nền tảng"</i></p>
 </div>
 
