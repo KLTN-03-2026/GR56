@@ -49,7 +49,7 @@ const config = {
         title: 'FoodBee AI',
         logo: {
           alt: 'FoodBee Logo',
-          src: 'img/logo.svg',
+          src: 'img/logo.png',
         },
         items: [
           {
