@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Support\Facades\Broadcast;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -19,6 +20,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        // Đăng ký routes broadcasting với middleware auth:sanctum
+        // Route sẽ tự động được tạo tại /broadcasting/auth
+        Broadcast::routes(['middleware' => ['auth:sanctum']]);
+
+        require base_path('routes/channels.php');
     }
 }
