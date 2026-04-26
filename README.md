@@ -33,7 +33,7 @@
 | **Danh mục** | **Chi tiết** |
 | :--- | :--- |
 | 🌐 **Website** | [foodbee.io.vn](https://foodbee.io.vn/) |
-| 📄 **Tài liệu** | [Readme](README.md) |
+| 📄 **Tài liệu** | [Full Documentation](docs/intro.md) |
 | ⚖️ **Giấy phép** | [GNU GPL v3.0](LICENSE) |
 | 🤝 **Đóng góp** | [Contributing Guide](CONTRIBUTING.md) |
 | ⚖️ **Quy tắc** | [Code of Conduct](CODE_OF_CONDUCT.md) |
