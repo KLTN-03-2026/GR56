@@ -1,0 +1,27 @@
+{
+  "id": "ai-chatbot",
+  "title": "🤖 Tích hợp AI Chatbot",
+  "description": "FoodBee không chỉ là một ứng dụng giao đồ ăn, mà còn được tích hợp một hệ thống Trí tuệ Nhân tạo (AI) riêng biệt. Module Chatbot này đóng vai trò như một \"trợ lý ẩm thực cá nhân\", tư vấn và gợi ý món ăn chính xác dựa trên nhu cầu và lịch sử của người dùng.",
+  "source": "@site/docs/ai-chatbot.md",
+  "sourceDirName": ".",
+  "slug": "/ai-chatbot",
+  "permalink": "/GR56/docs/ai-chatbot",
+  "draft": false,
+  "unlisted": false,
+  "editUrl": "https://github.com/KLTN-03-2026/GR56/tree/master/foodbee-docs/docs/ai-chatbot.md",
+  "tags": [],
+  "version": "current",
+  "sidebarPosition": 2,
+  "frontMatter": {
+    "sidebar_position": 2
+  },
+  "sidebar": "tutorialSidebar",
+  "previous": {
+    "title": "🗺️ Tổng quan Hệ thống",
+    "permalink": "/GR56/docs/architecture/system-design"
+  },
+  "next": {
+    "title": "📜 Quy tắc Git Commit",
+    "permalink": "/GR56/docs/GIT_COMMIT_RULE"
+  }
+}

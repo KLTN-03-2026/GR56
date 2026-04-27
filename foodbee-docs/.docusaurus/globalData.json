@@ -1,0 +1,68 @@
+{
+  "docusaurus-plugin-content-docs": {
+    "default": {
+      "path": "/GR56/docs",
+      "versions": [
+        {
+          "name": "current",
+          "label": "Next",
+          "isLast": true,
+          "path": "/GR56/docs",
+          "mainDocId": "intro",
+          "docs": [
+            {
+              "id": "ai-chatbot",
+              "path": "/GR56/docs/ai-chatbot",
+              "sidebar": "tutorialSidebar"
+            },
+            {
+              "id": "architecture/system-design",
+              "path": "/GR56/docs/architecture/system-design",
+              "sidebar": "tutorialSidebar"
+            },
+            {
+              "id": "getting-started",
+              "path": "/GR56/docs/getting-started",
+              "sidebar": "tutorialSidebar"
+            },
+            {
+              "id": "GIT_COMMIT_RULE",
+              "path": "/GR56/docs/GIT_COMMIT_RULE",
+              "sidebar": "tutorialSidebar"
+            },
+            {
+              "id": "installation/backend",
+              "path": "/GR56/docs/installation/backend",
+              "sidebar": "tutorialSidebar"
+            },
+            {
+              "id": "installation/frontend",
+              "path": "/GR56/docs/installation/frontend",
+              "sidebar": "tutorialSidebar"
+            },
+            {
+              "id": "installation/mobile",
+              "path": "/GR56/docs/installation/mobile",
+              "sidebar": "tutorialSidebar"
+            },
+            {
+              "id": "intro",
+              "path": "/GR56/docs/intro",
+              "sidebar": "tutorialSidebar"
+            }
+          ],
+          "draftIds": [],
+          "sidebars": {
+            "tutorialSidebar": {
+              "link": {
+                "path": "/GR56/docs/intro",
+                "label": "🌟 Giới thiệu"
+              }
+            }
+          }
+        }
+      ],
+      "breadcrumbs": true
+    }
+  }
+}
