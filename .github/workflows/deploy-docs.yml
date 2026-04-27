@@ -5,7 +5,7 @@ on:
     branches:
       - master
     paths:
-      - 'foodbee-docs/**'
+      - 'apps/docs-site/**'
 
 permissions:
   contents: write
@@ -23,16 +23,16 @@ jobs:
 
       - name: Install dependencies
         run: |
-          cd foodbee-docs
+          cd apps/docs-site
           npm install --legacy-peer-deps
 
       - name: Build website
         run: |
-          cd foodbee-docs
+          cd apps/docs-site
           npm run build
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./foodbee-docs/build
+          publish_dir: ./apps/docs-site/build
