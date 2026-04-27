@@ -1,0 +1,27 @@
+{
+  "id": "getting-started",
+  "title": "🚀 Bắt đầu nhanh",
+  "description": "Chào mừng bạn đến với tài liệu kỹ thuật của FoodBee. Hướng dẫn này sẽ giúp bạn thiết lập toàn bộ môi trường phát triển (Local Environment) chỉ trong vài phút.",
+  "source": "@site/docs/getting-started.md",
+  "sourceDirName": ".",
+  "slug": "/getting-started",
+  "permalink": "/GR56/docs/getting-started",
+  "draft": false,
+  "unlisted": false,
+  "editUrl": "https://github.com/KLTN-03-2026/GR56/tree/master/foodbee-docs/docs/getting-started.md",
+  "tags": [],
+  "version": "current",
+  "sidebarPosition": 1,
+  "frontMatter": {
+    "sidebar_position": 1
+  },
+  "sidebar": "tutorialSidebar",
+  "previous": {
+    "title": "🌟 Giới thiệu",
+    "permalink": "/GR56/docs/intro"
+  },
+  "next": {
+    "title": "⚙️ Cài đặt Backend",
+    "permalink": "/GR56/docs/installation/backend"
+  }
+}

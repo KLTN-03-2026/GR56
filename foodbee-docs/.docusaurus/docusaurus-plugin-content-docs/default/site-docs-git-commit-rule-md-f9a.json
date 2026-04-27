@@ -1,0 +1,23 @@
+{
+  "id": "GIT_COMMIT_RULE",
+  "title": "📜 Quy tắc Git Commit (FoodBee Standard)",
+  "description": "Để đảm bảo lịch sử mã nguồn (Git History) luôn rõ ràng, dễ đọc và dễ dàng theo dõi lỗi (tracking bugs), toàn bộ thành viên trong dự án FoodBee phải tuân thủ nghiêm ngặt chuẩn Conventional Commits.",
+  "source": "@site/docs/GIT_COMMIT_RULE.md",
+  "sourceDirName": ".",
+  "slug": "/GIT_COMMIT_RULE",
+  "permalink": "/GR56/docs/GIT_COMMIT_RULE",
+  "draft": false,
+  "unlisted": false,
+  "editUrl": "https://github.com/KLTN-03-2026/GR56/tree/master/foodbee-docs/docs/GIT_COMMIT_RULE.md",
+  "tags": [],
+  "version": "current",
+  "sidebarPosition": 1,
+  "frontMatter": {
+    "sidebar_position": 1
+  },
+  "sidebar": "tutorialSidebar",
+  "previous": {
+    "title": "🤖 Tích hợp AI Chatbot",
+    "permalink": "/GR56/docs/ai-chatbot"
+  }
+}

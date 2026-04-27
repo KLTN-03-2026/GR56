@@ -1,0 +1,27 @@
+{
+  "id": "installation/frontend",
+  "title": "🖥️ Cài đặt Frontend (Web App)",
+  "description": "Giao diện Web của FoodBee được phát triển bằng React 19 kết hợp với bộ công cụ build cực nhanh Vite, mang lại tốc độ tải trang chớp nhoáng và trải nghiệm người dùng (UX) mượt mà nhất.",
+  "source": "@site/docs/installation/frontend.md",
+  "sourceDirName": "installation",
+  "slug": "/installation/frontend",
+  "permalink": "/GR56/docs/installation/frontend",
+  "draft": false,
+  "unlisted": false,
+  "editUrl": "https://github.com/KLTN-03-2026/GR56/tree/master/foodbee-docs/docs/installation/frontend.md",
+  "tags": [],
+  "version": "current",
+  "sidebarPosition": 3,
+  "frontMatter": {
+    "sidebar_position": 3
+  },
+  "sidebar": "tutorialSidebar",
+  "previous": {
+    "title": "⚙️ Cài đặt Backend",
+    "permalink": "/GR56/docs/installation/backend"
+  },
+  "next": {
+    "title": "📱 Cài đặt Mobile",
+    "permalink": "/GR56/docs/installation/mobile"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "id": "architecture/system-design",
+  "title": "🗺️ Kiến trúc Hệ thống FoodBee",
+  "description": "Hệ thống FoodBee được thiết kế theo kiến trúc Micro-services linh hoạt, đảm bảo tính ổn định, khả năng mở rộng (Scalability) cao và xử lý dữ liệu thời gian thực (Real-time) cực kỳ mượt mà.",
+  "source": "@site/docs/architecture/system-design.md",
+  "sourceDirName": "architecture",
+  "slug": "/architecture/system-design",
+  "permalink": "/GR56/docs/architecture/system-design",
+  "draft": false,
+  "unlisted": false,
+  "editUrl": "https://github.com/KLTN-03-2026/GR56/tree/master/foodbee-docs/docs/architecture/system-design.md",
+  "tags": [],
+  "version": "current",
+  "sidebarPosition": 1,
+  "frontMatter": {
+    "sidebar_position": 1
+  },
+  "sidebar": "tutorialSidebar",
+  "previous": {
+    "title": "📱 Cài đặt Mobile",
+    "permalink": "/GR56/docs/installation/mobile"
+  },
+  "next": {
+    "title": "🤖 Tích hợp AI Chatbot",
+    "permalink": "/GR56/docs/ai-chatbot"
+  }
+}
