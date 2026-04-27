@@ -1,0 +1,27 @@
+{
+  "id": "installation/mobile",
+  "title": "📱 Cài đặt Mobile App",
+  "description": "Ứng dụng di động FoodBee được xây dựng trên framework React Native (sử dụng Expo) cho phép lập trình một lần, xuất bản chạy mượt mà trên cả iOS và Android. Ứng dụng này dành riêng cho Khách hàng và đối tác Shipper.",
+  "source": "@site/docs/installation/mobile.md",
+  "sourceDirName": "installation",
+  "slug": "/installation/mobile",
+  "permalink": "/GR56/docs/installation/mobile",
+  "draft": false,
+  "unlisted": false,
+  "editUrl": "https://github.com/KLTN-03-2026/GR56/tree/master/foodbee-docs/docs/installation/mobile.md",
+  "tags": [],
+  "version": "current",
+  "sidebarPosition": 4,
+  "frontMatter": {
+    "sidebar_position": 4
+  },
+  "sidebar": "tutorialSidebar",
+  "previous": {
+    "title": "🖥️ Cài đặt Frontend",
+    "permalink": "/GR56/docs/installation/frontend"
+  },
+  "next": {
+    "title": "🗺️ Tổng quan Hệ thống",
+    "permalink": "/GR56/docs/architecture/system-design"
+  }
+}

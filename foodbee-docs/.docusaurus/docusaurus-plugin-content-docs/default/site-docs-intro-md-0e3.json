@@ -1,0 +1,23 @@
+{
+  "id": "intro",
+  "title": "🌟 Giới thiệu về FoodBee Ecosystem",
+  "description": "\"Từ kết nối truyền thống đến trải nghiệm thông minh — FoodBee là đối tác tin cậy của mọi bữa ăn\"",
+  "source": "@site/docs/intro.md",
+  "sourceDirName": ".",
+  "slug": "/intro",
+  "permalink": "/GR56/docs/intro",
+  "draft": false,
+  "unlisted": false,
+  "editUrl": "https://github.com/KLTN-03-2026/GR56/tree/master/foodbee-docs/docs/intro.md",
+  "tags": [],
+  "version": "current",
+  "sidebarPosition": 1,
+  "frontMatter": {
+    "sidebar_position": 1
+  },
+  "sidebar": "tutorialSidebar",
+  "next": {
+    "title": "🚀 Bắt đầu nhanh",
+    "permalink": "/GR56/docs/getting-started"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "id": "installation/backend",
+  "title": "⚙️ Cài đặt Backend (Core API)",
+  "description": "Backend của FoodBee được xây dựng trên nền tảng Laravel 11, cung cấp hệ thống RESTful API mạnh mẽ, bảo mật và hiệu suất cao cho Web, Mobile và Chatbot.",
+  "source": "@site/docs/installation/backend.md",
+  "sourceDirName": "installation",
+  "slug": "/installation/backend",
+  "permalink": "/GR56/docs/installation/backend",
+  "draft": false,
+  "unlisted": false,
+  "editUrl": "https://github.com/KLTN-03-2026/GR56/tree/master/foodbee-docs/docs/installation/backend.md",
+  "tags": [],
+  "version": "current",
+  "sidebarPosition": 2,
+  "frontMatter": {
+    "sidebar_position": 2
+  },
+  "sidebar": "tutorialSidebar",
+  "previous": {
+    "title": "🚀 Bắt đầu nhanh",
+    "permalink": "/GR56/docs/getting-started"
+  },
+  "next": {
+    "title": "🖥️ Cài đặt Frontend",
+    "permalink": "/GR56/docs/installation/frontend"
+  }
+}
