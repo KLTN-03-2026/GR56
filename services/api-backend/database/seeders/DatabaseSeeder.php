@@ -2,24 +2,40 @@
 
 namespace Database\Seeders;
 
+use App\Models\DiaChiKhachHang;
 use App\Models\User;
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
+// use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 
 class DatabaseSeeder extends Seeder
 {
-    use WithoutModelEvents;
-
-    /**
-     * Seed the application's database.
-     */
     public function run(): void
     {
-        // User::factory(10)->create();
+        \Illuminate\Support\Facades\Schema::disableForeignKeyConstraints();
 
-        User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
+        $this->call([
+            QuanHuyenSeeder::class,
+            TinhThanhSeeder::class,
+            DiaChiSeeder::class,
+            KhachHangSeeder::class,
+            ShipperSeeder::class,
+            QuanAnSeeder::class,
+            MonAnSeeder::class,
+            ChiTietDonHangSeeder::class,
+            DonHangSeeder::class,
+            NhanVienSeeder::class,
+            DanhMucSeeder::class,
+            ChucVuSeeder::class,
+            ChucNangSeeder::class,
+            PhanQuyenSeeder::class,
+            VoucherSeeder::class,
+            ChiTietDanhMucQuanAnSeeder::class,
+            ClientMenuSeeder::class,
+            ToppingSeeder::class,
+            MonAnSizeSeeder::class,
+            CauHinhSeeder::class,
         ]);
+
+        \Illuminate\Support\Facades\Schema::enableForeignKeyConstraints();
     }
 }
