@@ -1,6 +1,6 @@
 @echo off
 echo ============================================================
-echo   Starting FoodBee AI Chatbot v8.0 (Groq-Powered)...
+echo   Starting FoodBee AI Chatbot v8.0 (Gemini-Powered)...
 echo ============================================================
 echo.
 
