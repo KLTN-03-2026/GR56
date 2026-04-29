@@ -82,6 +82,7 @@ interface Dish {
   hinh_anh: string | null;
   id_quan_an: number;
   ten_quan_an: string;
+  id_danh_muc?: number;
 }
 
 interface Restaurant {
@@ -452,6 +453,91 @@ const HomePage = ({ navigation }: { navigation: HomeNavigation }) => {
   const headerFadeAnim = useRef(new Animated.Value(0)).current;
   const contentSlideAnim = useRef(new Animated.Value(30)).current;
 
+  // ─── Banners Carousel ───────────────────────────────────────
+  const scrollRef = useRef<ScrollView>(null);
+  const [activeBanner, setActiveBanner] = useState(0);
+
+  const banners = useMemo(() => [
+    {
+      id: 1,
+      tag: "🔥 Giao hàng siêu tốc",
+      title: "Món Ngon Tới Tay\n",
+      highlight: "Trong Tích Tắc",
+      sub: "FoodBee đưa hàng ngàn món ăn ngon từ các nhà hàng uy tín tới tận cửa nhà bạn.",
+      emoji: "🛵",
+      pills: ["🍕 Pizza Ý", "☕ Cà Phê"],
+      bg: "#0B0E14",
+      highlightColor: COLORS.PRIMARY_LIGHT,
+    },
+    {
+      id: 2,
+      tag: "🎁 Ưu đãi độc quyền",
+      title: "Siêu Sale Giữa Tháng\n",
+      highlight: "Giảm Đến 50%",
+      sub: "Thưởng thức hàng ngàn món ngon với giá siêu hời. Chỉ áp dụng trong tuần này!",
+      emoji: "🎉",
+      pills: ["🍔 Hamburger", "🍗 Gà Rán"],
+      bg: "#1E1B4B",
+      highlightColor: "#F472B6",
+    },
+    {
+      id: 3,
+      tag: "🌿 Healthy life",
+      title: "Sống Khỏe Mỗi Ngày\n",
+      highlight: "Eat Clean",
+      sub: "Cung cấp năng lượng xanh với thực đơn healthy, chuẩn calories và dinh dưỡng.",
+      emoji: "🥗",
+      pills: ["🥑 Salad", "🍹 Nước Ép"],
+      bg: "#064E3B",
+      highlightColor: "#34D399",
+    }
+  ], []);
+
+  const loopBanners = useMemo(() => [...banners, { ...banners[0], id: 999 }], [banners]);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setActiveBanner((prev) => {
+        const nextReal = (prev + 1) % banners.length;
+        const scrollIndex = prev + 1;
+        scrollRef.current?.scrollTo({
+          x: scrollIndex * (SCREEN_WIDTH - SPACING.PADDING * 2),
+          animated: true,
+        });
+        // If we're about to show the clone (last item), schedule a silent jump to real first
+        if (scrollIndex === banners.length) {
+          setTimeout(() => {
+            scrollRef.current?.scrollTo({
+              x: 0,
+              animated: false,
+            });
+          }, 350);
+        }
+        return nextReal;
+      });
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [banners.length]);
+
+  const handleBannerScroll = (e: any) => {
+    const BANNER_W = SCREEN_WIDTH - SPACING.PADDING * 2;
+    const offsetX = e.nativeEvent.contentOffset.x;
+    const rawIndex = Math.round(offsetX / BANNER_W);
+
+    // If user swiped to the clone at the end, silently jump to real first
+    if (rawIndex >= banners.length) {
+      setTimeout(() => {
+        scrollRef.current?.scrollTo({ x: 0, animated: false });
+      }, 10);
+      setActiveBanner(0);
+      return;
+    }
+
+    if (rawIndex !== activeBanner) {
+      setActiveBanner(rawIndex);
+    }
+  };
+
   // ─── Load tên người dùng ──────────────────────────────────────
   useEffect(() => {
     AsyncStorage.getItem("userData").then(str => {
@@ -526,8 +612,16 @@ const HomePage = ({ navigation }: { navigation: HomeNavigation }) => {
 
   useFocusEffect(
     useCallback(() => {
-      loadNotifications().then((list) => {
-        setUnreadCount(list.filter((n) => !n.isRead).length);
+      // Ưu tiên lấy số lượng chưa đọc thực tế từ server
+      apiClient.get("/notifications").then((res) => {
+        if (res.data?.status && res.data.unread_count !== undefined) {
+          setUnreadCount(res.data.unread_count);
+        }
+      }).catch(() => {
+        // Fallback về local nếu lỗi mạng
+        loadNotifications().then((list) => {
+          setUnreadCount(list.filter((n) => !n.isRead).length);
+        });
       });
     }, [])
   );
@@ -605,11 +699,7 @@ const HomePage = ({ navigation }: { navigation: HomeNavigation }) => {
   );
   const filteredDishes = useMemo(() => {
     if (!activeCat) return dishes;
-    const key = activeCat.ten_danh_muc.toLowerCase();
-    return dishes.filter(d =>
-      d.ten_mon_an.toLowerCase().includes(key) ||
-      d.ten_quan_an?.toLowerCase().includes(key)
-    );
+    return dishes.filter(d => d.id_danh_muc === activeCat.id);
   }, [dishes, activeCat]);
   const filteredSales = useMemo(() => {
     if (!activeCat) return sales;
@@ -785,31 +875,67 @@ const HomePage = ({ navigation }: { navigation: HomeNavigation }) => {
             </View>
           )}
 
-          {/* ══════════ PROMO BANNER ══════════ */}
+          {/* ══════════ PREMIUM PROMO BANNER CAROUSEL ══════════ */}
           <View style={s.bannerWrap}>
-            <TouchableOpacity style={s.banner} activeOpacity={0.92}>
-              <View style={s.bannerBg}>
-                {/* Decorative circles */}
-                <View style={s.bCircle1} />
-                <View style={s.bCircle2} />
-                <View style={s.bCircle3} />
-                <View style={s.bannerContent}>
-                  <View style={{ flex: 1 }}>
-                    <View style={s.bannerChip}>
-                      <Ionicons name="flame" size={12} color={COLORS.ORANGE} />
-                      <Text style={s.bannerChipTxt}> Ưu đãi hôm nay</Text>
+            <ScrollView
+              ref={scrollRef}
+              horizontal
+              pagingEnabled
+              scrollEnabled={false}
+              showsHorizontalScrollIndicator={false}
+              onMomentumScrollEnd={handleBannerScroll}
+              scrollEventThrottle={16}
+            >
+              {loopBanners.map((item, index) => (
+                <View key={`${item.id}-${index}`} style={[s.banner, { width: SCREEN_WIDTH - SPACING.PADDING * 2 }]}>
+                  <View style={[s.bannerBg, { backgroundColor: item.bg }]}>
+                    {/* Stars/Space background effect */}
+                    <View style={[s.star, { top: 20, left: 30, width: 3, height: 3 }]} />
+                    <View style={[s.star, { top: 60, right: 40, width: 4, height: 4 }]} />
+                    <View style={[s.star, { bottom: 130, left: 80, width: 2, height: 2 }]} />
+                    <View style={[s.star, { bottom: 80, right: 20, width: 3, height: 3 }]} />
+                    <View style={[s.glowCircle, { backgroundColor: item.highlightColor }]} />
+
+                    <View style={s.bannerContentCompact}>
+                      <View style={s.bannerLeft}>
+                        {/* Tag */}
+                        <View style={[s.bannerChip, { borderColor: `${item.highlightColor}40`, backgroundColor: `${item.highlightColor}15` }]}>
+                          <Text style={[s.bannerChipTxt, { color: item.highlightColor }]}>{item.tag}</Text>
+                        </View>
+                        
+                        {/* Headlines */}
+                        <Text style={s.bannerTitleCompact}>
+                          {item.title}
+                          <Text style={{ color: item.highlightColor }}>{item.highlight}</Text>
+                        </Text>
+
+                        {/* Button */}
+                        <TouchableOpacity style={[s.btnPrimaryCompact, { backgroundColor: item.highlightColor }]} onPress={() => navigation.navigate("AllRestaurantsSale")}>
+                          <Text style={s.btnPrimaryTxtCompact}>Đặt Món Ngay</Text>
+                          <Ionicons name="arrow-forward" size={12} color="#FFF" />
+                        </TouchableOpacity>
+                      </View>
+
+                      <View style={s.bannerRight}>
+                        <View style={s.floatingEmojiWrapCompact}>
+                          <Text style={s.floatingEmojiCompact}>{item.emoji}</Text>
+                        </View>
+                        <View style={[s.glassPillCompact, { top: -5, right: -15 }]}>
+                          <Text style={s.glassPillTxtCompact}>{item.pills[0]}</Text>
+                        </View>
+                      </View>
                     </View>
-                    <Text style={s.bannerTitle}>Siêu Sale{"\n"}Cuối Tuần!</Text>
-                    <Text style={s.bannerSub}>Giao nhanh · Giảm sâu · Ăn ngon</Text>
-                    <TouchableOpacity style={s.bannerBtn}>
-                      <Text style={s.bannerBtnTxt}>Khám phá ngay</Text>
-                      <Ionicons name="arrow-forward" size={13} color={COLORS.PRIMARY} />
-                    </TouchableOpacity>
                   </View>
-                  <Text style={s.bannerEmoji}>🍜</Text>
                 </View>
-              </View>
-            </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            {/* Pagination Dots */}
+            <View style={s.paginationRow}>
+              {banners.map((_, i) => (
+                <View key={i} style={[s.dot, activeBanner === i && s.dotActive]} />
+              ))}
+            </View>
           </View>
 
           {/* ══════════ QUICK SERVICE SHORTCUTS ══════════ */}
@@ -1201,97 +1327,128 @@ const s = StyleSheet.create({
   catLabel: { fontSize: 11, color: COLORS.TEXT_SECONDARY, fontWeight: "500", textAlign: "center" },
   catLabelActive: { color: COLORS.PRIMARY, fontWeight: "700" },
 
-  /* ── Banner ─────────────────────────────────────── */
+  /* ── Premium Banner ─────────────────────────────────────── */
   bannerWrap: {
     paddingHorizontal: SPACING.PADDING,
     marginTop: 20,
   },
   banner: {
-    borderRadius: 20,
+    borderRadius: 24,
     overflow: "hidden",
-    shadowColor: COLORS.PRIMARY,
-    shadowOpacity: 0.25,
-    shadowOffset: { width: 0, height: 6 },
-    shadowRadius: 14,
-    elevation: 8,
+    shadowColor: "#0F172A",
+    shadowOpacity: 0.3,
+    shadowOffset: { width: 0, height: 8 },
+    shadowRadius: 20,
+    elevation: 10,
   },
   bannerBg: {
-    backgroundColor: COLORS.PRIMARY,
-    overflow: "hidden",
-    minHeight: 160,
+    backgroundColor: "#0B0E14",
     position: "relative",
   },
-  bCircle1: {
+  star: {
     position: "absolute",
-    top: -40,
-    right: -40,
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    backgroundColor: "rgba(255,255,255,0.10)",
+    backgroundColor: "#FFF",
+    borderRadius: 50,
+    opacity: 0.4,
   },
-  bCircle2: {
+  glowCircle: {
     position: "absolute",
-    bottom: -30,
-    right: 60,
-    width: 90,
-    height: 90,
-    borderRadius: 45,
-    backgroundColor: "rgba(255,255,255,0.07)",
+    top: -50,
+    right: -50,
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: COLORS.PRIMARY,
+    opacity: 0.15,
+    transform: [{ scale: 1.5 }],
   },
-  bCircle3: {
-    position: "absolute",
-    top: 20,
-    left: -20,
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    backgroundColor: "rgba(0,0,0,0.06)",
-  },
-  bannerContent: {
+  bannerContentCompact: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 20,
+    justifyContent: "space-between",
+    padding: 16,
     paddingVertical: 20,
-    gap: 12,
+    minHeight: 140,
+  },
+  bannerLeft: {
+    flex: 1,
+    paddingRight: 10,
+    justifyContent: "center",
+  },
+  bannerRight: {
+    width: 90,
+    height: 90,
+    position: "relative",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 10,
   },
   bannerChip: {
     flexDirection: "row",
     alignSelf: "flex-start",
-    backgroundColor: "rgba(255,255,255,0.22)",
     borderRadius: 20,
     paddingHorizontal: 10,
     paddingVertical: 4,
-    alignItems: "center",
-    marginBottom: 8,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.35)",
+    marginBottom: 10,
   },
-  bannerChipTxt: { color: COLORS.WHITE, fontSize: 11, fontWeight: "700" },
-  bannerTitle: {
-    color: COLORS.WHITE,
-    fontSize: 22,
+  bannerChipTxt: { fontSize: 10, fontWeight: "800", textTransform: "uppercase" },
+  bannerTitleCompact: {
+    color: "#FFFFFF",
+    fontSize: 20,
     fontWeight: "900",
-    lineHeight: 28,
-    marginBottom: 6,
-  },
-  bannerSub: {
-    color: "rgba(255,255,255,0.78)",
-    fontSize: 12,
+    lineHeight: 26,
     marginBottom: 12,
+    letterSpacing: -0.5,
   },
-  bannerBtn: {
+  btnPrimaryCompact: {
     flexDirection: "row",
     alignSelf: "flex-start",
-    backgroundColor: COLORS.WHITE,
-    borderRadius: 22,
-    paddingHorizontal: 14,
-    paddingVertical: 7,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     alignItems: "center",
     gap: 4,
   },
-  bannerBtnTxt: { color: COLORS.PRIMARY, fontSize: 12, fontWeight: "800" },
-  bannerEmoji: { fontSize: 72, lineHeight: 82 },
+  btnPrimaryTxtCompact: { color: "#FFF", fontSize: 12, fontWeight: "800" },
+  floatingEmojiWrapCompact: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.15)",
+  },
+  floatingEmojiCompact: { fontSize: 36 },
+  glassPillCompact: {
+    position: "absolute",
+    backgroundColor: "rgba(30,41,59,0.9)",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
+  },
+  glassPillTxtCompact: { color: "#E2E8F0", fontSize: 9, fontWeight: "700" },
+  paginationRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 12,
+    gap: 6,
+  },
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "rgba(0,0,0,0.15)",
+  },
+  dotActive: {
+    width: 14,
+    backgroundColor: COLORS.PRIMARY,
+  },
 
   /* ── Quick Shortcuts ─────────────────────────────── */
   shortcutRow: {
