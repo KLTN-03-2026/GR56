@@ -8,6 +8,9 @@ import {
   ScrollView,
   RefreshControl,
   Animated,
+  Alert,
+  Linking,
+  DeviceEventEmitter,
 } from "react-native";
 import apiClient from "../../genaral/api";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -29,6 +32,7 @@ import {
   markNotificationRead,
   markAllNotificationsRead,
   deleteNotification,
+  formatTimeAgo,
 } from "../../utils/notificationStore";
 
 // ════════════════════════════════════════════════════════
@@ -68,7 +72,6 @@ interface NotificationProps {
 const TABS = [
   { key: "all", label: "Tất cả", icon: "apps" },
   { key: "order", label: "Đơn hàng", icon: "bag-handle" },
-  { key: "promotion", label: "Khuyến mãi", icon: "gift" },
   { key: "system", label: "Hệ thống", icon: "settings" },
 ] as const;
 
@@ -82,42 +85,86 @@ const Notification: React.FC<NotificationProps> = ({ navigation }) => {
   const scaleAnims = useRef<{ [key: string]: Animated.Value }>({});
 
   const fetchNotifications = useCallback(async () => {
+    console.log("[Notif] START fetch");
     try {
+      // Load local notifications first (để hiện ngay nếu có)
+      const localList = await loadNotifications();
+
       const res = await apiClient.get("/notifications");
       if (res.data && res.data.status) {
         // Map data from server to mobile format
         const serverData = res.data.data || [];
-        const mappedList: NotificationItem[] = serverData.map((item: any) => {
+        const serverMapped: NotificationItem[] = serverData.map((item: any) => {
           const d = item.data || {};
           const isRefund = d.type === "refund_success";
           const isCancel = d.loai === "order_cancelled" || d.type === "order_cancelled";
-          
+          const isBroadcast = d.type === "broadcast";
+
           let type: "order" | "promotion" | "system" = "system";
-          if (isRefund || isCancel || d.ma_don_hang) type = "order";
-          else if (d.type === "sale" || d.loai === "sale") type = "promotion";
+          if (isRefund || isCancel || d.ma_don_hang) {
+            type = "order";
+          } else if (isBroadcast) {
+            // Thông báo broadcast từ Admin → luôn vào tab Hệ thống
+            type = "system";
+          } else if (d.type === "sale" || d.loai === "sale") {
+            type = "promotion";
+          }
+
+          // Xác định icon phù hợp theo loai của broadcast
+          let icon = "settings";
+          if (type === "order") icon = "bag-handle";
+          else if (type === "promotion") icon = "gift";
+          else if (isBroadcast && d.loai === "sale") icon = "gift";
+          else if (isBroadcast && d.loai === "event") icon = "megaphone";
+          else if (isBroadcast && d.loai === "news") icon = "newspaper";
+
+          // Badge label: phân biệt loai broadcast rõ ràng
+          let badgeLabel = "Hệ thống";
+          if (type === "order") badgeLabel = "Đơn hàng";
+          else if (type === "promotion") badgeLabel = "Khuyến mãi";
+          else if (isBroadcast) {
+            if (d.loai === "sale") badgeLabel = "Khuyến mãi";
+            else if (d.loai === "event") badgeLabel = "Sự kiện";
+            else if (d.loai === "news") badgeLabel = "Tin tức";
+            else badgeLabel = "Hệ thống";
+          }
 
           return {
             id: String(item.id),
             type: type,
             title: d.title || "Thông báo mới",
             description: d.message || d.description || "",
-            icon: type === "promotion" ? "gift" : type === "order" ? "bag-handle" : "settings",
+            icon,
             time: item.created_at ? formatTimeAgo(new Date(item.created_at).getTime()) : "Vừa xong",
             isRead: !!item.read_at,
-            badgeLabel: type === "promotion" ? "Khuyến mãi" : type === "order" ? "Đơn hàng" : "Hệ thống",
+            badgeLabel,
+            link: d.link || "",
             createdAt: item.created_at ? new Date(item.created_at).getTime() : Date.now(),
           };
         });
-        setNotifications(mappedList);
+
+        // Merge: server IDs là UUID, local IDs bắt đầu bằng "notif_"
+        // Giữ local notifications không trùng với server (theo id)
+        const serverIds = new Set(serverMapped.map((n) => n.id));
+        const localOnly = localList.filter((n) => !serverIds.has(n.id));
+
+        // Gộp và sắp xếp mới nhất trước
+        const merged = [...serverMapped, ...localOnly].sort(
+          (a, b) => b.createdAt - a.createdAt
+        );
+
+        setNotifications(merged);
+
       } else {
-        // Fallback to local if API fails or returns no status
-        const list = await loadNotifications();
-        setNotifications(list);
+        // API không thành công → dùng local
+        setNotifications(localList);
       }
-    } catch (err) {
-      console.log("Error fetching notifications from server:", err);
-      const list = await loadNotifications();
-      setNotifications(list);
+    } catch (err: any) {
+      console.log("[Notif] CATCH error:", err?.message || String(err));
+      Alert.alert("Lỗi Load API", err?.message || "Không thể kết nối đến server");
+      // Lỗi mạng → dùng local để vẫn hiển thị thông báo cũ
+      const localList = await loadNotifications();
+      setNotifications(localList);
     }
   }, []);
 
@@ -125,7 +172,15 @@ const Notification: React.FC<NotificationProps> = ({ navigation }) => {
   useEffect(() => {
     createNotificationChannels();
     requestNotificationPermission();
-  }, []);
+
+    const subscription = DeviceEventEmitter.addListener("NEW_NOTIFICATION", () => {
+      fetchNotifications();
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [fetchNotifications]);
 
   // Load lại mỗi khi focus vào tab
   useFocusEffect(
@@ -191,6 +246,14 @@ const Notification: React.FC<NotificationProps> = ({ navigation }) => {
       navigation.navigate("MainTabs", { screen: "Orders" });
     } else if (notification.type === "promotion") {
       navigation.navigate("MyVouchers");
+    } else if (notification.type === "system") {
+      // Xử lý mở link cho thông báo hệ thống / broadcast
+      if (notification.link && notification.link.startsWith("http")) {
+        Linking.openURL(notification.link).catch(err => console.log("Không thể mở URL:", err));
+      } else if (notification.link === "/" || notification.link === "/trang-chu" || notification.badgeLabel === "Khuyến mãi" || notification.badgeLabel === "Sự kiện") {
+        // Mặc định điều hướng về trang chủ
+        navigation.navigate("MainTabs", { screen: "Home" });
+      }
     }
   };
 
