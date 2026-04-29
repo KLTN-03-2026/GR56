@@ -9,6 +9,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Image,
+  Animated,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -87,6 +88,31 @@ const ChatBot: React.FC<ChatBotProps> = ({ navigation }) => {
   const [inputText, setInputText] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
+  
+  const dot1 = useRef(new Animated.Value(0)).current;
+  const dot2 = useRef(new Animated.Value(0)).current;
+  const dot3 = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (isLoading) {
+      const animateDot = (dot: Animated.Value, delay: number) => {
+        Animated.loop(
+          Animated.sequence([
+            Animated.timing(dot, { toValue: -6, duration: 300, useNativeDriver: true, delay }),
+            Animated.timing(dot, { toValue: 0, duration: 300, useNativeDriver: true }),
+            Animated.delay(600)
+          ])
+        ).start();
+      };
+      animateDot(dot1, 0);
+      animateDot(dot2, 150);
+      animateDot(dot3, 300);
+    } else {
+      dot1.setValue(0);
+      dot2.setValue(0);
+      dot3.setValue(0);
+    }
+  }, [isLoading]);
 
   // Load lịch sử khi mở màn hình
   useEffect(() => {
@@ -150,7 +176,29 @@ const ChatBot: React.FC<ChatBotProps> = ({ navigation }) => {
         console.log("🔍 [ChatBot] ROOT fetch failed:", rootErr);
       }
 
-      const requestBody = { message: text.trim() };
+      // Chuẩn bị thông tin khách hàng và lịch sử
+      const rawUserData = await AsyncStorage.getItem('userData');
+      let user_context = { is_logged_in: false, khach_hang_id: null };
+      if (rawUserData) {
+        try {
+          const parsed = JSON.parse(rawUserData);
+          if (parsed && parsed.id) {
+            user_context = { is_logged_in: true, khach_hang_id: parsed.id };
+          }
+        } catch (e) {}
+      }
+
+      // Lấy lịch sử (giới hạn 10 tin nhắn gần nhất)
+      const history = messages.slice(-10).map((m) => ({
+        role: m.type === "user" ? "user" : "assistant",
+        content: m.text || ""
+      }));
+
+      const requestBody = { 
+        message: text.trim(),
+        history: history,
+        user_context: user_context
+      };
       let response: Response | null = null;
       let usedEndpoint = "";
 
@@ -254,8 +302,8 @@ const ChatBot: React.FC<ChatBotProps> = ({ navigation }) => {
         ]}
       >
         {!isUser && (
-          <View style={styles.botAvatar}>
-            <Ionicons name="chatbubble-ellipses" size={20} color="#FFF" />
+          <View style={[styles.botAvatar, { backgroundColor: "transparent" }]}>
+            <Image source={require("../../assets/images/logoFood.png")} style={{width: 28, height: 28, borderRadius: 14}} />
           </View>
         )}
 
@@ -370,8 +418,9 @@ const ChatBot: React.FC<ChatBotProps> = ({ navigation }) => {
       <View style={styles.header}>
         <View style={styles.headerContent}>
           <View style={styles.botStatusContainer}>
+            <Image source={require("../../assets/images/logoFood.png")} style={{width: 24, height: 24, borderRadius: 12, marginRight: 8}} />
             <View style={styles.botStatusDot} />
-            <Text style={styles.headerTitle}> FoodBee Bot</Text>
+            <Text style={styles.headerTitle}>FoodBee Bot</Text>
           </View>
           <Text style={styles.headerSubtitle}>Online - Luôn sẵn sàng</Text>
         </View>
@@ -422,13 +471,13 @@ const ChatBot: React.FC<ChatBotProps> = ({ navigation }) => {
 
           {isLoading && (
             <View style={styles.loadingContainer}>
-              <View style={styles.botAvatar}>
-                <Ionicons name="chatbubble-ellipses" size={20} color="#FFF" />
-              </View>
+            <View style={[styles.botAvatar, { backgroundColor: "transparent" }]}>
+              <Image source={require("../../assets/images/logoFood.png")} style={{width: 28, height: 28, borderRadius: 14}} />
+            </View>
               <View style={styles.typingBubble}>
-                <View style={styles.typingDot} />
-                <View style={styles.typingDot} />
-                <View style={styles.typingDot} />
+                <Animated.View style={[styles.typingDot, { transform: [{ translateY: dot1 }] }]} />
+                <Animated.View style={[styles.typingDot, { transform: [{ translateY: dot2 }] }]} />
+                <Animated.View style={[styles.typingDot, { transform: [{ translateY: dot3 }] }]} />
               </View>
             </View>
           )}
