@@ -3,6 +3,8 @@ import notifee, {
   AndroidStyle,
   AuthorizationStatus,
 } from "@notifee/react-native";
+import Toast from "react-native-toast-message";
+import { DeviceEventEmitter } from "react-native";
 
 // ─── Channel IDs ────────────────────────────────────────
 export const CHANNEL_ORDER  = "channel_order";
@@ -83,6 +85,19 @@ export async function sendLocalNotification(payload: NotifPayload) {
   const channelId = getChannelByType(type);
   const badge = getBadgeLabel(type);
 
+  // Show Toast notification in real-time
+  Toast.show({
+    type: type === "system" ? "info" : "success",
+    text1: title,
+    text2: description,
+    position: "top",
+    visibilityTime: 4000,
+    autoHide: true,
+  });
+
+  // Emit event to update Notification screen in real-time
+  DeviceEventEmitter.emit("NEW_NOTIFICATION");
+
   await notifee.displayNotification({
     title: title,
     body: description,
@@ -112,6 +127,12 @@ export async function sendLocalNotification(payload: NotifPayload) {
     ios: {
       categoryId: type,
       sound: "default",
+      foregroundPresentationOptions: {
+        badge: true,
+        sound: true,
+        banner: true,
+        list: true,
+      },
     },
   });
 }
