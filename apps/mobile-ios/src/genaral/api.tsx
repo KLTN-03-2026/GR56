@@ -6,7 +6,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 // const API_URL = "http://127.0.0.1:8000/api";
 // const API_URL = "http://192.168.1.196:8000/api";
 const API_URL = "https://be.foodbee.io.vn/api";
-export const API_CHATBOT_URL = "http://127.0.0.1:5000"
+export const API_CHATBOT_URL = "http://192.168.1.8:5000";
 
 // var is_auth_alert_shown = false;
 
