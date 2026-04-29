@@ -9,8 +9,9 @@ import {
   StatusBar,
   ActivityIndicator,
   Dimensions,
+  Platform,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 // @ts-ignore
 import Ionicons from "react-native-vector-icons/Ionicons";
 import apiClient from "../../genaral/api";
@@ -80,6 +81,7 @@ const RestaurantCard = memo<RestaurantCardProps>(({ restaurant, onPress }) => {
 const AllRestaurantsSale = ({ navigation }: { navigation: any }) => {
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [loading, setLoading] = useState(true);
+  const insets = useSafeAreaInsets();
 
   const loadData = useCallback(async () => {
     try {
@@ -109,11 +111,11 @@ const AllRestaurantsSale = ({ navigation }: { navigation: any }) => {
   }
 
   return (
-    <SafeAreaView style={s.root} edges={["top"]}>
-      <StatusBar barStyle="light-content" backgroundColor={COLORS.PRIMARY} />
+    <View style={s.root}>
+      <StatusBar barStyle="light-content" backgroundColor={COLORS.PRIMARY} translucent={Platform.OS === 'android'} />
 
       {/* Header */}
-      <View style={s.header}>
+      <View style={[s.header, { paddingTop: Math.max(insets.top, Platform.OS === 'android' ? StatusBar.currentHeight || 0 : 0) + 14 }]}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="chevron-back" size={28} color="white" />
         </TouchableOpacity>
@@ -149,7 +151,7 @@ const AllRestaurantsSale = ({ navigation }: { navigation: any }) => {
           <Text style={s.emptyTxt}>Không có quán nào đang sale</Text>
         </View>
       )}
-    </SafeAreaView>
+    </View>
   );
 };
 

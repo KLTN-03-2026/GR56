@@ -935,12 +935,17 @@ const RestaurantDetail = ({ navigation, route }: RestaurantDetailProps) => {
                 style={s.heroImage}
               />
             ) : (
-              <View style={[s.heroImage, s.placeholderImage]}>
-                <Ionicons
-                  name="storefront-outline"
-                  size={60}
-                  color={COLORS.TEXT_MUTED}
-                />
+              <View style={[s.heroImage, s.heroPlaceholder]}>
+                <View style={s.heroPlaceholderIconWrap}>
+                  <Ionicons
+                    name="storefront"
+                    size={64}
+                    color="rgba(255,255,255,0.7)"
+                  />
+                </View>
+                <Text style={s.heroPlaceholderName} numberOfLines={2}>
+                  {restaurantInfo?.ten_quan_an || ""}
+                </Text>
               </View>
             )}
           </Animated.View>
@@ -1522,6 +1527,25 @@ const s = StyleSheet.create({
     width: "100%",
     height: HERO_IMAGE_HEIGHT,
     resizeMode: "cover",
+  },
+  heroPlaceholder: {
+    backgroundColor: COLORS.PRIMARY,
+    justifyContent: "flex-end",
+    alignItems: "center",
+    paddingBottom: 24,
+  },
+  heroPlaceholderIconWrap: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  heroPlaceholderName: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: "rgba(255,255,255,0.9)",
+    textAlign: "center",
+    paddingHorizontal: 24,
+    letterSpacing: -0.3,
   },
   heroButtonsContainer: {
     position: "absolute",

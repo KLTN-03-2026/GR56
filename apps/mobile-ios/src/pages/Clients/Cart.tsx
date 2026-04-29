@@ -19,7 +19,7 @@ import Ionicons from "react-native-vector-icons/Ionicons";
 import apiClient from "../../genaral/api";
 import { getImageUrl } from "../../utils/imageHelper";
 import ToastMessage from "../../components/ToastMessage";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 // ════════════════════════════════════════════════════════
 // Constants & Types
@@ -316,6 +316,7 @@ const ProductDetailModal = memo<ProductDetailModalProps>(
 // ════════════════════════════════════════════════════════
 
 const Cart = ({ navigation }: any) => {
+  const insets = useSafeAreaInsets();
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(true);
@@ -832,7 +833,14 @@ const Cart = ({ navigation }: any) => {
 
   if (loading) {
     return (
-      <SafeAreaView style={s.root}>
+      <SafeAreaView edges={["bottom"]} style={s.root}>
+        <View style={[s.header, { paddingTop: Math.max(insets.top, 16) + 8 }]}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Ionicons name="chevron-back" size={28} color="white" />
+          </TouchableOpacity>
+          <Text style={s.headerTitle}>Giỏ Hàng</Text>
+          <View style={{ width: 28 }} />
+        </View>
         <View style={s.loadingContainer}>
           <ActivityIndicator size="large" color={COLORS.PRIMARY} />
           <Text style={s.loadingText}>Đang tải giỏ hàng...</Text>
@@ -847,17 +855,17 @@ const Cart = ({ navigation }: any) => {
 
   return (
     <>
-      <SafeAreaView style={s.root}>
-        <StatusBar backgroundColor={COLORS.PRIMARY} barStyle="light-content" />
+      <SafeAreaView edges={["bottom"]} style={s.root}>
+        <StatusBar backgroundColor="transparent" translucent barStyle="light-content" />
 
         {/* Header */}
-        <View style={s.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="chevron-back" size={28} color="white" />
-        </TouchableOpacity>
-        <Text style={s.headerTitle}>Giỏ Hàng</Text>
-        <View style={{ width: 28 }} />
-      </View>
+        <View style={[s.header, { paddingTop: Math.max(insets.top, 16) + 8, paddingBottom: 12 }]}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Ionicons name="chevron-back" size={28} color="white" />
+          </TouchableOpacity>
+          <Text style={s.headerTitle}>Giỏ Hàng</Text>
+          <View style={{ width: 28 }} />
+        </View>
 
       {/* Empty Cart */}
       {cartItems.length === 0 ? (
@@ -1280,7 +1288,7 @@ const s = StyleSheet.create({
     alignItems: "center",
     backgroundColor: COLORS.PRIMARY,
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    // paddingVertical: 12, // handled inline for notch support
     elevation: 2,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
