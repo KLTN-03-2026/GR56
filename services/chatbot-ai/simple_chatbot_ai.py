@@ -28,19 +28,28 @@ logging.basicConfig(
 )
 logger = logging.getLogger('foodbee_agent')
 
-GROQ_API_KEY = os.getenv('GROQ_API_KEY')
-GROQ_MODEL   = os.getenv('GROQ_MODEL', 'llama-3.3-70b-versatile')
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
+_raw_model   = os.getenv('GEMINI_MODEL', 'gemini-2.5-pro')
+
+# Map tên model gemma-4 thành gemini-2.5-flash để tốc độ phản hồi siêu nhanh và gọi tool chuẩn xác
+if _raw_model == 'gemma-4':
+    GEMINI_MODEL = 'gemini-2.5-flash'
+elif _raw_model == 'gemini-1.5-pro':
+    GEMINI_MODEL = 'gemini-2.5-pro'
+else:
+    GEMINI_MODEL = _raw_model
+
 MAX_AGENT_STEPS = 5   # Giới hạn số lượt tool-calling trong 1 session
 
-if GROQ_API_KEY:
-    groq_client = OpenAI(
-        api_key=GROQ_API_KEY,
-        base_url='https://api.groq.com/openai/v1',
+if GEMINI_API_KEY:
+    ai_client = OpenAI(
+        api_key=GEMINI_API_KEY,
+        base_url='https://generativelanguage.googleapis.com/v1beta/openai/',
     )
-    logger.info(f"✅ Groq AI Agent ready | model={GROQ_MODEL}")
+    logger.info(f"✅ Gemini AI Agent ready | model={GEMINI_MODEL}")
 else:
-    groq_client = None
-    logger.warning("⚠️ No GROQ_API_KEY — fallback mode only")
+    ai_client = None
+    logger.warning("⚠️ No GEMINI_API_KEY — fallback mode only")
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
@@ -1019,69 +1028,44 @@ def execute_tool(name: str, args: dict, khach_hang_id: int = None):
 
 def build_system_prompt(meal_ctx: str, is_logged_in: bool) -> str:
     login_ctx = (
-        "Khách hàng ĐÃ ĐĂNG NHẬP. Bạn có thể sử dụng các tool cá nhân hóa: "
-        "xem_don_hang_cua_toi, tra_trang_thai_don, kiem_tra_vi_tien, goi_y_theo_lich_su."
+        "Khách hàng ĐÃ ĐĂNG NHẬP. Hãy chủ động sử dụng các tool cá nhân hóa: "
+        "xem_don_hang_cua_toi, tra_trang_thai_don, kiem_tra_vi_tien, goi_y_theo_lich_su để tư vấn sát với sở thích và ví tiền của họ."
         if is_logged_in
         else
-        "Khách hàng CHƯA ĐĂNG NHẬP. Nếu hỏi về đơn hàng/ví/lịch sử cá nhân, "
-        "hãy thông báo cần đăng nhập và gợi ý đi đến trang đăng nhập."
+        "Khách hàng CHƯA ĐĂNG NHẬP. Hãy tư vấn chung và khéo léo gợi ý họ đăng nhập để nhận được nhiều ưu đãi và gợi ý cá nhân hóa hơn."
     )
 
-    return f"""Bạn là **FoodBee Assistant** 🍯 — AI Agent thông minh của ứng dụng đặt đồ ăn FoodBee tại Đà Nẵng, Việt Nam.
+    return f"""Bạn là **FoodBee Assistant** 🍯 — Chuyên gia tư vấn ẩm thực AI cao cấp của ứng dụng đặt đồ ăn FoodBee tại Đà Nẵng.
 
-## VAI TRÒ CỦA BẠN
-Bạn là một **AI Agent** — không phải chatbot thông thường. Bạn có khả năng:
-- **Tự suy luận** để hiểu intent của người dùng, kể cả khi họ viết tắt, không dấu, sai chính tả
-- **Tự lập kế hoạch** và gọi nhiều tool liên tiếp nếu cần
-- **Tự chọn tool phù hợp** mà không cần người dùng nói rõ cần gì
+## VAI TRÒ VÀ THÁI ĐỘ TƯ VẤN
+- Bạn là một **Chuyên viên tư vấn thông minh, tận tâm và chuyên nghiệp**. Thái độ luôn lịch sự, nhiệt tình, thấu hiểu tâm lý khách hàng (xưng hô thân thiện, dùng từ ngữ tinh tế).
+- **Tuyệt đối không như một cỗ máy**: Hãy nói chuyện tự nhiên, đưa ra nhận xét cá nhân hoặc lý do tại sao món ăn đó lại phù hợp với khách.
+- **Tư vấn chủ động (Upselling & Cross-selling)**: Khi khách chọn món ăn, hãy chủ động gợi ý thêm đồ uống hoặc món ăn kèm (dùng tool `goi_y_combo`).
+- **Thấu hiểu cảm xúc**: Nếu khách hàng phàn nàn hoặc không vui, hãy tỏ ra đồng cảm, xin lỗi và hướng dẫn họ cách giải quyết (ví dụ: liên hệ hỗ trợ hoặc xem chính sách hoàn tiền).
 
-## QUY TẮC QUAN TRỌNG
+## KỸ NĂNG SUY LUẬN & GỌI TOOL
+1. **Bắt đúng tâm lý/Intent**: Tự hiểu các từ viết tắt (cf=cà phê, ts=trà sữa, bb=bún bò, ct=cơm tấm, gr=gà rán, hs=hải sản). Dịch sai chính tả hoặc không dấu mượt mà.
+2. **Gọi Tool linh hoạt & BẮT BUỘC**: 
+   - KHI KHÁCH HỎI TÌM MÓN (ví dụ: "thèm đồ mát", "trời nóng", "cơm", "sinh tố"), BẠN BẮT BUỘC PHẢI DÙNG TOOL `tim_kiem_mon_an` HOẶC `tim_theo_danh_muc` để tìm đúng món khách yêu cầu. CHỈ DÙNG `goi_y_ngau_nhien` khi khách kêu "gợi ý ngẫu nhiên" hoặc "ăn gì cũng được". TUYỆT ĐỐI KHÔNG TỰ BỊA RA TÊN MÓN VÀ KHÔNG CHỈ TRẢ LỜI SUÔNG.
+   - Đừng ngại gọi nhiều tool một lúc. VD: "Có gì rẻ không?" -> `tim_mon_theo_gia` + `xem_khuyen_mai`.
+   - Nếu tool trả về rỗng, lập tức tự gọi tool khác hoặc `goi_y_ngau_nhien` để luôn có giải pháp cho khách.
+3. **Cá nhân hóa tối đa**: {login_ctx}
 
-### 1. LUÔN GỌI TOOL KHI CÓ LIÊN QUAN ĐẾN ĐỒ ĂN
-- Mọi câu hỏi về thức ăn/uống → **GỌI TOOL NGAY**, không đoán bừa
-- Không biết chắc → gọi `goi_y_ngau_nhien` thay vì nói "không biết"
-- Tool trả 0 kết quả → gọi thêm tool khác để có món thay thế
+## THÔNG TIN DỊCH VỤ FOODBEE
+- Thời gian giao: **30-45 phút** (rất nhanh chóng).
+- Phí giao hàng: **15,000 - 25,000đ** tùy khoảng cách.
+- Thanh toán: linh hoạt tiền mặt hoặc chuyển khoản QR (PayOS).
+- Khu vực: Hải Châu, Thanh Khê, Sơn Trà, Liên Chiểu, Cẩm Lệ, Ngũ Hành Sơn.
+- Tích điểm: 1,000đ = 1 XU | 100 XU = 1,000đ giảm giá.
 
-### 2. TỰ DỊCH VIẾT TẮT / KHÔNG DẤU
-Người dùng hay viết tắt — bạn PHẢI tự hiểu:
-- cf / cafe / caphe → cà phê
-- ts / trasua → trà sữa
-- bb / bunbo / bun bo → bún bò
-- ct / comtam / com tam → cơm tấm
-- bm / banhmi / banh mi → bánh mì
-- hs / haisan → hải sản
-- gr / garan → gà rán
-- pho / phobo → phở
-
-### 3. GỌI NHIỀU TOOL NẾU CẦN
-Ví dụ: "trời nóng muốn uống gì mát?" → gọi `tim_kiem_mon_an(keyword="sinh tố")` VÀ `tim_kiem_mon_an(keyword="nước ép")`
-
-### 4. CÁ NHÂN HÓA KHI ĐÃ ĐĂNG NHẬP
-{login_ctx}
-
-## THÔNG TIN FOODBEE
-- Ứng dụng đặt món ăn, giao hàng tận nơi tại Đà Nẵng
-- Thời gian giao: **30-45 phút**
-- Phí giao hàng: **15,000 - 25,000đ** tùy khoảng cách
-- Thanh toán: tiền mặt khi nhận HOẶC chuyển khoản QR (PayOS)
-- Khu vực phục vụ: Hải Châu, Thanh Khê, Sơn Trà, Liên Chiểu, Cẩm Lệ, Ngũ Hành Sơn
-
-## ĐIỂM XU
-1,000đ = 1 XU | 100 XU = 1,000đ giảm giá | XU không hết hạn
-
-## CHÍNH SÁCH
-- Hủy đơn: trước khi quán xác nhận
-- Khiếu nại: trong 24h sau khi nhận
-- Hoàn tiền: khi đơn bị hủy từ phía quán/shipper
-
-## 🕐 NGỮ CẢNH THỜI GIAN
+## 🕐 GỢI Ý THEO NGỮ CẢNH THỜI GIAN
 {meal_ctx}
-Ưu tiên gợi ý món phù hợp với khung giờ này khi người dùng hỏi chung chung.
+Hãy lấy đây làm điểm tựa để đưa ra lời chào hoặc gợi ý món ăn chuẩn xác nhất.
 
-## QUY TẮC TRẢ LỜI
-1. Ngắn gọn, thân thiện, có emoji phù hợp 🍜
-2. Sau khi tool trả kết quả: 1-2 câu nhận xét ngắn, KHÔNG liệt kê lại từng tên món
-3. Luôn trả lời bằng tiếng Việt"""
+## QUY TẮC TRẢ LỜI CỐT LÕI
+1. **Ngắn gọn nhưng "đắt"**: Tránh dài dòng, mỗi lời nói đều mang lại giá trị thực tế. Dùng định dạng markdown (in đậm, danh sách) và emoji 🍲 hợp lý để thu hút mắt nhìn.
+2. **Review món ăn thông minh**: Khi tool trả về danh sách món, HÃY TÓM TẮT ĐIỂM NỔI BẬT của chúng thay vì liệt kê nhàm chán. (VD: "Em thấy có quán X đang có bún bò rất ngon, giá chỉ 45k...").
+3. Luôn luôn trả lời bằng tiếng Việt, mang đậm phong cách văn hóa ẩm thực Việt Nam."""
 
 
 # ═══════════════════════════════════════════════════════════
@@ -1115,7 +1099,7 @@ def run_agent(query: str, history: list, user_context: dict):
     3. LLM có thể gọi thêm tool hoặc tổng hợp và trả lời cuối
     Lặp tối đa MAX_AGENT_STEPS lần.
     """
-    if not groq_client:
+    if not ai_client:
         return None, []
 
     # Extract context
@@ -1145,28 +1129,30 @@ def run_agent(query: str, history: list, user_context: dict):
 
         try:
             # LLM quyết định bước tiếp theo
-            resp = groq_client.chat.completions.create(
-                model=GROQ_MODEL,
+            resp = ai_client.chat.completions.create(
+                model=GEMINI_MODEL,
                 messages=messages,
                 tools=TOOLS,
                 tool_choice="auto",
                 max_tokens=1000,
                 temperature=0.5,
-                timeout=20,
+                timeout=60,
             )
-        except RateLimitError:
-            logger.warning("⚠️ Groq rate limit — dừng agent")
+        except Exception as e:
+            logger.warning("⚠️ Gemini rate limit — dừng agent")
             break
         except APIError as e:
-            logger.error(f"Groq API error: {e}")
+            logger.error(f"Gemini API error: {e}")
             break
 
         msg = resp.choices[0].message
 
         # Không cần tool → Agent đã có đủ thông tin, trả lời thẳng
-        if not msg.tool_calls:
+        if not getattr(msg, 'tool_calls', None):
             logger.info(f"✅ Agent hoàn thành sau {step_count} bước")
             final_text = (msg.content or "").strip()
+            import re
+            final_text = re.sub(r'<thought>.*?</thought>', '', final_text, flags=re.DOTALL).strip()
 
             # Dedup foods
             seen, unique_foods = set(), []
@@ -1217,16 +1203,18 @@ def run_agent(query: str, history: list, user_context: dict):
     try:
         messages.append({
             "role": "user",
-            "content": "Hãy tổng hợp và trả lời cho tôi dựa trên những thông tin đã thu thập được."
+            "content": "Hãy tổng hợp và trả lời cho tôi dựa trên những thông tin đã thu thập được. Không in ra suy nghĩ nội bộ."
         })
-        final_resp = groq_client.chat.completions.create(
-            model=GROQ_MODEL,
+        final_resp = ai_client.chat.completions.create(
+            model=GEMINI_MODEL,
             messages=messages,
             max_tokens=400,
             temperature=0.6,
-            timeout=15,
+            timeout=60,
         )
         final_text = (final_resp.choices[0].message.content or "").strip()
+        import re
+        final_text = re.sub(r'<thought>.*?</thought>', '', final_text, flags=re.DOTALL).strip()
     except Exception:
         final_text = "🍴 Đây là một số gợi ý cho bạn!"
 
@@ -1301,7 +1289,7 @@ def chat():
         response_text, foods = run_agent(query, history, user_context)
 
         if not response_text:
-            # Groq offline/rate-limited → fallback với DB
+            # Gemini offline/rate-limited → fallback với DB
             response_text = fallback_respond(query)
             if not foods:
                 foods = q_random(6)
@@ -1402,7 +1390,7 @@ def health():
             'kiem_tra_vi_tien',
             'goi_y_theo_lich_su',
         ],
-        'ai_model':      GROQ_MODEL if groq_client else 'fallback-only',
+        'ai_model':      GEMINI_MODEL if ai_client else 'fallback-only',
         'db_connected':  db_ok,
         'foods_count':   n,
     })
@@ -1411,6 +1399,6 @@ def health():
 if __name__ == '__main__':
     port = int(os.getenv('FLASK_PORT', 5000))
     logger.info(f"🚀 FoodBee AI Agent v10.0 — Multi-step Agentic Loop — port {port}")
-    logger.info(f"🤖 {'✅ Groq AI ON | ' + GROQ_MODEL if groq_client else '❌ Groq OFF (fallback mode)'}")
+    logger.info(f"🤖 {'✅ Gemini AI ON | ' + GEMINI_MODEL if ai_client else '❌ Gemini OFF (fallback mode)'}")
     logger.info(f"🔧 Total tools: {len(TOOLS)} | Max steps per session: {MAX_AGENT_STEPS}")
     app.run(host='0.0.0.0', port=port, debug=False, threaded=True)
