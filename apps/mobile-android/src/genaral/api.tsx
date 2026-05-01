@@ -3,7 +3,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 // import { Alert } from "react-native";
 // import { notify } from "./notification";
 
-const API_URL = "http://192.168.1.198:8000/api";
+const API_URL = "https://be.foodbee.io.vn/api";
+export const API_CHATBOT_URL = "http://192.168.1.200:5000"
 
 // var is_auth_alert_shown = false;
 

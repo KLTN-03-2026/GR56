@@ -1,4 +1,4 @@
-package com.coremobile
+package com.shoppefood
 
 import android.app.Application
 import com.facebook.react.PackageList

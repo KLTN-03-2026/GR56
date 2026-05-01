@@ -6,7 +6,7 @@ const MAX_ITEMS = 60;
 // ── Types ─────────────────────────────────────────────────────────────────────
 export interface StoredNotification {
   id: string;
-  type: "order" | "promotion" | "system";
+  type: "order" | "promotion" | "system" | "chat";
   title: string;
   description: string;
   icon: string;
@@ -14,6 +14,13 @@ export interface StoredNotification {
   isRead: boolean;
   badgeLabel: string;
   createdAt: number;
+  // Thông tin cho tin nhắn (chat)
+  id_don_hang?: number;
+  id_shipper?: number;
+  sender_name?: string;
+  sender_avatar?: string;
+  dia_chi?: string;
+  ma_don_hang?: string;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -42,7 +49,8 @@ export const loadNotifications = async (): Promise<StoredNotification[]> => {
 };
 
 export const saveNotification = async (
-  item: Pick<StoredNotification, "type" | "title" | "description" | "icon" | "badgeLabel">
+  item: Pick<StoredNotification, "type" | "title" | "description" | "icon" | "badgeLabel"> & 
+    Partial<Pick<StoredNotification, "id_don_hang" | "id_shipper" | "sender_name" | "sender_avatar" | "dia_chi" | "ma_don_hang">>
 ): Promise<void> => {
   try {
     const now = Date.now();

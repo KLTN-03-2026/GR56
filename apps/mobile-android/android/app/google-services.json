@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "1012941706621",
+    "project_id": "shoppefood-app",
+    "storage_bucket": "shoppefood-app.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1012941706621:android:0000000000000000",
+        "android_client_info": {
+          "package_name": "com.shoppefood"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1012941706621-9tesdjalhnmb22e2golne8so022hlgvt.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "PLACEHOLDER"
+        }
+      ],
+      "services": {}
+    }
+  ],
+  "configuration_version": "1"
+}
