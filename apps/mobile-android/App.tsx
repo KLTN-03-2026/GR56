@@ -47,6 +47,7 @@ import PayOSPayment from "./src/pages/Clients/PayOSPayment";
 import HelpCenter from "./src/pages/Clients/HelpCenter";
 import AppUpdate from "./src/pages/Clients/AppUpdate";
 import ShipperSupport from "./src/pages/Shipper/ShipperSupport";
+import ShipperWithdraw from "./src/pages/Shipper/ShipperWithdraw";
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -350,6 +351,7 @@ const App = () => {
           <Stack.Screen name="Notification" component={Notification} />
           <Stack.Screen name="AppUpdate" component={AppUpdate} />
           <Stack.Screen name="ShipperSupport" component={ShipperSupport} />
+          <Stack.Screen name="ShipperWithdraw" component={ShipperWithdraw} />
           <Stack.Screen name="HelpCenter" component={HelpCenter} options={{ headerShown: false }} />
 
           {/* Define both navigation tab roots so we can navigate manually from Login */}

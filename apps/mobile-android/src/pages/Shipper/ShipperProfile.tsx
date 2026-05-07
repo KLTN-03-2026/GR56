@@ -169,6 +169,7 @@ const ShipperProfile = ({ navigation }: any) => {
 
     const menuOptions = [
         { id: 1, title: "Lịch sử chuyến xe", icon: "time-outline", color: "#3B82F6" },
+        { id: 2, title: "Rút tiền về ngân hàng", icon: "cash-outline", color: "#10B981" },
         { id: 3, title: "Cập nhật ứng dụng", icon: "flame-outline", color: "#F59E0B" },
         { id: 4, title: "Hỗ trợ tài xế", icon: "headset-outline", color: "#8B5CF6" },
     ];
@@ -462,7 +463,9 @@ const ShipperProfile = ({ navigation }: any) => {
                             style={styles.menuItem}
                             activeOpacity={0.75}
                             onPress={() => {
-                                if (menu.id === 3) {
+                                if (menu.id === 2) {
+                                    navigation.navigate("ShipperWithdraw");
+                                } else if (menu.id === 3) {
                                     navigation.navigate("AppUpdate");
                                 } else if (menu.id === 4) {
                                     navigation.navigate("ShipperSupport");
