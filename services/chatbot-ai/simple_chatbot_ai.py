@@ -21,6 +21,7 @@ import re
 from decimal import Decimal
 from datetime import datetime, timezone, timedelta
 from openai import OpenAI, RateLimitError
+from typing import Optional
 import time
 
 load_dotenv()
@@ -145,6 +146,355 @@ def _to_serializable(row: dict) -> dict:
         else:
             result[k] = v
     return result
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  CHATBOT INTERACTION HISTORY & PERSONALIZATION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _ensure_chatbot_history_table():
+    """Create chatbot_history table if not exists."""
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS chatbot_history (
+                id              BIGINT AUTO_INCREMENT PRIMARY KEY,
+                khach_hang_id   INT NULL,
+                session_id      VARCHAR(255) NOT NULL DEFAULT 'guest',
+                action_type     VARCHAR(50) NOT NULL,
+                -- What user asked / did
+                query_text      TEXT,
+                action_detail   TEXT,
+                -- What chatbot returned
+                response_text   TEXT,
+                foods_shown     JSON,
+                restaurants_shown JSON,
+                selected_item   JSON,
+                -- Order context
+                restaurant_name VARCHAR(255),
+                cart_summary    JSON,
+                delivery_info   JSON,
+                -- Metadata
+                state_before    VARCHAR(50),
+                state_after     VARCHAR(50),
+                ai_powered      TINYINT(1) DEFAULT 0,
+                created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_khach_hang (khach_hang_id),
+                INDEX idx_session  (session_id),
+                INDEX idx_created  (created_at),
+                INDEX idx_action   (action_type)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        """)
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        logger.warning(f"⚠️ Could not create chatbot_history table: {e}")
+
+
+def _ensure_user_food_profile_table():
+    """Create user_food_profile table if not exists."""
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS user_food_profile (
+                id              BIGINT AUTO_INCREMENT PRIMARY KEY,
+                khach_hang_id   INT NOT NULL,
+                -- Food preferences
+                favorite_foods  JSON,       -- [{food_name, count, last_ordered}]
+                favorite_restaurants JSON,  -- [{restaurant_name, count, last_ordered}]
+                preferred_price_min INT DEFAULT 0,
+                preferred_price_max INT DEFAULT 200000,
+                -- Delivery preferences (learned from orders)
+                preferred_address TEXT,
+                preferred_name    VARCHAR(255),
+                preferred_phone  VARCHAR(20),
+                -- Order stats
+                total_orders    INT DEFAULT 0,
+                total_spent     DECIMAL(12,0) DEFAULT 0,
+                last_order_at    DATETIME,
+                avg_order_value  DECIMAL(10,0) DEFAULT 0,
+                -- Most ordered items / categories
+                top_categories  JSON,       -- [{category, count}]
+                updated_at       DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE INDEX idx_khach_hang (khach_hang_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        """)
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        logger.warning(f"⚠️ Could not create user_food_profile table: {e}")
+
+
+def save_chatbot_interaction(
+    khach_hang_id: Optional[int],
+    session_id: str,
+    action_type: str,
+    query_text: str = '',
+    action_detail: str = '',
+    response_text: str = '',
+    foods_shown: list = None,
+    restaurants_shown: list = None,
+    selected_item: dict = None,
+    restaurant_name: str = '',
+    cart: list = None,
+    delivery_info: dict = None,
+    state_before: str = '',
+    state_after: str = '',
+    ai_powered: bool = False,
+) -> bool:
+    """Save a chatbot interaction to history table."""
+    try:
+        import json as _json
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO chatbot_history (
+                khach_hang_id, session_id, action_type,
+                query_text, action_detail, response_text,
+                foods_shown, restaurants_shown, selected_item,
+                restaurant_name, cart_summary, delivery_info,
+                state_before, state_after, ai_powered
+            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        """, (
+            khach_hang_id,
+            session_id,
+            action_type,
+            query_text,
+            action_detail,
+            response_text,
+            _json.dumps(foods_shown or [], ensure_ascii=False) if foods_shown is not None else None,
+            _json.dumps(restaurants_shown or [], ensure_ascii=False) if restaurants_shown is not None else None,
+            _json.dumps(selected_item, ensure_ascii=False) if selected_item else None,
+            restaurant_name,
+            _json.dumps(cart or [], ensure_ascii=False) if cart is not None else None,
+            _json.dumps(delivery_info or {}, ensure_ascii=False) if delivery_info is not None else None,
+            state_before,
+            state_after,
+            1 if ai_powered else 0,
+        ))
+        conn.commit()
+        cur.close()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.warning(f"⚠️ save_chatbot_interaction failed: {e}")
+        return False
+
+
+def get_user_profile(khach_hang_id: int) -> dict:
+    """Get personalized context for a user from their food profile + history."""
+    if not khach_hang_id:
+        return {}
+
+    try:
+        import json as _json
+        conn = get_conn()
+        cur = conn.cursor(dictionary=True)
+
+        # 1. Get user food profile
+        cur.execute("""
+            SELECT * FROM user_food_profile WHERE khach_hang_id = %s LIMIT 1
+        """, (khach_hang_id,))
+        profile = cur.fetchone()
+
+        # 2. Get recent interactions (last 20)
+        cur.execute("""
+            SELECT action_type, query_text, action_detail, restaurant_name,
+                   cart_summary, created_at
+            FROM chatbot_history
+            WHERE khach_hang_id = %s
+            ORDER BY created_at DESC
+            LIMIT 20
+        """, (khach_hang_id,))
+        recent = [_to_serializable(r) for r in cur.fetchall()]
+
+        cur.close()
+        conn.close()
+
+        if not profile:
+            return {'recent_interactions': recent}
+
+        # Parse JSON fields
+        if profile.get('favorite_foods'):
+            if isinstance(profile['favorite_foods'], str):
+                profile['favorite_foods'] = _json.loads(profile['favorite_foods'])
+        if profile.get('favorite_restaurants'):
+            if isinstance(profile['favorite_restaurants'], str):
+                profile['favorite_restaurants'] = _json.loads(profile['favorite_restaurants'])
+        if profile.get('top_categories'):
+            if isinstance(profile['top_categories'], str):
+                profile['top_categories'] = _json.loads(profile['top_categories'])
+
+        profile['recent_interactions'] = recent
+        return profile
+
+    except Exception as e:
+        logger.warning(f"⚠️ get_user_profile failed: {e}")
+        return {}
+
+
+def update_user_profile_from_order(khach_hang_id: int, sess: dict):
+    """Update user's food profile after an order is completed."""
+    if not khach_hang_id:
+        return
+    try:
+        import json as _json
+        conn = get_conn()
+        cur = conn.cursor(dictionary=True)
+
+        cart = sess.get('cart', [])
+        total = sum(c['price'] * c.get('so_luong', 1) for c in cart)
+        rest_name = sess.get('restaurant_name', '')
+
+        # Load or create profile
+        cur.execute("SELECT * FROM user_food_profile WHERE khach_hang_id=%s LIMIT 1",
+                     (khach_hang_id,))
+        profile = cur.fetchone()
+
+        if not profile:
+            # Create new
+            cur.execute("""
+                INSERT INTO user_food_profile (khach_hang_id, favorite_foods, favorite_restaurants,
+                    total_orders, total_spent, avg_order_value, last_order_at,
+                    preferred_address, preferred_name, preferred_phone)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                khach_hang_id,
+                _json.dumps([{'name': c['title'], 'count': c.get('so_luong', 1)}
+                              for c in cart], ensure_ascii=False),
+                _json.dumps([{'name': rest_name, 'count': 1}], ensure_ascii=False),
+                1, total, total,
+                datetime.now(),
+                sess.get('address', ''),
+                sess.get('customer_name', ''),
+                sess.get('phone', ''),
+            ))
+        else:
+            # Merge into existing
+            fav_foods = _json.loads(profile['favorite_foods']) if profile.get('favorite_foods') else []
+            fav_rests = _json.loads(profile['favorite_restaurants']) if profile.get('favorite_restaurants') else []
+
+            for c in cart:
+                existing = next((f for f in fav_foods if f['name'] == c['title']), None)
+                if existing:
+                    existing['count'] += c.get('so_luong', 1)
+                else:
+                    fav_foods.append({'name': c['title'], 'count': c.get('so_luong', 1)})
+
+            if rest_name:
+                existing_r = next((r for r in fav_rests if r['name'] == rest_name), None)
+                if existing_r:
+                    existing_r['count'] += 1
+                else:
+                    fav_rests.append({'name': rest_name, 'count': 1})
+
+            new_total_orders = (profile.get('total_orders') or 0) + 1
+            new_total_spent  = float(profile.get('total_spent') or 0) + total
+            new_avg = new_total_spent / new_total_orders
+
+            cur.execute("""
+                UPDATE user_food_profile SET
+                    favorite_foods     = %s,
+                    favorite_restaurants = %s,
+                    total_orders       = %s,
+                    total_spent        = %s,
+                    avg_order_value    = %s,
+                    last_order_at      = %s,
+                    preferred_address  = COALESCE(%s, preferred_address),
+                    preferred_name      = COALESCE(%s, preferred_name),
+                    preferred_phone     = COALESCE(%s, preferred_phone)
+                WHERE khach_hang_id = %s
+            """, (
+                _json.dumps(fav_foods, ensure_ascii=False),
+                _json.dumps(fav_rests, ensure_ascii=False),
+                new_total_orders,
+                new_total_spent,
+                new_avg,
+                datetime.now(),
+                sess.get('address'),
+                sess.get('customer_name'),
+                sess.get('phone'),
+                khach_hang_id,
+            ))
+
+        conn.commit()
+        cur.close()
+        conn.close()
+        logger.info(f"✅ Updated food profile for khach_hang_id={khach_hang_id}")
+    except Exception as e:
+        logger.warning(f"⚠️ update_user_profile_from_order failed: {e}")
+
+
+def build_personalization_context(profile: dict) -> str:
+    """
+    Build a natural language context string from user profile.
+    This is injected into AI prompts for personalization.
+    """
+    if not profile:
+        return ""
+
+    parts = []
+
+    # Recent order activity
+    recent = profile.get('recent_interactions', [])
+    if recent:
+        # Extract unique restaurants from recent interactions
+        recent_rests = list(dict.fromkeys(
+            r.get('restaurant_name', '') for r in recent if r.get('restaurant_name')
+        ))[:3]
+        if recent_rests:
+            parts.append(f"Quán đã tương tác gần đây: {', '.join(recent_rests)}")
+
+        # Recent queries
+        recent_queries = [r.get('query_text', '') for r in recent[:5] if r.get('query_text')]
+        if recent_queries:
+            # Deduplicate and limit
+            seen = set()
+            unique = []
+            for q in recent_queries:
+                norm = q.lower().strip()
+                if norm not in seen and len(norm) > 2:
+                    seen.add(norm)
+                    unique.append(q)
+            if unique:
+                parts.append(f"Câu hỏi gần đây: {'; '.join(unique[:3])}")
+
+    # Favorite items
+    fav_foods = profile.get('favorite_foods', [])
+    if fav_foods and isinstance(fav_foods, list):
+        top_foods = sorted(fav_foods, key=lambda x: x.get('count', 0), reverse=True)[:5]
+        food_names = [f['name'] for f in top_foods]
+        parts.append(f"Món hay đặt: {', '.join(food_names)}")
+
+    # Favorite restaurants
+    fav_rests = profile.get('favorite_restaurants', [])
+    if fav_rests and isinstance(fav_rests, list):
+        top_rests = sorted(fav_rests, key=lambda x: x.get('count', 0), reverse=True)[:3]
+        rest_names = [r['name'] for r in top_rests]
+        parts.append(f"Quán hay đặt: {', '.join(rest_names)}")
+
+    # Stats
+    total_orders = profile.get('total_orders', 0)
+    avg_value = profile.get('avg_order_value', 0)
+    if total_orders > 0:
+        parts.append(f"Đã đặt {total_orders} đơn, trung bình {float(avg_value):,.0f}đ/đơn")
+
+    # Preferred address
+    pref_addr = profile.get('preferred_address', '')
+    if pref_addr:
+        parts.append(f"Địa chỉ giao hàng thường dùng: {pref_addr}")
+
+    if not parts:
+        return ""
+
+    return "📌 THÔNG TIN CÁ NHÂN HÓA (dùng để gợi ý phù hợp hơn):\n" + "\n".join(f"  • {p}" for p in parts)
+
+
+
 
 
 # ─── Từ đồng nghĩa ────────────────────────────────────
@@ -1011,7 +1361,7 @@ def tao_don_hang_moi(
                 result['checkout_url'] = data['checkout_url']
             if data.get('qr_code'):
                 result['qr_code'] = data['qr_code']
-            logger.info(f"✅ Tạo đơn hàng qua BE API: {data['ma_don_hang']} | tổng={data['tong_tien']:,}đ")
+            logger.info(f"✅ Tạo đơn hàng qua BE API: {data['ma_don_hang']} | tổng={data['tong_tien']:,}đ | checkout={bool(data.get('checkout_url'))} | qr_code={'có' if data.get('qr_code') else 'KHÔNG'}")
             return result
         else:
             return {'success': False, 'message': data.get('message', 'Lỗi tạo đơn hàng')}
@@ -2186,7 +2536,8 @@ def _call_groq_force_tool(messages, max_retries=3, base_delay=2):
     return None, "max_retries_exceeded"
 
 
-def run_agent(query: str, history: list, user_context: dict, sess: dict = None, last_foods: list = None):
+def run_agent(query: str, history: list, user_context: dict, sess: dict = None,
+              last_foods: list = None, personal_ctx: str = ''):
     if not ai_client:
         return "Bee đang nghỉ ngơi, bạn thử hỏi lại nhé! 🐝", [], []
 
@@ -2202,6 +2553,9 @@ def run_agent(query: str, history: list, user_context: dict, sess: dict = None, 
         khach_hang_name=khach_hang_name,
         session=session_context,
     )
+    # Inject personalization context into system prompt
+    if personal_ctx:
+        system_prompt += "\n\n" + personal_ctx
     messages = [{"role": "system", "content": system_prompt}]
 
     if history:
@@ -2227,11 +2581,157 @@ def run_agent(query: str, history: list, user_context: dict, sess: dict = None, 
     ]
     location_intent_keywords = ['quán', 'khu vực', 'ở đâu', 'gần đây', 'gần tôi', 'địa điểm']
     danh_sach_quan = ['hải châu', 'thanh khê', 'sơn trà', 'liên chiểu', 'cẩm lệ', 'ngũ hành sơn']
-    order_intent_keywords = ['đặt', 'order', 'mua', 'giao hàng', 'ship', 'chuyển khoản', 'thanh toán']
+    order_intent_keywords = ['đặt', 'order', 'mua', 'giao hàng', 'ship', 'chuyển khoản', 'thanh toán', 'giúp', 'cho', 'lấy', 'mang', 'đặt giúp']
 
     query_lower = query.lower()
     has_food_intent = any(kw in query_lower for kw in food_intent_keywords)
     logger.info(f"DEBUG: query={query_lower!r} has_food_intent={has_food_intent}")
+
+    # ═══════════════════════════════════════════════════════════════
+    #  DỮ LIỆU TÊN QUÁN (dùng chung cho view_menu và order_intent)
+    # ═══════════════════════════════════════════════════════════════
+    known_restaurants = sorted([
+        'highlands coffee', 'highlands', 'highland', 'hl',
+        'xôi chiên nguyên', 'xôi chiên',
+        'phở hàng bò', 'phở hàng trì',
+        'bún bò huế', 'bún bò',
+        'bánh mì huỳnh', 'bánh mì',
+        'trà sữa', 'gong cha', 'koi', 'the coffee house', 'coffee house',
+        'starbucks', 'sbux', 'sb',
+        'cộng cà phê', 'cộng', 'concaf',
+        'phúc long', 'phuc long',
+        'pasteur', 'pasteurized',
+        'mì quảng', 'mì quảng ngon',
+        'cf', 'cafe', 'cà phê', 'caphe',
+    ], key=len, reverse=True)
+
+    restaurant_aliases = {
+        'xôi': 'xôi chiên nguyên',
+        'bún bò': 'bún bò huế',
+        'bún bò huế': 'bún bò huế',
+        'phở': 'phở',
+        'bánh mì': 'bánh mì',
+        'cf': 'highlands',
+        'cafe': 'highlands',
+        'cà phê': 'cà phê',
+        'highlands': 'highlands',
+        'highland': 'highlands',
+        'coffee': 'highlands',
+        'hl': 'highlands',
+    }
+
+    # ═══════════════════════════════════════════════════════════════
+    #  INTENT: XEM MENU QUAN — xử lý trước auto-search
+    # ═══════════════════════════════════════════════════════════════
+    import re
+    view_menu_patterns = [
+        re.compile(r'^(?:tôi|bạn|cho tôi|cho bạn)?\s*muốn\s+(?:xem\s+)?(?:menu\s+)?(?:quán\s+)?(.+)', re.IGNORECASE),
+        re.compile(r'^(?:cho\s+(?:tôi|bạn)\s+)?xem\s+menu\s+(?:củ[ae]\s+)?(.+)', re.IGNORECASE),
+        re.compile(r'^menu\s+(?:củ[ae]\s+)?(.+)', re.IGNORECASE),
+        re.compile(r'^(.+?)\s*menu$', re.IGNORECASE),
+        re.compile(r'^(?:cho\s+(?:tôi|bạn)\s+)?xem\s+quán\s+(.+)', re.IGNORECASE),
+        re.compile(r'menu\s+(?:củ[ae]\s+)?(.+)', re.IGNORECASE),
+        re.compile(r'xem\s+menu\s+(?:củ[ae]\s+)?(.+)', re.IGNORECASE),
+        re.compile(r'xem\s+quán\s+(.+)', re.IGNORECASE),
+        re.compile(r'quán\s+(?:này|đó)\s+(?:bán\s+)?gì', re.IGNORECASE),
+        re.compile(r'(.+)\s+bán\s+gì', re.IGNORECASE),
+        re.compile(r'xem\s+(.+)\s+menu', re.IGNORECASE),
+        re.compile(r'menu\s*(?:quán\s*)?(bún bò|bún bò huế)', re.IGNORECASE),
+        re.compile(r'(bún bò|bún bò huế)\s*menu', re.IGNORECASE),
+        re.compile(r'menu\s*(?:highlands|highland|hl)', re.IGNORECASE),
+        re.compile(r'(?:highlands|highland|hl)\s*menu', re.IGNORECASE),
+        re.compile(r'quán\s+(?:này|đó)\s+(?:có\s+)?gì', re.IGNORECASE),
+    ]
+    menu_rest_name = None
+    menu_search_keyword = None
+
+    for pat in view_menu_patterns:
+        m = pat.search(query)
+        if m:
+            candidate = m.group(1).strip() if m.lastindex >= 1 else ''
+            if not candidate:
+                continue
+            stopwords = {'của', 'tôi', 'bạn', 'quán', 'này', 'đó', 'mình', 'menu', 'bán', 'gì', 'có', 'xem', 'muốn', 'cho'}
+            matched_rests = []
+            for rest in known_restaurants:
+                if rest in candidate.lower():
+                    matched_rests.append(rest)
+            if matched_rests:
+                best_match = matched_rests[0]
+                menu_rest_name = best_match
+                menu_search_keyword = restaurant_aliases.get(best_match, best_match)
+                break
+            tokens = [t for t in candidate.split() if t not in stopwords and len(t) >= 2]
+            if tokens:
+                menu_rest_name = ' '.join(tokens)
+                menu_search_keyword = menu_rest_name
+                break
+
+    if menu_rest_name:
+        logger.info(f"🔍 Intent: view_menu | rest='{menu_rest_name}' | search='{menu_search_keyword}'")
+        try:
+            rests, _ = execute_tool('tim_quan_an', {'keyword': menu_search_keyword, 'limit': 3}, khach_hang_id)
+            if rests:
+                rest = rests[0]
+                rest_id = rest.get('id') or rest.get('id_quan_an')
+                menu_items = q_restaurant_menu(rest_id, limit=15)
+                rest_name = rest.get('name', menu_rest_name)
+                if menu_items:
+                    top3 = menu_items[:3]
+                    intro = f"🏪 Đây là menu của **{rest_name}** nè!\n"
+                    for i, m in enumerate(top3):
+                        intro += f"\n• **{m.get('title','')}** — {float(m.get('price',0)):,.0f}đ"
+                    intro += f"\n\n...và {len(menu_items)-3} món khác. Nhắn tên món hoặc số để Bee thêm vào đơn nhé!"
+                    return intro, menu_items, []
+                else:
+                    return f"Quán '{rest_name}' hiện chưa có menu trên FoodBee nha bạn!", [], []
+            else:
+                return f"😕 Bee không tìm thấy quán nào tên '{menu_rest_name}' trên FoodBee. Bạn thử tên khác nhé!", [], []
+        except Exception as e:
+            logger.warning(f"⚠️ view_menu error: {e}")
+
+    # ═══════════════════════════════════════════════════════════════
+    #  INTENT: ĐẶT HÀNG / XEM MENU TỪ QUÁN CỤ THỂ
+    # ═══════════════════════════════════════════════════════════════
+    should_order = any(kw in query_lower for kw in order_intent_keywords)
+    detected_restaurant = None
+    for rest_name in known_restaurants:
+        if rest_name in query_lower:
+            detected_restaurant = rest_name
+            break
+
+    if detected_restaurant:
+        logger.info(f"🔍 Intent: restaurant='{detected_restaurant}' | order={should_order}")
+        try:
+            search_kw = restaurant_aliases.get(detected_restaurant, detected_restaurant)
+            rests, _ = execute_tool('tim_quan_an', {'keyword': search_kw, 'limit': 5}, khach_hang_id)
+            if rests:
+                rest = rests[0]
+                rest_id = rest.get('id') or rest.get('id_quan_an')
+                rest_name = rest.get('name', detected_restaurant.title())
+                menu_items = q_restaurant_menu(rest_id, limit=15)
+                if menu_items:
+                    top_items = menu_items[:6]
+                    lines = []
+                    for i, m in enumerate(top_items, 1):
+                        price = float(m.get('price', 0))
+                        lines.append(f"**{i}. {m.get('title','')}** — {price:,.0f}đ")
+                    reply = f"☕ Quán **{rest_name}** có menu sau:\n\n" + "\n".join(lines)
+                    if len(menu_items) > 6:
+                        reply += f"\n\n...và {len(menu_items) - 6} món khác."
+                    reply += "\n\nBạn muốn đặt món nào? Nhắn **số** hoặc **tên món** nhé! 🐝"
+                    return reply, menu_items, []
+                else:
+                    return f"Quán '{rest_name}' hiện chưa có menu trên FoodBee nha bạn! 😕", [], []
+            else:
+                import random
+                suggestions = [
+                    f"😕 Bee không tìm thấy quán '{detected_restaurant.title()}' trên FoodBee. Bạn thử tên khác nhé!",
+                    f"Hmm... Bee chưa có quán '{detected_restaurant.title()}' trong dữ liệu. Thử 'tìm cà phê' để xem các quán cafe nhé!",
+                ]
+                return random.choice(suggestions), [], []
+        except Exception as e:
+            logger.warning(f"⚠️ Restaurant intent error: {e}")
 
     # ═══════════════════════════════════════════════════════════════
     #  AUTO-SEARCH: Tìm QUÁN trước khi tìm món
@@ -2570,6 +3070,10 @@ def chat():
         state = sess.get('trang_thai', STATE_SEARCHING_FOOD)
         last_foods = sess.get('last_foods', [])
 
+        # ── Load personalization context ───────────────────────────
+        user_profile = get_user_profile(kh_id) if kh_id else {}
+        personal_ctx = build_personalization_context(user_profile)
+
         # ══════════════════════════════════════════════════════════
         #  RESTAURANT CARD CLICK → show menu
         # ══════════════════════════════════════════════════════════
@@ -2725,7 +3229,7 @@ def chat():
                 return jsonify({'response': reply, 'foods': [], 'restaurants': [], 'ai_powered': False})
 
             # User typed something else → delegate to AI
-            response_text, foods, restaurants = run_agent(query, history, user_context, sess, [])
+            response_text, foods, restaurants = run_agent(query, history, user_context, sess, [], personal_ctx)
             if foods:
                 sess['last_foods'] = foods
             if not response_text:
@@ -2845,7 +3349,7 @@ def chat():
                  'hải sản', 'xôi', 'bún bò', 'cơm tấm', 'mì quảng', 'bánh mì',
                  'sinh tố', 'nước', 'trà', 'ngon', 'hôm nay', 'gợi ý'])
             if food_kw_found or any(k in q_lower_sel for k in ['tìm', 'xem', 'món']):
-                response_text, foods, restaurants = run_agent(query, history, user_context, sess, [])
+                response_text, foods, restaurants = run_agent(query, history, user_context, sess, [], personal_ctx)
                 if foods:
                     sess['last_foods'] = foods
                 if restaurants:
@@ -2878,13 +3382,49 @@ def chat():
                  'hải sản', 'xôi', 'bún bò', 'cơm tấm', 'mì quảng', 'bánh mì',
                  'thịt', 'cá', 'ốc', 'sinh tố', 'nước', 'trà'])
             if order_intent and food_kw:
-                response_text, foods, restaurants = run_agent(query, history, user_context, sess, last_foods)
+                response_text, foods, restaurants = run_agent(query, history, user_context, sess, last_foods, personal_ctx)
                 if foods:
                     sess['last_foods'] = foods
                 if not response_text:
                     response_text = fallback_respond(query)
                 logger.info(f"🐝 [ENTERING_DELIVERY→AI] Bee response: {response_text[:120]}")
                 return jsonify({'response': response_text, 'foods': foods, 'restaurants': [], 'ai_powered': True})
+
+            # ── Change restaurant ──────────────────────────────────────────
+            if any(k in q_lower_enter for k in ['quán khác', 'đổi quán', 'chọn quán khác', 'xem quán', 'đổi menu', 'khác quán']):
+                clear_order_session(sess_id)
+                sess = get_order_session(sess_id)
+                reply = "OK bạn ơi! Đơn cũ đã được xóa. Bạn muốn tìm quán nào khác? Nhắn tên món hoặc loại quán cho Bee nhé! 🍔"
+                logger.info(f"🐝 [ENTERING_DELIVERY] đổi quán → session cleared | state → SEARCHING_FOOD")
+                return jsonify({'response': reply, 'foods': [], 'restaurants': [], 'ai_powered': False})
+
+            # ── Change / add items ──────────────────────────────────────
+            if any(k in q_lower_enter for k in ['thêm món', 'bớt món', 'bỏ món', 'đổi món', 'sửa món',
+                                                  'chọn món khác', 'món khác', 'xem menu', 'đổi sang']):
+                menu_items = sess.get('menu_items', [])
+                if not menu_items:
+                    rest_id = sess.get('restaurant_id')
+                    if rest_id:
+                        menu_items = q_restaurant_menu(rest_id, limit=15)
+                        sess['menu_items'] = menu_items
+                if menu_items:
+                    sess['trang_thai'] = STATE_VIEWING_MENU
+                    top3 = menu_items[:3]
+                    cart_lines = "\n".join([
+                        f"  {i+1}. {c['title']} x{c.get('so_luong',1)} — {c['price']:,.0f}đ"
+                        for i, c in enumerate(sess.get('cart', []))
+                    ])
+                    reply = (
+                        f"📋 Giỏ hàng hiện tại:\n{cart_lines}\n\n"
+                        f"🍽️ Món có sẵn tại **{sess.get('restaurant_name','')}**:\n"
+                        + "\n".join([f"  {i+1}. {m.get('title','')} — {float(m.get('price',0)):,.0f}đ" for i, m in enumerate(top3)])
+                        + f"\n\n...và {len(menu_items)-3} món khác.\n"
+                        f"👉 Nhắn **số** hoặc **tên món** để thêm/bớt nhé!"
+                    )
+                    return jsonify({'response': reply, 'foods': menu_items, 'restaurants': [], 'ai_powered': False})
+                else:
+                    reply = "Bạn muốn tìm món khác? Nhắn tên món cho Bee nhé!"
+                    return jsonify({'response': reply, 'foods': [], 'restaurants': [], 'ai_powered': False})
 
             reply, done = _parse_delivery_info(query, sess)
             if done:
@@ -2916,8 +3456,108 @@ def chat():
                 reply = _build_payment_prompt(sess)
                 logger.info(f"🐝 Bee response: {reply[:120]}")
                 return jsonify({'response': reply, 'foods': [], 'restaurants': [], 'ai_powered': False})
+
+            # ── SMART EDIT HANDLER ─────────────────────────────────────────
+            edit_reply, was_edited = _handle_edit_in_confirm(query, sess)
+            if was_edited:
+                # Re-show confirm prompt after edit
+                reply = _build_confirm_order_prompt(sess)
+                reply += f"\n\n{edit_reply}"
+                reply += "\n\n(Vui lòng gõ 'xác nhận' để tiếp tục thanh toán, hoặc nhắn sửa gì khác nếu cần.)"
+                return jsonify({'response': reply, 'foods': [], 'restaurants': [], 'ai_powered': False})
+
+            # ── "Sửa thông tin" with no new data → enter edit mode ───────
+            sua_info_intent = any(k in q_lower for k in [
+                'sửa thông tin', 'sửa giao hàng', 'đổi thông tin', 'sửa địa chỉ',
+                'đổi địa chỉ', 'sửa tên', 'đổi tên', 'sửa sđt', 'đổi sđt',
+                'sửa phone', 'đổi phone', 'thay đổi thông tin',
+                'sửa người nhận', 'đổi người nhận',
+            ])
+            if sua_info_intent:
+                # Clear current delivery fields so user re-enters them
+                sess['customer_name'] = None
+                sess['phone'] = None
+                sess['address'] = None
+                sess['trang_thai'] = STATE_ENTERING_DELIVERY
+                reply = (
+                    "✏️  OK! Bạn muốn sửa thông tin giao hàng.\n"
+                    "📋 Cung cấp lại thông tin nhé:\n"
+                    "  • Họ tên người nhận: ...\n"
+                    "  • SĐT: ...\n"
+                    "  • Địa chỉ giao: ..."
+                )
+                logger.info(f"🐝 [CONFIRMING_ORDER] sửa thông tin → state → ENTERING_DELIVERY")
+                return jsonify({'response': reply, 'foods': [], 'restaurants': [], 'ai_powered': False})
+
+            # ── View cart ─────────────────────────────────────────────────
+            if any(k in q_lower for k in ['xem giỏ', 'giỏ hàng', 'đơn hàng', 'xem đơn']):
+                reply = _build_confirm_order_prompt(sess)
+                reply += "\n\n(Vui lòng gõ 'xác nhận' để tiếp tục thanh toán, hoặc nhắn sửa gì nếu cần.)"
+                return jsonify({'response': reply, 'foods': [], 'restaurants': [], 'ai_powered': False})
+
+            # ── Change restaurant ──────────────────────────────────────────
+            if any(k in q_lower for k in ['quán khác', 'đổi quán', 'chọn quán khác', 'xem quán', 'đổi menu']):
+                clear_order_session(sess_id)
+                sess = get_order_session(sess_id)
+                reply = "OK bạn ơi! Bạn muốn tìm quán nào khác? Nhắn tên món hoặc loại quán cho Bee nhé! 🍔"
+                return jsonify({'response': reply, 'foods': [], 'restaurants': [], 'ai_powered': False})
+
+            # ── Back to menu / choose other items ─────────────────────────────
+            back_to_menu_kw = [
+                'chọn món khác', 'xem menu', 'menu quán', 'xem lại menu',
+                'món khác', 'món khác trong menu', 'đổi món', 'đổi sang món khác',
+                'thêm món', 'bớt món', 'bỏ món', 'xóa món', 'sửa món',
+                'tôi muốn chọn món khác', 'chọn món khác trong menu',
+            ]
+            if any(k in q_lower for k in back_to_menu_kw):
+                menu_items = sess.get('menu_items', [])
+                if not menu_items:
+                    # Try reloading menu from restaurant
+                    rest_id = sess.get('restaurant_id')
+                    if rest_id:
+                        menu_items = q_restaurant_menu(rest_id, limit=15)
+                        sess['menu_items'] = menu_items
+
+                if menu_items:
+                    # CRITICAL: switch back to VIEWING_MENU so the user's next message
+                    # (e.g. "tôi muốn đặt món X") goes through the add-to-cart flow
+                    sess['trang_thai'] = STATE_VIEWING_MENU
+                    top3 = menu_items[:3]
+                    menu_note = "Menu quán " + (sess.get('restaurant_name') or '') + ":\n" + "\n".join([
+                        f"  {i+1}. {m.get('title','')} — {float(m.get('price',0)):,.0f}đ"
+                        for i, m in enumerate(top3)
+                    ])
+                    reply = (
+                        f"🍽️ Đây là menu của **{sess.get('restaurant_name','')}** nè!\n\n"
+                        f"{menu_note}\n"
+                    )
+                    if len(menu_items) > 3:
+                        reply += f"...và {len(menu_items)-3} món khác.\n"
+                    reply += (
+                        f"\n\n📋 Đơn hàng hiện tại của bạn:\n"
+                        + "\n".join([
+                            f"  {i+1}. {c['title']} x{c.get('so_luong',1)}"
+                            for i, c in enumerate(sess.get('cart', []))
+                        ])
+                        + f"\n\n👉 Nhắn **số món** (1, 2...) hoặc **tên món** để thêm/bớt trong đơn nhé!\n"
+                        f"✅ Gõ 'xác nhận' khi xong."
+                    )
+                    return jsonify({
+                        'response': reply,
+                        'foods': menu_items,
+                        'restaurants': [],
+                        'ai_powered': False,
+                    })
+                else:
+                    reply = (
+                        "😕 Hiện không có menu để chọn. "
+                        "Bạn nhắn tên món hoặc loại đồ ăn cho Bee nhé!"
+                    )
+                    return jsonify({'response': reply, 'foods': [], 'restaurants': [], 'ai_powered': False})
+
+            # Default: re-prompt
             reply = _build_confirm_order_prompt(sess)
-            reply += "\n\n(Vui lòng gõ 'xác nhận' để tiếp tục, hoặc cho Bee biết bạn cần sửa gì.)"
+            reply += "\n\n(Vui lòng gõ 'xác nhận' để tiếp tục thanh toán, hoặc cho Bee biết bạn cần sửa gì.)"
             return jsonify({'response': reply, 'foods': [], 'restaurants': [], 'ai_powered': False})
 
         # ══════════════════════════════════════════════════════════
@@ -2926,15 +3566,41 @@ def chat():
         if state == STATE_SELECTING_PAYMENT:
             q_lower_sel = query.lower()
 
-            # Allow going back to add items or change address
-            if any(k in q_lower_sel for k in ['thêm', 'bớt', 'bỏ', 'xóa', 'đổi món', 'sửa']):
-                sess['trang_thai'] = STATE_VIEWING_MENU
-                return jsonify({
-                    'response': "📋 Đang quay lại menu. Nhắn tên món bạn muốn thêm hoặc bỏ nhé!",
-                    'foods': sess.get('menu_items', []),
-                    'restaurants': [],
-                    'ai_powered': False,
-                })
+            # ── SMART EDIT HANDLER (sửa info, sửa món, đổi quán) ────────
+            edit_reply, was_edited = _handle_edit_in_confirm(query, sess)
+            if was_edited:
+                reply = _build_confirm_order_prompt(sess)
+                reply += f"\n\n{edit_reply}"
+                return jsonify({'response': reply, 'foods': [], 'restaurants': [], 'ai_powered': False})
+
+            # ── "Sửa thông tin" with no new data → enter edit mode ───────
+            sua_info_intent = any(k in q_lower_sel for k in [
+                'sửa thông tin', 'sửa giao hàng', 'đổi thông tin', 'sửa địa chỉ',
+                'đổi địa chỉ', 'sửa tên', 'đổi tên', 'sửa sđt', 'đổi sđt',
+                'sửa phone', 'đổi phone', 'thay đổi thông tin',
+                'sửa người nhận', 'đổi người nhận',
+            ])
+            if sua_info_intent:
+                sess['customer_name'] = None
+                sess['phone'] = None
+                sess['address'] = None
+                sess['trang_thai'] = STATE_ENTERING_DELIVERY
+                reply = (
+                    "✏️  OK! Bạn muốn sửa thông tin giao hàng.\n"
+                    "📋 Cung cấp lại thông tin nhé:\n"
+                    "  • Họ tên người nhận: ...\n"
+                    "  • SĐT: ...\n"
+                    "  • Địa chỉ giao: ..."
+                )
+                logger.info(f"🐝 [SELECTING_PAYMENT] sửa thông tin → state → ENTERING_DELIVERY")
+                return jsonify({'response': reply, 'foods': [], 'restaurants': [], 'ai_powered': False})
+
+            # ── Change restaurant ─────────────────────────────────────────
+            if any(k in q_lower_sel for k in ['quán khác', 'đổi quán', 'chọn quán khác', 'xem quán', 'đổi menu']):
+                clear_order_session(sess_id)
+                sess = get_order_session(sess_id)
+                reply = "OK bạn ơi! Bạn muốn tìm quán nào khác? Nhắn tên món hoặc loại quán cho Bee nhé! 🍔"
+                return jsonify({'response': reply, 'foods': [], 'restaurants': [], 'ai_powered': False})
 
             reply, done = _parse_payment_choice(query, sess, kh_id)
             logger.info(f"🐝 Bee response: {reply[:120]}")
@@ -2953,7 +3619,7 @@ def chat():
         #  STATE: SEARCHING_FOOD (default) → run AI agent
         # ══════════════════════════════════════════════════════════
         last_foods = sess.get('last_foods', [])
-        response_text, foods, restaurants = run_agent(query, history, user_context, sess, last_foods)
+        response_text, foods, restaurants = run_agent(query, history, user_context, sess, last_foods, personal_ctx)
 
         if not response_text:
             response_text = fallback_respond(query)
@@ -2972,6 +3638,23 @@ def chat():
             sess['last_foods'] = foods
 
         logger.info(f"🐝 Bee response: {response_text[:120]} | foods={len(foods)} rests={len(restaurants)}")
+
+        # ── Save interaction to history ──────────────────────────────────
+        save_chatbot_interaction(
+            khach_hang_id=kh_id,
+            session_id=sess_id,
+            action_type='search',
+            query_text=query,
+            response_text=response_text,
+            foods_shown=foods,
+            restaurants_shown=restaurants,
+            restaurant_name=sess.get('restaurant_name', ''),
+            cart=sess.get('cart', []),
+            state_before=state,
+            state_after=sess.get('trang_thai', state),
+            ai_powered=True,
+        )
+
         return jsonify({
             'response': response_text,
             'foods': foods,
@@ -3027,6 +3710,42 @@ def _parse_delivery_info(query: str, sess: dict) -> tuple:
     # ── Try to extract info from query ──
     import re
     updated = False
+
+    # ── PHONE: scan for invalid/incomplete phone FIRST ─────────────────────
+    # Detect 9-digit "almost phone" — common typo, still extract name/address
+    almost_phone = re.search(r'\b(0\d{8})\b', q)
+    if almost_phone:
+        # Still try to extract name (before) and address (after)
+        ap_val = almost_phone.group()
+        before = q[:almost_phone.start()].strip().rstrip(',').strip()
+        after  = q[almost_phone.end():].strip().lstrip(',').strip()
+
+        if not sess.get('customer_name') and 2 <= len(before) <= 40:
+            sess['customer_name'] = re.sub(r'[,;\s]+$', '', before).strip()
+            updated = True
+
+        if not sess.get('address') and len(after) >= 5:
+            sess['address'] = after
+            updated = True
+
+        return (
+            f"⚠️ SĐT '{ap_val}' có vẻ thiếu 1 số (cần 10 số).\n"
+            f"Bạn nhập lại SĐT đúng giúp Bee nhé (VD: 0394425076)!",
+            False
+        )
+
+    # Also warn if user typed something that looks like phone but wrong length
+    # (but try to extract name/address first)
+    if not re.search(r'0\d{9,10}', q):
+        stray_digits = re.findall(r'\b(\d{7,10})\b', q)
+        if stray_digits:
+            has_words = len([w for w in q.split() if len(w) > 3]) >= 2
+            if has_words:
+                return (
+                    f"⚠️ Bee không nhận ra SĐT trong tin nhắn của bạn.\n"
+                    f"Hãy nhập SĐT gồm 10 số bắt đầu bằng 0 (VD: 0394425076) nhé!",
+                    False
+                )
 
     # Phone: 10-11 digit patterns
     phone_match = re.search(r'0\d{9,10}', q)
@@ -3118,6 +3837,314 @@ def _parse_delivery_info(query: str, sess: dict) -> tuple:
     if not sess.get('phone'):         reply += "  • SĐT người nhận: ...\n"
     if not sess.get('address'):       reply += "  • Địa chỉ giao hàng: ..."
     return reply, False
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  EDIT HANDLER — smart parsing for editing cart / delivery info / restaurant
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _handle_edit_in_confirm(query: str, sess: dict) -> tuple:
+    """
+    Parse edit requests in CONFIRMING_ORDER / SELECTING_PAYMENT states.
+    Returns (reply_message, was_edited: bool).
+
+    Supports:
+    - Sửa thông tin: tên, SĐT, địa chỉ (full or partial)
+    - Sửa món: thêm / bớt / xóa / đổi số lượng
+    - Xem giỏ hàng chi tiết
+    """
+    q = query.strip()
+    q_lower = q.lower()
+
+    # ── 1. Sửa thông tin giao hàng ─────────────────────────────────────────
+    sua_info_kw = ['sửa thông tin', 'sửa giao hàng', 'đổi thông tin', 'sửa địa chỉ',
+                   'đổi địa chỉ', 'sửa tên', 'đổi tên', 'sửa sđt', 'đổi sđt',
+                   'sửa phone', 'đổi phone', 'thay đổi thông tin', 'edit address',
+                   'sửa người nhận', 'đổi người nhận']
+    if any(k in q_lower for k in sua_info_kw):
+        reply, edited = _handle_edit_delivery_info(q, sess)
+        return reply, edited
+
+    # ── 2. Sửa món (bớt / xóa / thêm / đổi số lượng) ─────────────────────
+    sua_mon_kw = ['bớt', 'bỏ', 'xóa', 'xóa món', 'bỏ món', 'giảm',
+                  'tăng thêm', 'thêm món', 'đổi món', 'đổi số lượng',
+                  'sửa món', 'sửa số lượng', 'chỉnh món', 'chỉnh số lượng',
+                  'đổi', 'sửa', 'bớt đi', 'bớt xuống', 'tăng lên']
+    if any(k in q_lower for k in sua_mon_kw):
+        reply, edited = _handle_edit_cart(q, sess)
+        if edited:
+            # Recalculate total
+            cart = sess.get('cart', [])
+            total = sum(c['price'] * c.get('so_luong', 1) for c in cart)
+            sess['total_amount'] = total
+        return reply, edited
+
+    return "", False
+
+
+def _handle_edit_delivery_info(query: str, sess: dict) -> tuple:
+    """Extract and update delivery fields from query. Returns (reply, edited)."""
+    q = query.strip()
+    phone_match = re.search(r'0\d{9,10}', q)
+
+    # Collect what was parsed
+    updated_fields = []
+
+    # Phone
+    if phone_match:
+        phone_val = phone_match.group()
+        if len(phone_val) >= 10:
+            sess['phone'] = phone_val
+            updated_fields.append(f"SĐT: {phone_val}")
+
+    # Name: text before phone, or after keywords
+    name_candidates = []
+    if phone_match:
+        name_candidates.append(q[:phone_match.start()].strip().rstrip(','))
+    for kw in ['tên', 'người nhận', 'họ tên', 'name']:
+        idx = q.lower().find(kw)
+        if idx >= 0:
+            rest = q[idx + len(kw):].strip().lstrip(r':\s')
+            if rest:
+                name_candidates.append(rest)
+
+    best_name = ''
+    for cand in name_candidates:
+        cand = cand.strip().rstrip(',').strip()
+        if 2 < len(cand) < 100 and not re.search(r'0\d{9,10}', cand):
+            # Filter out address-y text
+            if not any(w in cand.lower() for w in ['đường', 'quận', 'phường', 'tp', 'đà nẵng', 'hà nội', 'hcm']):
+                best_name = cand
+                break
+
+    if best_name:
+        sess['customer_name'] = best_name
+        updated_fields.append(f"tên: {best_name}")
+
+    # Address
+    addr_kw = ['địa chỉ', 'giao đến', 'ship', 'nhận ở', 'đến']
+    addr_match = None
+    for kw in addr_kw:
+        idx = q.lower().find(kw)
+        if idx >= 0:
+            rest = q[idx + len(kw):].strip().lstrip(r':\s,.')
+            if rest:
+                addr_match = rest.strip().rstrip('.').strip()
+                break
+
+    if addr_match and len(addr_match) > 5:
+        sess['address'] = addr_match
+        updated_fields.append(f"địa chỉ: {addr_match}")
+
+    if not updated_fields:
+        # Prompt user to specify what to change
+        current = []
+        if sess.get('customer_name'): current.append(f"  • Tên: {sess['customer_name']}")
+        if sess.get('phone'):         current.append(f"  • SĐT:  {sess['phone']}")
+        if sess.get('address'):       current.append(f"  • Địa chỉ: {sess['address']}")
+        current_str = "\n".join(current) if current else "  (chưa có thông tin)"
+        return (
+            f"✏️  Bạn muốn sửa thông tin nào?\n\n"
+            f"Hiện tại:\n{current_str}\n\n"
+            f"Gõ theo format: 'tên: [tên mới], SĐT: [số], địa chỉ: [địa chỉ mới]'",
+            False
+        )
+
+    updated_str = '\n'.join(f"  ✅ {f}" for f in updated_fields)
+    return (
+        f"✏️  Đã cập nhật:\n{updated_str}\n\n"
+        f"Hãy nhắn tiếp thông tin cần sửa khác (nếu có), hoặc gõ 'xác nhận' để tiếp tục!",
+        True
+    )
+
+
+def _handle_edit_cart(query: str, sess: dict) -> tuple:
+    """
+    Handle cart edits: add/remove items, change quantity.
+    Returns (reply, edited: bool).
+    """
+    cart = sess.get('cart', [])
+    menu_items = sess.get('menu_items', [])
+    q_lower = query.lower()
+
+    # ── Helper: find cart item by name or number ───────────────────────────
+    def find_cart_item(q_str: str):
+        q_str_l = q_str.lower()
+        # By number
+        m = re.match(r'^(\d+)$', q_str_str := q_str.strip())
+        if m and 1 <= int(m.group(1)) <= len(cart):
+            return cart[int(m.group(1)) - 1]
+        # By name (best partial match)
+        best = None
+        for c in cart:
+            ct = (c.get('title') or '').lower()
+            if ct in q_str_l or q_str_l in ct:
+                best = c
+        return best
+
+    q_str_str = query  # alias for closure
+
+    # ── ADD item (from menu) ──────────────────────────────────────────────
+    add_kw = ['thêm món', 'thêm', 'tăng thêm', 'tăng lên', 'mua thêm', 'gọi thêm']
+    if any(k in q_lower for k in add_kw):
+        if not menu_items:
+            return "🛒 Không có menu hiện tại. Bạn nhắn tên món muốn thêm nhé!", False
+
+        # Try to match item in current menu
+        selected = None
+        for m in menu_items:
+            mn = (m.get('title') or '').lower()
+            if mn in q_lower or q_lower in mn:
+                selected = m
+                break
+
+        if not selected:
+            return (
+                f"🛒 Menu hiện tại ({sess.get('restaurant_name','')}):\n" +
+                "\n".join(f"  {i+1}. {m.get('title','')} — {float(m.get('price',0)):,.0f}đ"
+                          for i, m in enumerate(menu_items)) +
+                "\n\nNhắn số hoặc tên món để thêm nhé!",
+                False
+            )
+
+        food_id    = selected.get('id')
+        food_title = selected.get('title', '')
+        food_price = float(selected.get('price', 0))
+        food_rest  = selected.get('restaurant') or sess.get('restaurant_name', '')
+        food_rest_id = selected.get('id_quan_an') or sess.get('restaurant_id')
+
+        existing = next((i for i, c in enumerate(cart) if c.get('id') == food_id), -1)
+        if existing >= 0:
+            cart[existing]['so_luong'] = cart[existing].get('so_luong', 1) + 1
+        else:
+            cart.append({
+                'id': food_id, 'title': food_title, 'price': food_price,
+                'so_luong': 1, 'id_quan_an': food_rest_id, 'restaurant': food_rest,
+            })
+
+        new_total = sum(c['price'] * c.get('so_luong', 1) for c in cart)
+        sess['total_amount'] = new_total
+        return (
+            f"✅ Đã thêm '{food_title}'!\n"
+            f"📦 Giỏ hàng: {len(cart)} món — 💰 {new_total:,.0f}đ",
+            True
+        )
+
+    # ── REMOVE / DELETE item ────────────────────────────────────────────
+    remove_kw = ['bớt', 'bỏ', 'xóa', 'xóa món', 'bỏ món', 'giảm', 'bớt đi', 'bớt xuống']
+    if any(k in q_lower for k in remove_kw):
+        target = None
+        # Try number
+        m = re.match(r'^(\d+)$', query.strip())
+        if m and 1 <= int(m.group(1)) <= len(cart):
+            target = cart[int(m.group(1)) - 1]
+        else:
+            # Try by name
+            for c in cart:
+                ct = (c.get('title') or '').lower()
+                if ct in q_lower or q_lower.replace('bớt ', '').replace('bỏ ', '').replace('xóa ', '') in ct:
+                    target = c
+                    break
+
+        if not target:
+            if not cart:
+                return "🛒 Giỏ hàng đang trống!", False
+            return (
+                "🛒 Giỏ hàng hiện tại:\n" +
+                "\n".join(f"  {i+1}. {c['title']} x{c.get('so_luong',1)} — {c['price']:,.0f}đ"
+                          for i, c in enumerate(cart)) +
+                "\n\nNhắn số hoặc tên món để bớt nhé!",
+                False
+            )
+
+        idx_to_remove = next((i for i, c in enumerate(cart) if c.get('id') == target.get('id')), -1)
+        if idx_to_remove >= 0:
+            current_qty = cart[idx_to_remove].get('so_luong', 1)
+            if current_qty > 1:
+                cart[idx_to_remove]['so_luong'] = current_qty - 1
+                action = f"đã giảm '{target['title']}' xuống còn {current_qty - 1}"
+            else:
+                removed_title = cart[idx_to_remove]['title']
+                cart.pop(idx_to_remove)
+                action = f"đã xóa '{removed_title}'"
+
+        new_total = sum(c['price'] * c.get('so_luong', 1) for c in cart)
+        sess['total_amount'] = new_total
+        if not cart:
+            sess['trang_thai'] = STATE_VIEWING_MENU
+            return (
+                f"✅ Đã {action}! Giỏ hàng trống rồi.\n"
+                f"Bạn muốn thêm món gì nữa không?",
+                True
+            )
+        return (
+            f"✅ {action}!\n"
+            f"📦 Giỏ hàng: {len(cart)} món — 💰 {new_total:,.0f}đ",
+            True
+        )
+
+    # ── CHANGE QUANTITY (set specific number) ────────────────────────────
+    change_kw = ['đổi', 'sửa', 'sửa số lượng', 'chỉnh số lượng', 'số lượng']
+    if any(k in q_lower for k in change_kw):
+        # Try "tên món x N" or "N cái tên món"
+        m = re.search(r'x\s*(\d+)', q_lower) or re.search(r'(\d+)\s*(cái|cup|ly|cái|món)', q_lower)
+        new_qty = None
+        target_name = query
+
+        if m:
+            new_qty = int(m.group(1))
+            target_name = re.sub(r'x\s*\d+', '', query).strip()
+            target_name = re.sub(r'\d+\s*(cái|cup|ly|cái|món)', '', target_name).strip()
+
+        if not new_qty or new_qty < 1:
+            # Prompt
+            if not cart:
+                return "🛒 Giỏ hàng trống!", False
+            return (
+                "🛒 Giỏ hàng:\n" +
+                "\n".join(f"  {i+1}. {c['title']} x{c.get('so_luong',1)}"
+                          for i, c in enumerate(cart)) +
+                "\n\nGõ 'số lượng [tên món] x[số]' để đổi (VD: 'cafe muối x2')",
+                False
+            )
+
+        # Find target
+        target = None
+        if target_name.isdigit() and 1 <= int(target_name) <= len(cart):
+            target = cart[int(target_name) - 1]
+        else:
+            for c in cart:
+                ct = (c.get('title') or '').lower()
+                if ct in target_name.lower() or target_name.lower() in ct:
+                    target = c
+                    break
+
+        if not target:
+            return (
+                "🛒 Giỏ hàng:\n" +
+                "\n".join(f"  {i+1}. {c['title']} x{c.get('so_luong',1)}"
+                          for i, c in enumerate(cart)) +
+                "\n\nKhông tìm thấy món. Gõ 'số lượng [tên] x[số]' để đổi!",
+                False
+            )
+
+        idx = next((i for i, c in enumerate(cart) if c.get('id') == target.get('id')), -1)
+        if idx >= 0:
+            if new_qty == 1:
+                cart[idx]['so_luong'] = 1
+                msg = f"✅ Đã đổi '{target['title']}' thành 1"
+            else:
+                cart[idx]['so_luong'] = new_qty
+                msg = f"✅ Đã đổi '{target['title']}' thành x{new_qty}"
+
+        new_total = sum(c['price'] * c.get('so_luong', 1) for c in cart)
+        sess['total_amount'] = new_total
+        return (
+            f"{msg}\n📦 Giỏ hàng: {len(cart)} món — 💰 {new_total:,.0f}đ",
+            True
+        )
+
+    return "", False
 
 
 def _build_confirm_order_prompt(sess: dict) -> str:
@@ -3233,21 +4260,48 @@ def _confirm_and_create_order(sess: dict, kh_id, phuong_thuc: str):
     )
 
     # Lưu trước khi clear session
-    dia_chi_display = sess.get('address', '')
+    dia_chi_display     = sess.get('address', '')
     customer_name_display = sess.get('customer_name', 'Khách')
-    phone_display = sess.get('phone', '')
-
-    clear_order_session(str(kh_id or 'guest'))
-    sess = get_order_session(str(kh_id or 'guest'))
-    sess['trang_thai'] = STATE_COMPLETED
+    phone_display       = sess.get('phone', '')
+    rest_name_display   = sess.get('restaurant_name', '')
+    # Save cart for profile update
+    cart_snapshot       = list(cart)
 
     if result.get('success'):
+        # ── Update user food profile ───────────────────────────────────
+        if kh_id:
+            update_user_profile_from_order(kh_id, sess)
+
+        # ── Save to chatbot history ───────────────────────────────────
+        save_chatbot_interaction(
+            khach_hang_id=kh_id,
+            session_id=str(kh_id or 'guest'),
+            action_type='order_completed',
+            action_detail=f"Order #{result.get('ma_don_hang','')} thành công",
+            response_text=f"Đơn hàng đã tạo thành công",
+            restaurant_name=rest_name_display,
+            cart=cart_snapshot,
+            delivery_info={
+                'name': customer_name_display,
+                'phone': phone_display,
+                'address': dia_chi_display,
+            },
+            state_before='SELECTING_PAYMENT',
+            state_after='COMPLETED',
+            ai_powered=False,
+        )
+
+        # Clear session after successful order
+        clear_order_session(str(kh_id or 'guest'))
+        sess = get_order_session(str(kh_id or 'guest'))
+        sess['trang_thai'] = STATE_COMPLETED
+
         tong_tien = result.get('tong_tien', 0)
         ma_don = result.get('ma_don_hang', '')
         tien_hang = result.get('tien_hang', 0)
         phi_ship = result.get('phi_ship', 0)
         reply = (f"🎉 Đơn hàng #{ma_don} đã được tạo!\n\n📦 Món:\n")
-        for c in cart:
+        for c in cart_snapshot:
             reply += f"  • {c['title']} x{c.get('so_luong',1)} — {c['price']:,.0f}đ\n"
         reply += (f"\n💰 Tiền hàng: {tien_hang:,.0f}đ\n"
                   f"🚚 Phí ship: {phi_ship:,.0f}đ\n"
@@ -3344,6 +4398,9 @@ def health():
 
 
 if __name__ == '__main__':
+    _ensure_chatbot_history_table()
+    _ensure_user_food_profile_table()
+    logger.info("✅ Chatbot history & personalization tables ready")
     port = int(os.getenv('FLASK_PORT', 5000))
     logger.info(f"🚀 FoodBee Bee v11.5 — Smart Agent — port {port}")
     logger.info(f"🤖 {'✅ Groq ON | ' + GROQ_MODEL if GROQ_API_KEY else '❌ Groq OFF'}")
