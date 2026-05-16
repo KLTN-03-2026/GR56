@@ -9,6 +9,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Image,
+  Keyboard,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -86,7 +87,24 @@ const ChatBot: React.FC<ChatBotProps> = ({ navigation }) => {
   const [messages, setMessages] = useState<Message[]>([INITIAL_MESSAGE]);
   const [inputText, setInputText] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const scrollViewRef = useRef<ScrollView>(null);
+
+  // Listen to keyboard events
+  useEffect(() => {
+    const showListener = Keyboard.addListener(
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow",
+      (e) => setKeyboardHeight(e.endCoordinates.height)
+    );
+    const hideListener = Keyboard.addListener(
+      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide",
+      () => setKeyboardHeight(0)
+    );
+    return () => {
+      showListener.remove();
+      hideListener.remove();
+    };
+  }, []);
 
   // Load lịch sử khi mở màn hình
   useEffect(() => {
@@ -399,8 +417,8 @@ const ChatBot: React.FC<ChatBotProps> = ({ navigation }) => {
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={0}
+        behavior={Platform.OS === "ios" ? "padding" : "padding"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
       >
         {/* Messages */}
         <ScrollView
@@ -435,7 +453,7 @@ const ChatBot: React.FC<ChatBotProps> = ({ navigation }) => {
         </ScrollView>
 
         {/* Input */}
-        <View style={styles.inputContainer}>
+        <View style={[styles.inputContainer, { paddingBottom: keyboardHeight > 0 ? 8 : hp("1.5%") }]}>
           <View style={styles.inputWrapper}>
             <View style={styles.textInputContainer}>
               <TextInput

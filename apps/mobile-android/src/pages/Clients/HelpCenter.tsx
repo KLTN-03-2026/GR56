@@ -236,7 +236,15 @@ const HelpCenter = ({ navigation }: any) => {
       icon: "chatbubble-ellipses",
       color: "#EE4D2D",
       bg: "#FFF0ED",
-      onPress: () => navigation.navigate("ChatBot"),
+      onPress: () => {
+        // Navigate to ChatBot tab within UserTabs
+        navigation.navigate("MainTabs", {
+          screen: "UserTabs",
+          params: {
+            screen: "ChatBot",
+          },
+        });
+      },
     },
     {
       id: "phone",
@@ -399,7 +407,12 @@ const HelpCenter = ({ navigation }: any) => {
               </Text>
               <TouchableOpacity
                 style={styles.emptyBtn}
-                onPress={() => navigation.navigate("ChatBot")}
+                onPress={() => {
+                  navigation.navigate("MainTabs", {
+                    screen: "UserTabs",
+                    params: { screen: "ChatBot" },
+                  });
+                }}
                 activeOpacity={0.85}
               >
                 <Ionicons name="chatbubble-ellipses" size={16} color="#FFF" />
@@ -420,7 +433,12 @@ const HelpCenter = ({ navigation }: any) => {
               </Text>
               <TouchableOpacity
                 style={styles.stillHelpBtn}
-                onPress={() => navigation.navigate("ChatBot")}
+                onPress={() => {
+                  navigation.navigate("MainTabs", {
+                    screen: "UserTabs",
+                    params: { screen: "ChatBot" },
+                  });
+                }}
                 activeOpacity={0.85}
               >
                 <Ionicons name="chatbubble-ellipses" size={16} color="#FFF" />

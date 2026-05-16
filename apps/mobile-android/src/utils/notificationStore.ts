@@ -6,21 +6,17 @@ const MAX_ITEMS = 60;
 // ── Types ─────────────────────────────────────────────────────────────────────
 export interface StoredNotification {
   id: string;
-  type: "order" | "promotion" | "system" | "chat";
+  type: "order" | "promotion" | "system";
   title: string;
   description: string;
   icon: string;
   time: string;
   isRead: boolean;
   badgeLabel: string;
-  createdAt: number;
-  // Thông tin cho tin nhắn (chat)
+  link?: string;
   id_don_hang?: number;
-  id_shipper?: number;
   sender_name?: string;
-  sender_avatar?: string;
-  dia_chi?: string;
-  ma_don_hang?: string;
+  createdAt: number;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -49,14 +45,18 @@ export const loadNotifications = async (): Promise<StoredNotification[]> => {
 };
 
 export const saveNotification = async (
-  item: Pick<StoredNotification, "type" | "title" | "description" | "icon" | "badgeLabel"> & 
-    Partial<Pick<StoredNotification, "id_don_hang" | "id_shipper" | "sender_name" | "sender_avatar" | "dia_chi" | "ma_don_hang">>
+  item: Pick<StoredNotification, "type" | "title" | "description" | "icon" | "badgeLabel"> & {
+    link?: string;
+    id_don_hang?: number;
+    sender_name?: string;
+  }
 ): Promise<void> => {
   try {
     const now = Date.now();
     const newItem: StoredNotification = {
       ...item,
       id: `notif_${now}_${Math.random().toString(36).slice(2, 7)}`,
+      link: item.link || "",
       time: "Vừa xong",
       isRead: false,
       createdAt: now,

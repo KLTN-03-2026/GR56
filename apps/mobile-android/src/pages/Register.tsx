@@ -24,6 +24,45 @@ import apiClient from "../genaral/api";
 import LoadingModal from "../components/LoadingModal";
 import ToastMessage from "../components/ToastMessage";
 
+// Reusable input component
+interface InputFieldProps {
+  label: string;
+  iconName: string;
+  placeholder: string;
+  value: string;
+  onChangeText: (text: string) => void;
+  keyboardType?: "default" | "email-address" | "numeric" | "phone-pad";
+  secureTextEntry?: boolean;
+  rightElement?: React.ReactNode;
+}
+
+const InputField = ({
+  label, iconName, placeholder, value, onChangeText,
+  keyboardType = "default", secureTextEntry = false,
+  rightElement,
+}: InputFieldProps) => (
+  <View style={styles.inputGroup}>
+    <Text style={styles.label}>{label}</Text>
+    <View style={styles.inputContainer}>
+      <View style={styles.iconBg}>
+        <Ionicons name={iconName} size={18} color="#E63946" />
+      </View>
+      <TextInput
+        style={styles.input}
+        placeholder={placeholder}
+        placeholderTextColor="rgba(255,255,255,0.3)"
+        value={value}
+        onChangeText={onChangeText}
+        keyboardType={keyboardType}
+        secureTextEntry={secureTextEntry}
+        autoCapitalize="none"
+        blurOnSubmit={false}
+      />
+      {rightElement}
+    </View>
+  </View>
+);
+
 const Register = ({ navigation }: any) => {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -115,33 +154,6 @@ const Register = ({ navigation }: any) => {
       setLoading(false);
     }
   };
-
-  // Reusable input row
-  const InputField = ({
-    label, iconName, placeholder, value, onChangeText,
-    keyboardType = "default", secureTextEntry = false,
-    rightElement,
-  }: any) => (
-    <View style={styles.inputGroup}>
-      <Text style={styles.label}>{label}</Text>
-      <View style={styles.inputContainer}>
-        <View style={styles.iconBg}>
-          <Ionicons name={iconName} size={18} color="#E63946" />
-        </View>
-        <TextInput
-          style={styles.input}
-          placeholder={placeholder}
-          placeholderTextColor="rgba(255,255,255,0.3)"
-          value={value}
-          onChangeText={onChangeText}
-          keyboardType={keyboardType}
-          secureTextEntry={secureTextEntry}
-          autoCapitalize="none"
-        />
-        {rightElement}
-      </View>
-    </View>
-  );
 
   return (
     <SafeAreaView style={styles.safeContainer}>
