@@ -12,7 +12,7 @@ interface ToastProps {
     onHide: () => void;
 }
 
-const ToastMessage: React.FC<ToastProps> = ({ visible, message, type = 'info', onHide }) => {
+const ToastMessage = ({ visible, message, type = 'info', onHide }: ToastProps) => {
     const translateY = useRef(new Animated.Value(-120)).current;
     const opacity = useRef(new Animated.Value(0)).current;
     const scale = useRef(new Animated.Value(0.92)).current;
@@ -100,7 +100,7 @@ const ToastMessage: React.FC<ToastProps> = ({ visible, message, type = 'info', o
             </View>
         </Animated.View>
     );
-};
+}
 
 const styles = StyleSheet.create({
     container: {

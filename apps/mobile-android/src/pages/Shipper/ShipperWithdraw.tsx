@@ -6,13 +6,16 @@ import {
     ScrollView,
     TouchableOpacity,
     TextInput,
-    Modal,
-    FlatList,
+    StatusBar,
     Platform,
     KeyboardAvoidingView,
+    ActivityIndicator,
+    Alert,
+    Modal,
+    FlatList,
+    Image,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { useNavigation, useRoute } from "@react-navigation/native";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 // @ts-ignore
 import Ionicons from "react-native-vector-icons/Ionicons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -21,465 +24,438 @@ import {
     widthPercentageToDP as wp,
 } from "react-native-responsive-screen";
 import apiClient from "../../genaral/api";
-import LoadingModal from "../../components/LoadingModal";
-import AlertModal from "../../components/AlertModal";
-import ConfirmModal from "../../components/ConfirmModal";
+import CustomAlert, { AlertButton } from "../../components/CustomAlert";
 
-const PRIMARY_COLOR = "#EE4D2D";
-const BACKGROUND_COLOR = "#F5F6F8";
-const TEXT_DARK = "#1E293B";
-const TEXT_MUTED = "#64748B";
+const PRIMARY = "#EE4D2D";
+const BG = "#F5F6F8";
+const DARK = "#1E293B";
+const MUTED = "#64748B";
 
-interface BankAccount {
-    id: number;
-    ten_ngan_hang: string;
-    so_tai_khoan: string;
-    chu_tai_khoan: string;
-    is_default: boolean;
-}
+const PRESET_AMOUNTS = [
+    { label: "100.000đ", value: 100000 },
+    { label: "500.000đ", value: 500000 },
+    { label: "1.000.000đ", value: 1000000 },
+];
 
-interface WithdrawHistory {
-    id: number;
-    so_tien_rut: number;
-    trang_thai: string;
-    noi_dung_chuyen_khoan: string;
-    ten_ngan_hang: string;
-    so_tai_khoan: string;
-    created_at: string;
-    thoi_gian_duyet?: string;
-    thoi_gian_chuyen?: string;
-}
-
-const statusLabels: Record<string, { label: string; color: string }> = {
-    cho_duyet: { label: "Chờ duyệt", color: "#F59E0B" },
-    da_duyet: { label: "Đã duyệt", color: "#3B82F6" },
-    tu_choi: { label: "Từ chối", color: "#EF4444" },
-    da_chuyen: { label: "Đã chuyển", color: "#10B981" },
-    huy: { label: "Đã hủy", color: "#94A3B8" },
+const formatMoney = (value: number): string => {
+    if (!value) return "0đ";
+    return new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(value);
 };
 
-const ShipperWithdraw = () => {
-    const navigation = useNavigation();
-    const route = useRoute();
-    const [loading, setLoading] = useState(false);
-    const [balance, setBalance] = useState("0đ");
-    const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
-    const [selectedBank, setSelectedBank] = useState<BankAccount | null>(null);
-    const [amount, setAmount] = useState("");
-    const [history, setHistory] = useState<WithdrawHistory[]>([]);
-    const [showBankModal, setShowBankModal] = useState(false);
-    const [showHistoryModal, setShowHistoryModal] = useState(false);
-    const [isAddingBank, setIsAddingBank] = useState(false);
+const ShipperWithdraw = ({ navigation }: any) => {
+    const [balance, setBalance] = useState<number | null>(null);
+    const [customAmount, setCustomAmount] = useState("");
+    const [selectedAmount, setSelectedAmount] = useState<number | null>(null);
+    
+    const [bankAccounts, setBankAccounts] = useState<any[]>([]);
+    const [selectedBankId, setSelectedBankId] = useState<number | null>(null);
+    
+    const [submitting, setSubmitting] = useState(false);
+    const [showAddBank, setShowAddBank] = useState(false);
+    
+    // Add bank state
     const [newBank, setNewBank] = useState({
         ten_ngan_hang: "",
         so_tai_khoan: "",
         chu_tai_khoan: "",
     });
-    const [activeTab, setActiveTab] = useState<"rut" | "lich-su">("rut");
-    const [confirmState, setConfirmState] = useState({
-        visible: false,
-        title: "",
-        message: "",
-        soTien: 0,
-        onConfirm: () => {},
-    });
-    const [alertState, setAlertState] = useState({
-        visible: false,
-        type: "info" as "success" | "error" | "warning" | "info",
-        title: "",
-        message: "",
-    });
+
+    const [bankList, setBankList] = useState<any[]>([]);
+    const [showBankModal, setShowBankModal] = useState(false);
+    const [bankSearch, setBankSearch] = useState("");
+
+    const insets = useSafeAreaInsets();
+
+    const [alertConfig, setAlertConfig] = useState<{
+        visible: boolean;
+        type?: "success" | "error" | "warning" | "info" | "confirm";
+        title: string;
+        message?: string;
+        buttons?: AlertButton[];
+    }>({ visible: false, title: "" });
+
+    const showAlert = (
+        type: "success" | "error" | "warning" | "info" | "confirm",
+        title: string,
+        message?: string,
+        buttons?: AlertButton[]
+    ) => setAlertConfig({ visible: true, type, title, message, buttons });
+
+    const hideAlert = () => setAlertConfig(prev => ({ ...prev, visible: false }));
+
+    const fetchData = async () => {
+        try {
+            const userDataStr = await AsyncStorage.getItem("userData");
+            const userData = userDataStr ? JSON.parse(userDataStr) : {};
+            const id_shipper = userData.id;
+
+            if (id_shipper) {
+                // Fetch balance
+                apiClient.get("/wallet/chi-tiet", {
+                    params: { loai_vi: "shipper", id_chu_vi: id_shipper },
+                }).then(res => {
+                    if (res.data?.status) {
+                        setBalance(res.data.data?.vi?.so_du ?? 0);
+                    }
+                });
+
+                // Fetch banks
+                apiClient.get("/wallet/tai-khoan", {
+                    params: { loai_chu: "shipper", id_chu: id_shipper },
+                }).then(res => {
+                    if (res.data?.status) {
+                        setBankAccounts(res.data.data || []);
+                        if (res.data.data && res.data.data.length > 0) {
+                            setSelectedBankId(res.data.data[0].id);
+                        }
+                    }
+                });
+                // Fetch banks list from VietQR for adding new bank
+                fetch("https://api.vietqr.io/v2/banks")
+                    .then(res => res.json())
+                    .then(res => {
+                        if (res.code === "00" && res.data) {
+                            setBankList(res.data);
+                        }
+                    })
+                    .catch(e => console.log("Lỗi fetch bank list:", e));
+            }
+        } catch (error) {
+            console.log("Fetch withdraw data error:", error);
+        }
+    };
 
     useEffect(() => {
         fetchData();
     }, []);
 
-    const fetchData = async () => {
-        setLoading(true);
-        try {
-            const userDataString = await AsyncStorage.getItem("userData");
-            const userData = userDataString ? JSON.parse(userDataString) : {};
-            const idShipper = userData.id;
-
-            const [balanceRes, bankRes, historyRes] = await Promise.allSettled([
-                apiClient.get("/wallet/chi-tiet", {
-                    params: { loai_vi: "shipper", id_chu_vi: idShipper },
-                }),
-                apiClient.get("/wallet/tai-khoan", {
-                    params: { loai_chu: "shipper", id_chu: idShipper },
-                }),
-                apiClient.get("/wallet/lich-su-rut", {
-                    params: { loai_vi: "shipper", id_chu_vi: idShipper },
-                }),
-            ]);
-
-            if (balanceRes.status === "fulfilled" && balanceRes.value.data?.status) {
-                const soDu: number = balanceRes.value.data.data?.vi?.so_du ?? 0;
-                setBalance(
-                    new Intl.NumberFormat("vi-VN", {
-                        style: "currency",
-                        currency: "VND",
-                    }).format(soDu)
-                );
-            }
-
-            if (bankRes.status === "fulfilled" && bankRes.value.data?.data) {
-                const accounts = bankRes.value.data.data as BankAccount[];
-                setBankAccounts(accounts);
-                const defaultAcc = accounts.find((a: any) => a.is_default) || accounts[0];
-                if (defaultAcc) setSelectedBank(defaultAcc);
-            }
-
-            if (historyRes.status === "fulfilled" && historyRes.value.data?.data) {
-                setHistory(historyRes.value.data.data);
-            }
-        } catch (error) {
-            console.log("Error fetching withdraw data:", error);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const handleWithdraw = async () => {
-        if (!selectedBank) {
-            setAlertState({ visible: true, type: "warning", title: "Thông báo", message: "Vui lòng chọn tài khoản ngân hàng" });
-            return;
-        }
-
-        const soTien = parseInt(amount.replace(/[^0-9]/g, ""), 10);
-        if (!soTien || soTien < 10000) {
-            setAlertState({ visible: true, type: "warning", title: "Thông báo", message: "Số tiền rút tối thiểu là 10.000đ" });
-            return;
-        }
-
-        setConfirmState({
-            visible: true,
-            title: "Xác nhận rút tiền",
-            message: `Bạn muốn rút ${formatCurrency(soTien)} về tài khoản ${selectedBank.ten_ngan_hang} ****${selectedBank.so_tai_khoan.slice(-4)}?`,
-            soTien,
-            onConfirm: async () => {
-                setConfirmState({ ...confirmState, visible: false });
-                setLoading(true);
-                try {
-                    const userDataString = await AsyncStorage.getItem("userData");
-                    const userData = userDataString ? JSON.parse(userDataString) : {};
-
-                    const res = await apiClient.post("/wallet/yeu-cau-rut-tien", {
-                        loai_vi: "shipper",
-                        id_chu_vi: userData.id,
-                        so_tien_rut: soTien,
-                        id_bank_account: selectedBank.id,
-                    });
-
-                    if (res.data.status) {
-                        setAlertState({ visible: true, type: "success", title: "Thành công", message: "Yêu cầu rút tiền đã được gửi!" });
-                        setAmount("");
-                        fetchData();
-                    } else {
-                        setAlertState({ visible: true, type: "error", title: "Lỗi", message: res.data.message || "Không thể tạo yêu cầu" });
-                    }
-                } catch (error: any) {
-                    console.log("Withdraw error:", error);
-                    const message = error?.response?.data?.message || error?.message || "Có lỗi xảy ra";
-                    setAlertState({ visible: true, type: "error", title: "Lỗi", message });
-                } finally {
-                    setLoading(false);
-                }
-            },
-        });
+    const getFinalAmount = (): number => {
+        if (selectedAmount) return selectedAmount;
+        const parsed = parseInt(customAmount.replace(/\D/g, ""), 10);
+        return isNaN(parsed) ? 0 : parsed;
     };
 
     const handleAddBank = async () => {
         if (!newBank.ten_ngan_hang || !newBank.so_tai_khoan || !newBank.chu_tai_khoan) {
-            setAlertState({ visible: true, type: "warning", title: "Thông báo", message: "Vui lòng điền đầy đủ thông tin" });
+            Alert.alert("Lỗi", "Vui lòng nhập đầy đủ thông tin ngân hàng.");
             return;
         }
-
-        setLoading(true);
+        
         try {
-            const userDataString = await AsyncStorage.getItem("userData");
-            const userData = userDataString ? JSON.parse(userDataString) : {};
+            const userDataStr = await AsyncStorage.getItem("userData");
+            const userData = userDataStr ? JSON.parse(userDataStr) : {};
+            const id_shipper = userData.id;
 
             const res = await apiClient.post("/wallet/them-tai-khoan", {
                 loai_chu: "shipper",
-                id_chu: userData.id,
-                ten_ngan_hang: newBank.ten_ngan_hang,
-                so_tai_khoan: newBank.so_tai_khoan,
-                chu_tai_khoan: newBank.chu_tai_khoan,
+                id_chu: id_shipper,
+                ...newBank,
+                is_default: bankAccounts.length === 0,
             });
 
-            if (res.data.status) {
-                setAlertState({ visible: true, type: "success", title: "Thành công", message: "Đã thêm tài khoản ngân hàng" });
+            if (res.data?.status) {
+                Alert.alert("Thành công", "Đã thêm tài khoản ngân hàng.");
+                setShowAddBank(false);
                 setNewBank({ ten_ngan_hang: "", so_tai_khoan: "", chu_tai_khoan: "" });
-                setIsAddingBank(false);
                 fetchData();
             } else {
-                setAlertState({ visible: true, type: "error", title: "Lỗi", message: res.data.message || "Không thể thêm tài khoản" });
+                Alert.alert("Lỗi", res.data?.message || "Không thể thêm tài khoản.");
             }
-        } catch (error: any) {
-            console.log("Add bank error:", error);
-            const message = error?.response?.data?.message || error?.message || "Có lỗi xảy ra khi thêm tài khoản";
-            setAlertState({ visible: true, type: "error", title: "Lỗi", message });
-        } finally {
-            setLoading(false);
+        } catch (error) {
+            Alert.alert("Lỗi", "Có lỗi xảy ra, vui lòng thử lại.");
         }
     };
 
-    const formatCurrency = (value: number) => {
-        return new Intl.NumberFormat("vi-VN", {
-            style: "currency",
-            currency: "VND",
-        }).format(value);
+    const handleWithdraw = async () => {
+        const amount = getFinalAmount();
+        
+        if (amount < 10000) {
+            showAlert("warning", "Lỗi", "Số tiền rút tối thiểu là 10.000đ");
+            return;
+        }
+        if (balance !== null && amount > balance) {
+            showAlert("warning", "Lỗi", "Số dư không đủ để thực hiện giao dịch này.");
+            return;
+        }
+        if (!selectedBankId) {
+            showAlert("warning", "Lỗi", "Vui lòng chọn tài khoản ngân hàng.");
+            return;
+        }
+
+        setSubmitting(true);
+        try {
+            const userDataStr = await AsyncStorage.getItem("userData");
+            const userData = userDataStr ? JSON.parse(userDataStr) : {};
+            const id_shipper = userData.id;
+
+            const res = await apiClient.post("/wallet/yeu-cau-rut-tien", {
+                loai_vi: "shipper",
+                id_chu_vi: id_shipper,
+                id_bank_account: selectedBankId,
+                so_tien_rut: amount,
+            });
+
+            if (res.data?.status) {
+                showAlert(
+                    "success",
+                    "Đã gửi yêu cầu",
+                    res.data.message || "Yêu cầu rút tiền của bạn đang được xử lý.",
+                    [{ text: "Hoàn tất", style: "default", onPress: () => navigation.goBack() }]
+                );
+            } else {
+                showAlert("error", "Lỗi", res.data?.message || "Không thể tạo yêu cầu rút tiền.");
+            }
+        } catch (error: any) {
+            showAlert("error", "Lỗi", error?.response?.data?.message || "Có lỗi kết nối, vui lòng thử lại.");
+        } finally {
+            setSubmitting(false);
+        }
     };
 
-    const formatInputAmount = (text: string) => {
-        const cleaned = text.replace(/[^0-9]/g, "");
-        setAmount(cleaned ? parseInt(cleaned, 10).toLocaleString("vi-VN") : "");
-    };
-
-    const handleQuickAmount = (percent: number) => {
-        const currentBalance = parseInt(balance.replace(/[^0-9]/g, ""), 10);
-        const value = Math.floor(currentBalance * percent);
-        setAmount(value.toLocaleString("vi-VN"));
-    };
-
-    const renderStatusBadge = (status: string) => {
-        const config = statusLabels[status] || { label: status, color: TEXT_MUTED };
-        return (
-            <View style={[styles.statusBadge, { backgroundColor: config.color + "20" }]}>
-                <Text style={[styles.statusText, { color: config.color }]}>{config.label}</Text>
-            </View>
-        );
-    };
+    const currentAmount = getFinalAmount();
 
     return (
-        <SafeAreaView style={styles.container} edges={["top"]}>
-            <LoadingModal visible={loading} />
+        <View style={styles.container}>
+            <StatusBar translucent backgroundColor={PRIMARY} barStyle="light-content" />
 
-            <AlertModal
-                visible={alertState.visible}
-                type={alertState.type}
-                title={alertState.title}
-                message={alertState.message}
-                onClose={() => setAlertState({ ...alertState, visible: false })}
-            />
-
-            <ConfirmModal
-                visible={confirmState.visible}
-                title={confirmState.title}
-                message={confirmState.message}
-                onConfirm={confirmState.onConfirm}
-                onCancel={() => setConfirmState({ ...confirmState, visible: false })}
-            />
-
-            {/* HEADER */}
-            <View style={styles.header}>
-                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-                    <Ionicons name="arrow-back" size={24} color="#FFF" />
-                </TouchableOpacity>
-                <Text style={styles.headerTitle}>Rút tiền về ngân hàng</Text>
-                <View style={{ width: 40 }} />
+            {/* Header */}
+            <View style={styles.headerBg}>
+                <SafeAreaView edges={["top"]} style={styles.headerSafe}>
+                    <View style={styles.headerRow}>
+                        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+                            <Ionicons name="chevron-back" size={26} color="#FFF" />
+                        </TouchableOpacity>
+                        <Text style={styles.headerTitle}>Rút tiền về thẻ</Text>
+                        <View style={{ width: wp("9%") }} />
+                    </View>
+                </SafeAreaView>
             </View>
 
-            {/* TABS */}
-            <View style={styles.tabContainer}>
-                <TouchableOpacity
-                    style={[styles.tab, activeTab === "rut" && styles.tabActive]}
-                    onPress={() => setActiveTab("rut")}
+            <KeyboardAvoidingView
+                behavior={Platform.OS === "ios" ? "padding" : "height"}
+                style={{ flex: 1 }}
+            >
+                <ScrollView
+                    contentContainerStyle={styles.scrollContent}
+                    showsVerticalScrollIndicator={false}
+                    keyboardShouldPersistTaps="handled"
                 >
-                    <Text style={[styles.tabText, activeTab === "rut" && styles.tabTextActive]}>
-                        Rút tiền
-                    </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                    style={[styles.tab, activeTab === "lich-su" && styles.tabActive]}
-                    onPress={() => setActiveTab("lich-su")}
-                >
-                    <Text style={[styles.tabText, activeTab === "lich-su" && styles.tabTextActive]}>
-                        Lịch sử
-                    </Text>
-                </TouchableOpacity>
-            </View>
-
-            {activeTab === "rut" ? (
-                <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-                    {/* SỐ DƯ */}
+                    {/* Balance Card */}
                     <View style={styles.balanceCard}>
-                        <View style={styles.balanceHeader}>
-                            <Ionicons name="wallet" size={22} color={PRIMARY_COLOR} />
-                            <Text style={styles.balanceLabel}>Số dư khả dụng</Text>
+                        <View style={styles.balanceLeft}>
+                            <Ionicons name="wallet" size={28} color={PRIMARY} />
+                            <View style={{ marginLeft: wp("3%") }}>
+                                <Text style={styles.balanceLabel}>Có thể rút</Text>
+                                <Text style={styles.balanceValue}>
+                                    {balance !== null ? formatMoney(balance) : "---"}
+                                </Text>
+                            </View>
                         </View>
-                        <Text style={styles.balanceValue}>{balance}</Text>
+                        <TouchableOpacity onPress={() => {
+                            if (balance) {
+                                setSelectedAmount(null);
+                                setCustomAmount(balance.toString());
+                            }
+                        }}>
+                            <Text style={styles.withdrawAllText}>Rút toàn bộ</Text>
+                        </TouchableOpacity>
                     </View>
 
-                    {/* CHỌN NGÂN HÀNG */}
-                    <Text style={styles.sectionTitle}>Tài khoản nhận tiền</Text>
-                    <TouchableOpacity
-                        style={styles.bankSelector}
-                        onPress={() => setShowBankModal(true)}
-                    >
-                        {selectedBank ? (
-                            <View style={styles.selectedBankInfo}>
-                                <View style={styles.bankIconWrap}>
-                                    <Ionicons name="business" size={22} color={PRIMARY_COLOR} />
+                    {/* Bank Accounts */}
+                    <View style={styles.section}>
+                        <Text style={styles.sectionTitle}>Tài khoản nhận tiền</Text>
+                        
+                        {bankAccounts.map((bank) => (
+                            <TouchableOpacity
+                                key={bank.id}
+                                style={[
+                                    styles.bankCard,
+                                    selectedBankId === bank.id && styles.bankCardActive
+                                ]}
+                                onPress={() => setSelectedBankId(bank.id)}
+                            >
+                                <View style={styles.bankIcon}>
+                                    <Ionicons name="business" size={24} color={selectedBankId === bank.id ? PRIMARY : MUTED} />
                                 </View>
-                                <View style={styles.bankDetails}>
-                                    <Text style={styles.bankName}>{selectedBank.ten_ngan_hang}</Text>
-                                    <Text style={styles.bankAccount}>
-                                        {selectedBank.chu_tai_khoan} •••• {selectedBank.so_tai_khoan.slice(-4)}
+                                <View style={{ flex: 1 }}>
+                                    <Text style={styles.bankName}>{bank.ten_ngan_hang}</Text>
+                                    <Text style={styles.bankAccount}>{bank.so_tai_khoan}</Text>
+                                    <Text style={styles.bankOwner}>{bank.chu_tai_khoan}</Text>
+                                </View>
+                                {selectedBankId === bank.id && (
+                                    <Ionicons name="checkmark-circle" size={24} color={PRIMARY} />
+                                )}
+                            </TouchableOpacity>
+                        ))}
+
+                        {showAddBank ? (
+                            <View style={styles.addBankForm}>
+                                <Text style={styles.addBankTitle}>Thêm ngân hàng mới</Text>
+                                <TouchableOpacity
+                                    style={[styles.addBankInput, { flexDirection: "row", alignItems: "center", justifyContent: "space-between" }]}
+                                    onPress={() => setShowBankModal(true)}
+                                    activeOpacity={0.7}
+                                >
+                                    <Text style={{ color: newBank.ten_ngan_hang ? DARK : "#94A3B8", fontSize: wp("3.5%") }}>
+                                        {newBank.ten_ngan_hang || "Chọn ngân hàng"}
                                     </Text>
+                                    <Ionicons name="chevron-down" size={18} color="#94A3B8" />
+                                </TouchableOpacity>
+                                <TextInput
+                                    style={styles.addBankInput}
+                                    placeholder="Số tài khoản"
+                                    placeholderTextColor="#94A3B8"
+                                    keyboardType="number-pad"
+                                    value={newBank.so_tai_khoan}
+                                    onChangeText={(v) => setNewBank({ ...newBank, so_tai_khoan: v })}
+                                />
+                                <TextInput
+                                    style={styles.addBankInput}
+                                    placeholder="Tên chủ tài khoản (Không dấu)"
+                                    placeholderTextColor="#94A3B8"
+                                    autoCapitalize="characters"
+                                    value={newBank.chu_tai_khoan}
+                                    onChangeText={(v) => setNewBank({ ...newBank, chu_tai_khoan: v.toUpperCase() })}
+                                />
+                                <View style={styles.addBankActions}>
+                                    <TouchableOpacity style={styles.addBankBtnCancel} onPress={() => setShowAddBank(false)}>
+                                        <Text style={styles.addBankBtnCancelText}>Hủy</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity style={styles.addBankBtnSubmit} onPress={handleAddBank}>
+                                        <Text style={styles.addBankBtnSubmitText}>Thêm</Text>
+                                    </TouchableOpacity>
                                 </View>
                             </View>
                         ) : (
-                            <View style={styles.noBankSelected}>
-                                <Ionicons name="add-circle-outline" size={22} color={PRIMARY_COLOR} />
-                                <Text style={styles.noBankText}>Thêm tài khoản ngân hàng</Text>
-                            </View>
-                        )}
-                        <Ionicons name="chevron-forward" size={20} color={TEXT_MUTED} />
-                    </TouchableOpacity>
-
-                    {/* NHẬP SỐ TIỀN */}
-                    <Text style={styles.sectionTitle}>Số tiền rút</Text>
-                    <View style={styles.amountInputWrap}>
-                        <Text style={styles.currencySymbol}>đ</Text>
-                        <TextInput
-                            style={styles.amountInput}
-                            placeholder="0"
-                            placeholderTextColor={TEXT_MUTED}
-                            keyboardType="numeric"
-                            value={amount}
-                            onChangeText={formatInputAmount}
-                        />
-                    </View>
-                    <Text style={styles.minAmount}>Tối thiểu: 10.000đ</Text>
-
-                    {/* QUICK AMOUNT BUTTONS */}
-                    <View style={styles.quickAmountRow}>
-                        {[0.25, 0.5, 0.75, 1].map((pct) => (
-                            <TouchableOpacity
-                                key={pct}
-                                style={styles.quickAmountBtn}
-                                onPress={() => handleQuickAmount(pct)}
-                            >
-                                <Text style={styles.quickAmountText}>
-                                    {pct === 1 ? "Tất cả" : `${pct * 100}%`}
-                                </Text>
+                            <TouchableOpacity style={styles.addBankBtn} onPress={() => setShowAddBank(true)}>
+                                <Ionicons name="add-circle-outline" size={20} color={PRIMARY} />
+                                <Text style={styles.addBankText}>Thêm tài khoản ngân hàng</Text>
                             </TouchableOpacity>
-                        ))}
+                        )}
                     </View>
 
-                    {/* NÚT RÚT TIỀN */}
-                    <TouchableOpacity
-                        style={[
-                            styles.withdrawBtn,
-                            (!selectedBank || !amount) && styles.withdrawBtnDisabled,
-                        ]}
-                        onPress={handleWithdraw}
-                        disabled={!selectedBank || !amount}
-                    >
-                        <Text style={styles.withdrawBtnText}>Rút tiền</Text>
-                    </TouchableOpacity>
+                    {/* Amount Input */}
+                    <View style={styles.section}>
+                        <Text style={styles.sectionTitle}>Nhập số tiền muốn rút</Text>
+                        <View style={styles.inputRow}>
+                            <Ionicons name="cash-outline" size={20} color={MUTED} style={styles.inputIcon} />
+                            <TextInput
+                                style={styles.input}
+                                placeholder="VD: 300000"
+                                placeholderTextColor="#94A3B8"
+                                keyboardType="number-pad"
+                                value={customAmount}
+                                onChangeText={(v) => {
+                                    setCustomAmount(v.replace(/\D/g, ""));
+                                    setSelectedAmount(null);
+                                }}
+                            />
+                            <Text style={styles.inputSuffix}>đ</Text>
+                        </View>
+                        {currentAmount > 0 && currentAmount < 10000 && (
+                            <Text style={styles.errorText}>Số tiền rút tối thiểu là 10.000đ</Text>
+                        )}
+                    </View>
 
-                    {/* LƯU Ý */}
-                    <View style={styles.noteCard}>
-                        <Ionicons name="information-circle" size={18} color={TEXT_MUTED} />
-                        <Text style={styles.noteText}>
-                            Yêu cầu rút tiền sẽ được xử lý trong 5-15 phút. Phí giao dịch: 0đ
+                    {/* Preset Amounts */}
+                    <View style={styles.presetGrid}>
+                        {PRESET_AMOUNTS.map((item) => {
+                            const isSelected = selectedAmount === item.value;
+                            return (
+                                <TouchableOpacity
+                                    key={item.value}
+                                    style={[styles.presetBtn, isSelected && styles.presetBtnActive]}
+                                    onPress={() => {
+                                        setSelectedAmount(isSelected ? null : item.value);
+                                        setCustomAmount("");
+                                    }}
+                                    activeOpacity={0.75}
+                                >
+                                    <Text style={[styles.presetBtnText, isSelected && styles.presetBtnTextActive]}>
+                                        {item.label}
+                                    </Text>
+                                </TouchableOpacity>
+                            );
+                        })}
+                    </View>
+
+                    {/* Info */}
+                    <View style={styles.infoBox}>
+                        <Ionicons name="information-circle" size={18} color="#3B82F6" />
+                        <Text style={styles.infoText}>
+                            Thời gian xử lý giao dịch thường mất từ 5-15 phút. Trong trường hợp ngân hàng bảo trì có thể lâu hơn.
                         </Text>
                     </View>
-                </ScrollView>
-            ) : (
-                /* LỊCH SỬ */
-                <FlatList
-                    data={history}
-                    keyExtractor={(item) => String(item.id)}
-                    contentContainerStyle={styles.historyList}
-                    ListEmptyComponent={
-                        <View style={styles.emptyHistory}>
-                            <Ionicons name="receipt-outline" size={48} color={TEXT_MUTED} />
-                            <Text style={styles.emptyText}>Chưa có yêu cầu rút tiền</Text>
-                        </View>
-                    }
-                    renderItem={({ item }) => (
-                        <View style={styles.historyItem}>
-                            <View style={styles.historyTop}>
-                                <View>
-                                    <Text style={styles.historyAmount}>{formatCurrency(item.so_tien_rut)}</Text>
-                                    <Text style={styles.historyBank}>
-                                        {item.ten_ngan_hang} •••• {String(item.so_tai_khoan).slice(-4)}
-                                    </Text>
-                                </View>
-                                {renderStatusBadge(item.trang_thai)}
-                            </View>
-                            <View style={styles.historyMeta}>
-                                <Text style={styles.historyDate}>
-                                    {new Date(item.created_at).toLocaleDateString("vi-VN", {
-                                        day: "2-digit",
-                                        month: "2-digit",
-                                        year: "numeric",
-                                        hour: "2-digit",
-                                        minute: "2-digit",
-                                    })}
-                                </Text>
-                                {item.noi_dung_chuyen_khoan && (
-                                    <Text style={styles.historyRef}>REF: {item.noi_dung_chuyen_khoan}</Text>
-                                )}
-                            </View>
-                        </View>
-                    )}
-                />
-            )}
 
-            {/* MODAL CHỌN NGÂN HÀNG */}
-            <Modal visible={showBankModal} animationType="slide" transparent>
+                    {/* Submit Button */}
+                    <TouchableOpacity
+                        style={[
+                            styles.submitBtn,
+                            (currentAmount < 10000 || !selectedBankId || submitting) && styles.submitBtnDisabled,
+                        ]}
+                        onPress={handleWithdraw}
+                        disabled={currentAmount < 10000 || !selectedBankId || submitting}
+                        activeOpacity={0.85}
+                    >
+                        {submitting ? (
+                            <ActivityIndicator size="small" color="#FFF" />
+                        ) : (
+                            <>
+                                <Text style={styles.submitBtnText}>Rút {formatMoney(currentAmount)}</Text>
+                            </>
+                        )}
+                    </TouchableOpacity>
+
+                    <View style={{ height: insets.bottom > 0 ? insets.bottom + 16 : hp("3%") }} />
+                </ScrollView>
+            </KeyboardAvoidingView>
+
+            {/* Modal Chọn Ngân Hàng */}
+            <Modal
+                visible={showBankModal}
+                animationType="slide"
+                transparent={true}
+                onRequestClose={() => setShowBankModal(false)}
+            >
                 <View style={styles.modalOverlay}>
-                    <View style={styles.modalContent}>
+                    <View style={styles.modalContainer}>
                         <View style={styles.modalHeader}>
-                            <Text style={styles.modalTitle}>Chọn tài khoản ngân hàng</Text>
+                            <Text style={styles.modalTitle}>Chọn Ngân Hàng</Text>
                             <TouchableOpacity onPress={() => setShowBankModal(false)}>
-                                <Ionicons name="close" size={24} color={TEXT_DARK} />
+                                <Ionicons name="close" size={24} color={DARK} />
                             </TouchableOpacity>
                         </View>
-
+                        <TextInput
+                            style={styles.searchInput}
+                            placeholder="Tìm kiếm ngân hàng..."
+                            value={bankSearch}
+                            onChangeText={setBankSearch}
+                        />
                         <FlatList
-                            data={bankAccounts}
-                            keyExtractor={(item) => String(item.id)}
-                            style={styles.bankList}
-                            ListHeaderComponent={
-                                <TouchableOpacity
-                                    style={styles.addBankBtn}
-                                    onPress={() => {
-                                        setShowBankModal(false);
-                                        setIsAddingBank(true);
-                                    }}
-                                >
-                                    <Ionicons name="add-circle" size={22} color={PRIMARY_COLOR} />
-                                    <Text style={styles.addBankText}>Thêm tài khoản mới</Text>
-                                </TouchableOpacity>
-                            }
+                            data={bankList.filter(b => 
+                                b.shortName?.toLowerCase().includes(bankSearch.toLowerCase()) || 
+                                b.name?.toLowerCase().includes(bankSearch.toLowerCase())
+                            )}
+                            keyExtractor={(item) => item.bin}
                             renderItem={({ item }) => (
                                 <TouchableOpacity
-                                    style={styles.bankOption}
+                                    style={styles.bankListItem}
                                     onPress={() => {
-                                        setSelectedBank(item);
+                                        setNewBank({ ...newBank, ten_ngan_hang: item.shortName });
                                         setShowBankModal(false);
                                     }}
                                 >
-                                    <View style={styles.bankIconWrap2}>
-                                        <Ionicons name="business" size={20} color={PRIMARY_COLOR} />
-                                    </View>
-                                    <View style={styles.bankOptionInfo}>
-                                        <Text style={styles.bankOptionName}>{item.ten_ngan_hang}</Text>
-                                        <Text style={styles.bankOptionAccount}>
-                                            {item.chu_tai_khoan} •••• {item.so_tai_khoan.slice(-4)}
-                                        </Text>
-                                    </View>
-                                    {item.is_default && (
-                                        <View style={styles.defaultBadge}>
-                                            <Text style={styles.defaultBadgeText}>Mặc định</Text>
+                                    {item.logo ? (
+                                        <Image source={{ uri: item.logo }} style={styles.bankListLogo} resizeMode="contain" />
+                                    ) : (
+                                        <View style={[styles.bankListLogo, { backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center' }]}>
+                                            <Ionicons name="business" size={16} color={MUTED} />
                                         </View>
                                     )}
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={styles.bankListShortName}>{item.shortName}</Text>
+                                        <Text style={styles.bankListFullName}>{item.name}</Text>
+                                    </View>
                                 </TouchableOpacity>
                             )}
                         />
@@ -487,324 +463,223 @@ const ShipperWithdraw = () => {
                 </View>
             </Modal>
 
-            {/* MODAL THÊM NGÂN HÀNG */}
-            <Modal visible={isAddingBank} animationType="slide" transparent>
-                <KeyboardAvoidingView
-                    behavior={Platform.OS === "ios" ? "padding" : undefined}
-                    style={{ flex: 1 }}
-                >
-                    <View style={styles.modalOverlay}>
-                        <View style={styles.modalContent}>
-                            <View style={styles.modalHeader}>
-                                <Text style={styles.modalTitle}>Thêm tài khoản ngân hàng</Text>
-                                <TouchableOpacity onPress={() => setIsAddingBank(false)}>
-                                    <Ionicons name="close" size={24} color={TEXT_DARK} />
-                                </TouchableOpacity>
-                            </View>
-
-                            <View style={styles.formGroup}>
-                                <Text style={styles.formLabel}>Tên ngân hàng</Text>
-                                <TextInput
-                                    style={styles.formInput}
-                                    placeholder="VD: Vietcombank"
-                                    placeholderTextColor={TEXT_MUTED}
-                                    value={newBank.ten_ngan_hang}
-                                    onChangeText={(t) => setNewBank((p) => ({ ...p, ten_ngan_hang: t }))}
-                                />
-                            </View>
-
-                            <View style={styles.formGroup}>
-                                <Text style={styles.formLabel}>Số tài khoản</Text>
-                                <TextInput
-                                    style={styles.formInput}
-                                    placeholder="Nhập số tài khoản"
-                                    placeholderTextColor={TEXT_MUTED}
-                                    keyboardType="numeric"
-                                    value={newBank.so_tai_khoan}
-                                    onChangeText={(t) => setNewBank((p) => ({ ...p, so_tai_khoan: t }))}
-                                />
-                            </View>
-
-                            <View style={styles.formGroup}>
-                                <Text style={styles.formLabel}>Tên chủ tài khoản</Text>
-                                <TextInput
-                                    style={styles.formInput}
-                                    placeholder="Nhập tên chủ tài khoản"
-                                    placeholderTextColor={TEXT_MUTED}
-                                    autoCapitalize="words"
-                                    value={newBank.chu_tai_khoan}
-                                    onChangeText={(t) => setNewBank((p) => ({ ...p, chu_tai_khoan: t }))}
-                                />
-                            </View>
-
-                            <TouchableOpacity style={styles.saveBankBtn} onPress={handleAddBank}>
-                                <Text style={styles.saveBankBtnText}>Lưu tài khoản</Text>
-                            </TouchableOpacity>
-                        </View>
-                    </View>
-                </KeyboardAvoidingView>
-            </Modal>
-        </SafeAreaView>
+            <CustomAlert
+                visible={alertConfig.visible}
+                type={alertConfig.type}
+                title={alertConfig.title}
+                message={alertConfig.message}
+                buttons={alertConfig.buttons}
+                onDismiss={hideAlert}
+            />
+        </View>
     );
 };
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: BACKGROUND_COLOR },
-    header: {
-        backgroundColor: PRIMARY_COLOR,
+    container: { flex: 1, backgroundColor: BG },
+    headerBg: {
+        backgroundColor: PRIMARY,
+        paddingBottom: hp("2%"),
+        borderBottomLeftRadius: wp("5%"),
+        borderBottomRightRadius: wp("5%"),
+    },
+    headerSafe: { paddingTop: Platform.OS === "android" ? hp("1.5%") : 0 },
+    headerRow: {
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "space-between",
         paddingHorizontal: wp("4%"),
-        paddingVertical: hp("1.5%"),
+        paddingVertical: hp("1.2%"),
     },
     backBtn: { padding: wp("1%") },
-    headerTitle: {
-        color: "#FFF",
-        fontSize: wp("4.5%"),
-        fontWeight: "700",
-    },
-    tabContainer: {
-        flexDirection: "row",
-        backgroundColor: "#FFF",
-        paddingHorizontal: wp("5%"),
-        borderBottomWidth: 1,
-        borderBottomColor: "#E2E8F0",
-    },
-    tab: {
-        flex: 1,
-        paddingVertical: hp("1.5%"),
-        alignItems: "center",
-    },
-    tabActive: {
-        borderBottomWidth: 2,
-        borderBottomColor: PRIMARY_COLOR,
-    },
-    tabText: {
-        fontSize: wp("3.8%"),
-        color: TEXT_MUTED,
-        fontWeight: "500",
-    },
-    tabTextActive: {
-        color: PRIMARY_COLOR,
-        fontWeight: "700",
-    },
-    content: { flex: 1, paddingHorizontal: wp("5%"), paddingTop: hp("2%") },
+    headerTitle: { fontSize: wp("4.5%"), fontWeight: "700", color: "#FFF" },
+    scrollContent: { paddingHorizontal: wp("5%"), paddingTop: hp("2.5%") },
+    
     balanceCard: {
         backgroundColor: "#FFF",
         borderRadius: wp("4%"),
         padding: wp("4%"),
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
         marginBottom: hp("2.5%"),
+        elevation: 3,
+        shadowColor: "#000",
+        shadowOpacity: 0.08,
+        shadowOffset: { width: 0, height: 2 },
+        shadowRadius: 6,
     },
-    balanceHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
-    balanceLabel: { fontSize: wp("3.5%"), color: TEXT_MUTED },
-    balanceValue: {
-        fontSize: wp("8%"),
-        fontWeight: "900",
-        color: TEXT_DARK,
-        marginTop: hp("0.5%"),
-    },
-    sectionTitle: {
-        fontSize: wp("3.8%"),
-        fontWeight: "600",
-        color: TEXT_DARK,
-        marginBottom: hp("1%"),
-    },
-    bankSelector: {
+    balanceLeft: { flexDirection: "row", alignItems: "center" },
+    balanceLabel: { fontSize: wp("3.2%"), color: MUTED, fontWeight: "600" },
+    balanceValue: { fontSize: wp("5%"), fontWeight: "800", color: DARK, marginTop: 2 },
+    withdrawAllText: { fontSize: wp("3.5%"), color: PRIMARY, fontWeight: "700" },
+
+    section: { marginBottom: hp("2.5%") },
+    sectionTitle: { fontSize: wp("3.8%"), fontWeight: "700", color: DARK, marginBottom: hp("1.5%") },
+
+    bankCard: {
         flexDirection: "row",
         alignItems: "center",
         backgroundColor: "#FFF",
         borderRadius: wp("3%"),
-        padding: wp("3.5%"),
-        marginBottom: hp("2.5%"),
-        justifyContent: "space-between",
+        padding: wp("4%"),
+        marginBottom: hp("1%"),
+        borderWidth: 1.5,
+        borderColor: "#E2E8F0",
     },
-    selectedBankInfo: { flexDirection: "row", alignItems: "center", flex: 1 },
-    bankIconWrap: {
-        width: wp("10%"),
-        height: wp("10%"),
-        borderRadius: wp("5%"),
-        backgroundColor: "#FFF5F3",
+    bankCardActive: { borderColor: PRIMARY, backgroundColor: "#FFF5F3" },
+    bankIcon: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: "#F1F5F9",
         justifyContent: "center",
         alignItems: "center",
         marginRight: wp("3%"),
     },
-    bankDetails: { flex: 1 },
-    bankName: { fontSize: wp("3.8%"), fontWeight: "700", color: TEXT_DARK },
-    bankAccount: { fontSize: wp("3%"), color: TEXT_MUTED, marginTop: 2 },
-    noBankSelected: { flexDirection: "row", alignItems: "center", gap: 8, flex: 1 },
-    noBankText: { fontSize: wp("3.8%"), color: PRIMARY_COLOR, fontWeight: "500" },
-    amountInputWrap: {
+    bankName: { fontSize: wp("3.8%"), fontWeight: "700", color: DARK },
+    bankAccount: { fontSize: wp("3.5%"), color: MUTED, marginTop: 2 },
+    bankOwner: { fontSize: wp("3.2%"), color: MUTED, marginTop: 2, textTransform: "uppercase" },
+
+    addBankBtn: {
         flexDirection: "row",
         alignItems: "center",
-        backgroundColor: "#FFF",
-        borderRadius: wp("3%"),
-        paddingHorizontal: wp("4%"),
-        marginBottom: hp("0.5%"),
-    },
-    currencySymbol: {
-        fontSize: wp("7%"),
-        fontWeight: "700",
-        color: TEXT_DARK,
-        marginRight: 4,
-    },
-    amountInput: {
-        flex: 1,
-        fontSize: wp("7%"),
-        fontWeight: "700",
-        color: TEXT_DARK,
+        justifyContent: "center",
         paddingVertical: hp("1.5%"),
-    },
-    minAmount: { fontSize: wp("3%"), color: TEXT_MUTED, marginBottom: hp("1.5%") },
-    quickAmountRow: {
-        flexDirection: "row",
-        gap: wp("2.5%"),
-        marginBottom: hp("3%"),
-    },
-    quickAmountBtn: {
-        flex: 1,
-        backgroundColor: "#FFF",
-        paddingVertical: hp("1.2%"),
+        borderWidth: 1,
+        borderColor: PRIMARY,
+        borderStyle: "dashed",
         borderRadius: wp("3%"),
-        alignItems: "center",
+        marginTop: hp("1%"),
+        gap: 6,
+    },
+    addBankText: { color: PRIMARY, fontWeight: "600", fontSize: wp("3.5%") },
+
+    addBankForm: {
+        backgroundColor: "#FFF",
+        padding: wp("4%"),
+        borderRadius: wp("3%"),
+        marginTop: hp("1%"),
         borderWidth: 1,
         borderColor: "#E2E8F0",
     },
-    quickAmountText: {
-        fontSize: wp("3.3%"),
-        fontWeight: "600",
-        color: PRIMARY_COLOR,
+    addBankTitle: { fontSize: wp("3.8%"), fontWeight: "700", color: DARK, marginBottom: hp("1.5%") },
+    addBankInput: {
+        backgroundColor: "#F8FAFC",
+        borderWidth: 1,
+        borderColor: "#E2E8F0",
+        borderRadius: wp("2%"),
+        paddingHorizontal: wp("3%"),
+        paddingVertical: hp("1.2%"),
+        fontSize: wp("3.5%"),
+        marginBottom: hp("1%"),
     },
-    withdrawBtn: {
-        backgroundColor: PRIMARY_COLOR,
-        paddingVertical: hp("1.8%"),
-        borderRadius: wp("3%"),
-        alignItems: "center",
-        marginBottom: hp("2%"),
-    },
-    withdrawBtnDisabled: {
-        backgroundColor: "#FECACA",
-    },
-    withdrawBtnText: {
-        color: "#FFF",
-        fontSize: wp("4.2%"),
-        fontWeight: "800",
-    },
-    noteCard: {
+    addBankActions: { flexDirection: "row", justifyContent: "flex-end", gap: wp("3%"), marginTop: hp("1%") },
+    addBankBtnCancel: { paddingHorizontal: wp("4%"), paddingVertical: hp("1%") },
+    addBankBtnCancelText: { color: MUTED, fontWeight: "600" },
+    addBankBtnSubmit: { backgroundColor: PRIMARY, paddingHorizontal: wp("5%"), paddingVertical: hp("1%"), borderRadius: wp("2%") },
+    addBankBtnSubmitText: { color: "#FFF", fontWeight: "700" },
+
+    inputRow: {
         flexDirection: "row",
+        alignItems: "center",
         backgroundColor: "#FFF",
-        padding: wp("3.5%"),
         borderRadius: wp("3%"),
-        gap: 8,
-        marginBottom: hp("3%"),
+        borderWidth: 1.5,
+        borderColor: "#E2E8F0",
+        paddingHorizontal: wp("3.5%"),
+        height: hp("6.5%"),
     },
-    noteText: {
-        flex: 1,
-        fontSize: wp("3%"),
-        color: TEXT_MUTED,
-        lineHeight: 18,
-    },
-    historyList: { padding: wp("5%"), paddingBottom: hp("10%") },
-    emptyHistory: { alignItems: "center", marginTop: hp("10%") },
-    emptyText: { fontSize: wp("3.8%"), color: TEXT_MUTED, marginTop: hp("1.5%") },
-    historyItem: {
+    inputIcon: { marginRight: wp("2%") },
+    input: { flex: 1, fontSize: wp("3.8%"), color: DARK },
+    inputSuffix: { fontSize: wp("3.8%"), color: MUTED, fontWeight: "600" },
+    errorText: { color: "#EF4444", fontSize: wp("3%"), marginTop: 4, marginLeft: 4 },
+
+    presetGrid: { flexDirection: "row", flexWrap: "wrap", gap: wp("2.5%"), marginBottom: hp("2.5%") },
+    presetBtn: {
+        paddingHorizontal: wp("4%"),
+        paddingVertical: hp("1.2%"),
+        borderRadius: wp("3%"),
+        borderWidth: 1.5,
+        borderColor: "#E2E8F0",
         backgroundColor: "#FFF",
+    },
+    presetBtnActive: { borderColor: PRIMARY, backgroundColor: "#FFF5F3" },
+    presetBtnText: { fontSize: wp("3.5%"), fontWeight: "600", color: MUTED },
+    presetBtnTextActive: { color: PRIMARY, fontWeight: "800" },
+
+    infoBox: {
+        flexDirection: "row",
+        alignItems: "flex-start",
+        backgroundColor: "#EFF6FF",
         borderRadius: wp("3%"),
         padding: wp("4%"),
-        marginBottom: hp("1.5%"),
+        gap: 10,
+        marginBottom: hp("3%"),
     },
-    historyTop: {
-        flexDirection: "row",
-        justifyContent: "space-between",
-        alignItems: "flex-start",
+    infoText: { flex: 1, fontSize: wp("3.2%"), color: "#1E40AF", lineHeight: 18 },
+
+    submitBtn: {
+        backgroundColor: PRIMARY,
+        borderRadius: wp("3%"),
+        paddingVertical: hp("2%"),
+        alignItems: "center",
+        justifyContent: "center",
+        elevation: 3,
+        shadowColor: PRIMARY,
+        shadowOpacity: 0.3,
+        shadowOffset: { width: 0, height: 3 },
+        shadowRadius: 5,
     },
-    historyAmount: { fontSize: wp("4.5%"), fontWeight: "800", color: TEXT_DARK },
-    historyBank: { fontSize: wp("3%"), color: TEXT_MUTED, marginTop: 2 },
-    statusBadge: {
-        paddingHorizontal: wp("2.5%"),
-        paddingVertical: hp("0.4%"),
-        borderRadius: wp("2%"),
-    },
-    statusText: { fontSize: wp("2.8%"), fontWeight: "600" },
-    historyMeta: { marginTop: hp("1%") },
-    historyDate: { fontSize: wp("2.8%"), color: TEXT_MUTED },
-    historyRef: { fontSize: wp("2.5%"), color: TEXT_MUTED, marginTop: 2 },
+    submitBtnDisabled: { opacity: 0.45 },
+    submitBtnText: { color: "#FFF", fontSize: wp("4%"), fontWeight: "800" },
+
+    // Modal Ngân Hàng
     modalOverlay: {
         flex: 1,
         backgroundColor: "rgba(0,0,0,0.5)",
         justifyContent: "flex-end",
     },
-    modalContent: {
+    modalContainer: {
         backgroundColor: "#FFF",
         borderTopLeftRadius: wp("5%"),
         borderTopRightRadius: wp("5%"),
-        maxHeight: "80%",
+        height: hp("70%"),
+        paddingBottom: hp("4%"),
     },
     modalHeader: {
         flexDirection: "row",
         justifyContent: "space-between",
         alignItems: "center",
-        padding: wp("5%"),
+        padding: wp("4%"),
         borderBottomWidth: 1,
         borderBottomColor: "#E2E8F0",
     },
-    modalTitle: { fontSize: wp("4.2%"), fontWeight: "700", color: TEXT_DARK },
-    bankList: { paddingHorizontal: wp("5%"), paddingBottom: hp("5%") },
-    addBankBtn: {
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 10,
-        paddingVertical: hp("1.5%"),
-        marginBottom: hp("1%"),
+    modalTitle: { fontSize: wp("4.5%"), fontWeight: "700", color: DARK },
+    searchInput: {
+        margin: wp("4%"),
+        paddingHorizontal: wp("3%"),
+        paddingVertical: hp("1%"),
+        borderWidth: 1,
+        borderColor: "#CBD5E1",
+        borderRadius: wp("2%"),
+        backgroundColor: "#F8FAFC",
     },
-    addBankText: { fontSize: wp("3.8%"), color: PRIMARY_COLOR, fontWeight: "600" },
-    bankOption: {
+    bankListItem: {
         flexDirection: "row",
         alignItems: "center",
-        paddingVertical: hp("1.5%"),
+        padding: wp("4%"),
         borderBottomWidth: 1,
         borderBottomColor: "#F1F5F9",
     },
-    bankIconWrap2: {
-        width: wp("10%"),
-        height: wp("10%"),
-        borderRadius: wp("5%"),
-        backgroundColor: "#FFF5F3",
-        justifyContent: "center",
-        alignItems: "center",
+    bankListLogo: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
         marginRight: wp("3%"),
     },
-    bankOptionInfo: { flex: 1 },
-    bankOptionName: { fontSize: wp("3.8%"), fontWeight: "600", color: TEXT_DARK },
-    bankOptionAccount: { fontSize: wp("3%"), color: TEXT_MUTED, marginTop: 2 },
-    defaultBadge: {
-        backgroundColor: "#DCFCE7",
-        paddingHorizontal: wp("2%"),
-        paddingVertical: hp("0.3%"),
-        borderRadius: wp("1.5%"),
-    },
-    defaultBadgeText: { fontSize: wp("2.5%"), color: "#16A34A", fontWeight: "600" },
-    formGroup: { marginBottom: hp("2%"), paddingHorizontal: wp("5%") },
-    formLabel: { fontSize: wp("3.5%"), fontWeight: "600", color: TEXT_DARK, marginBottom: hp("0.8%") },
-    formInput: {
-        backgroundColor: "#F8FAFC",
-        borderRadius: wp("3%"),
-        paddingHorizontal: wp("4%"),
-        paddingVertical: hp("1.5%"),
-        fontSize: wp("3.8%"),
-        color: TEXT_DARK,
-        borderWidth: 1,
-        borderColor: "#E2E8F0",
-    },
-    saveBankBtn: {
-        backgroundColor: PRIMARY_COLOR,
-        marginHorizontal: wp("5%"),
-        paddingVertical: hp("1.8%"),
-        borderRadius: wp("3%"),
-        alignItems: "center",
-        marginBottom: hp("3%"),
-    },
-    saveBankBtnText: { color: "#FFF", fontSize: wp("4%"), fontWeight: "800" },
+    bankListShortName: { fontSize: wp("3.8%"), fontWeight: "700", color: DARK },
+    bankListFullName: { fontSize: wp("3%"), color: MUTED, marginTop: 2 },
 });
 
 export default ShipperWithdraw;

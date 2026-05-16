@@ -192,7 +192,7 @@ const AddressBook = ({ navigation }: any) => {
                 (pos) => {
                     setManualCoord({ lng: pos.coords.longitude, lat: pos.coords.latitude });
                     setGettingGPS(false);
-                    showAlert("success", "Đã lấy vị trí GPS", "✅ Vị trí chính xác đã được ghi nhận. Nhấn Lưu để hoàn tất.");
+                    showAlert("success", "Đã lấy vị trí GPS", "Vị trí chính xác đã được ghi nhận. Nhấn Lưu để hoàn tất.");
                 },
                 () => {
                     showAlert("error", "Không lấy được GPS", "Hãy bật GPS và thử lại.");
@@ -492,7 +492,7 @@ const AddressBook = ({ navigation }: any) => {
                             {manualCoord && (
                                 <View style={styles.coordConfirmedBanner}>
                                     <Ionicons name="checkmark-circle" size={16} color="#10B981" />
-                                    <Text style={styles.coordConfirmedText}>✅ Đã ghim tọa độ chính xác</Text>
+                                    <Text style={styles.coordConfirmedText}>Đã ghim tọa độ chính xác</Text>
                                     <TouchableOpacity onPress={() => setManualCoord(null)}>
                                         <Ionicons name="close-circle" size={18} color="#EF4444" />
                                     </TouchableOpacity>
@@ -505,7 +505,7 @@ const AddressBook = ({ navigation }: any) => {
                                     onPress={() => setMapPickerVisible(true)}
                                 >
                                     <Ionicons name="map-outline" size={16} color="#FFF" />
-                                    <Text style={styles.coordBtnText}>🗺️ Ghim trên bản đồ</Text>
+                                    <Text style={styles.coordBtnText}>Ghim trên bản đồ</Text>
                                 </TouchableOpacity>
                                 {/* GPS button */}
                                 <TouchableOpacity
@@ -518,11 +518,11 @@ const AddressBook = ({ navigation }: any) => {
                                     ) : (
                                         <Ionicons name="locate-outline" size={16} color="#FFF" />
                                     )}
-                                    <Text style={styles.coordBtnText}>{gettingGPS ? "GPS..." : "📍 GPS"}</Text>
+                                    <Text style={styles.coordBtnText}>{gettingGPS ? "GPS..." : "GPS"}</Text>
                                 </TouchableOpacity>
                             </View>
                             {!manualCoord && (
-                                <Text style={styles.gpsHint}>⚠️ Bắt buộc ghim vị trí trước khi lưu. Dùng "Ghim bản đồ" để tìm từ xa, hoặc "GPS" khi đứng tại địa chỉ.</Text>
+                                <Text style={styles.gpsHint}>Bắt buộc ghim vị trí trước khi lưu. Dùng "Ghim bản đồ" để tìm từ xa, hoặc "GPS" khi đứng tại địa chỉ.</Text>
                             )}
 
                             <TouchableOpacity
@@ -530,7 +530,7 @@ const AddressBook = ({ navigation }: any) => {
                                 onPress={handleSubmit} disabled={submitting}
                             >
                                 <Text style={styles.submitBtnText}>
-                                    {submitting ? "Đang lưu..." : !manualCoord ? "📍 Ghim vị trí để tiếp tục" : editingId ? "Cập nhật" : "Lưu địa chỉ"}
+                                    {submitting ? "Đang lưu..." : !manualCoord ? "Ghim vị trí để tiếp tục" : editingId ? "Cập nhật" : "Lưu địa chỉ"}
                                 </Text>
                             </TouchableOpacity>
                         </ScrollView>

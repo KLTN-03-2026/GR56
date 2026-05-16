@@ -69,7 +69,6 @@ function AnimatIcon({ name_icon, focused, color, size }: { name_icon: string; fo
 
 // Navigator cho người dùng - 5 mục
 function UserTabs() {
-  // ── Theo dõi thay đổi trạng thái đơn hàng mỗi 30 giây ──
   useEffect(() => {
     const STATUS_NOTIF: Record<number, { title: string; desc: (o: any) => string; icon: string }> = {
       1: { title: "Đơn hàng đã được xác nhận", desc: (o) => `${o.ten_quan_an} đã xác nhận đơn ${o.ma_don_hang}`, icon: "checkmark-circle" },
@@ -197,6 +196,15 @@ function UserTabs() {
       <Tab.Screen name="Wishlist" component={Favorites} options={{ title: "Yêu thích" }} />
       <Tab.Screen name="Profile" component={Profile} options={{ title: "Tôi" }} />
     </Tab.Navigator>
+  );
+}
+
+// Stack cho người dùng - chứa Tab + các màn hình con giữ TabBar
+function UserStack() {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="UserTabs" component={UserTabs} />
+    </Stack.Navigator>
   );
 }
 
@@ -332,8 +340,7 @@ const App = () => {
           <Stack.Screen name="GetStart" component={GetStart} />
           <Stack.Screen name="RestaurantDetail" component={RestaurantDetail} />
           <Stack.Screen name="ChatWithRestaurant" component={ChatWithShop} />
-          <Stack.Screen name="ChatWithShipper" component={ChatWithShop} />
-          <Stack.Screen name="ChatWithCustomer" component={ChatWithCustomer} /> 
+          <Stack.Screen name="ChatWithShipper" component={ChatWithShop} /> 
           <Stack.Screen name="ForgotPassword" component={ForgotPassword} />
           <Stack.Screen name="ProfileDetail" component={ProfileDetail} />
           <Stack.Screen name="ShipperRegister" component={ShipperRegister} /> 
@@ -343,19 +350,18 @@ const App = () => {
           <Stack.Screen name="AllRestaurantsSale" component={AllRestaurantsSale} />
           <Stack.Screen name="AllDishesOnSale" component={AllDishesOnSale} />
           <Stack.Screen name="Cart" component={Cart} />
+          <Stack.Screen name="HelpCenter" component={HelpCenter} options={{ headerShown: false }} />
           <Stack.Screen name="ShipperProfileDetail" component={ShipperProfileDetail} />
           <Stack.Screen name="ShipperChangePassword" component={ShipperChangePassword} />
           <Stack.Screen name="ShipperTopUp" component={ShipperTopUp} />
           <Stack.Screen name="FoodReview" component={FoodReview} />
-          <Stack.Screen name="PayOSPayment" component={PayOSPayment} />
-          <Stack.Screen name="Notification" component={Notification} />
           <Stack.Screen name="AppUpdate" component={AppUpdate} />
           <Stack.Screen name="ShipperSupport" component={ShipperSupport} />
           <Stack.Screen name="ShipperWithdraw" component={ShipperWithdraw} />
-          <Stack.Screen name="HelpCenter" component={HelpCenter} options={{ headerShown: false }} />
+          <Stack.Screen name="ChatWithCustomer" component={ChatWithCustomer} />
 
           {/* Define both navigation tab roots so we can navigate manually from Login */}
-          <Stack.Screen name="MainTabs" component={UserTabs} />
+          <Stack.Screen name="MainTabs" component={UserStack} />
           <Stack.Screen name="ShipperTabs" component={ShipperTabs} />
         </Stack.Navigator>
       </NavigationContainer>
