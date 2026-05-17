@@ -13,6 +13,7 @@ export interface StoredNotification {
   time: string;
   isRead: boolean;
   badgeLabel: string;
+  link?: string;
   createdAt: number;
 }
 
@@ -42,13 +43,14 @@ export const loadNotifications = async (): Promise<StoredNotification[]> => {
 };
 
 export const saveNotification = async (
-  item: Pick<StoredNotification, "type" | "title" | "description" | "icon" | "badgeLabel">
+  item: Pick<StoredNotification, "type" | "title" | "description" | "icon" | "badgeLabel"> & { link?: string }
 ): Promise<void> => {
   try {
     const now = Date.now();
     const newItem: StoredNotification = {
       ...item,
       id: `notif_${now}_${Math.random().toString(36).slice(2, 7)}`,
+      link: item.link || "",
       time: "Vừa xong",
       isRead: false,
       createdAt: now,

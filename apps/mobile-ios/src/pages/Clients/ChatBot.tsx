@@ -10,6 +10,7 @@ import {
   Platform,
   Image,
   Animated,
+  Linking,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -25,6 +26,31 @@ import { API_CHATBOT_URL } from "../../genaral/api";
 // Constants
 // ════════════════════════════════════════════════════════
 const CHAT_HISTORY_KEY = "@chatbot_history";
+const SESSION_TOKEN_KEY = "@chatbot_session_token";
+
+const formatMessageText = (text: string | undefined) => {
+  if (!text) return null;
+  const parts = text.split(/(\*\*.*?\*\*|\*.*?\*|<strong>.*?<\/strong>|<em>.*?<\/em>|<br\/>|<br>)/g);
+  return parts.map((part, index) => {
+    if (!part) return null;
+    if (part.startsWith('**') && part.endsWith('**')) {
+      return <Text key={index} style={{ fontWeight: 'bold' }}>{part.slice(2, -2)}</Text>;
+    }
+    if (part.startsWith('*') && part.endsWith('*')) {
+      return <Text key={index} style={{ fontStyle: 'italic' }}>{part.slice(1, -1)}</Text>;
+    }
+    if (part.startsWith('<strong>') && part.endsWith('</strong>')) {
+      return <Text key={index} style={{ fontWeight: 'bold' }}>{part.slice(8, -9)}</Text>;
+    }
+    if (part.startsWith('<em>') && part.endsWith('</em>')) {
+      return <Text key={index} style={{ fontStyle: 'italic' }}>{part.slice(4, -5)}</Text>;
+    }
+    if (part === '<br/>' || part === '<br>') {
+      return <Text key={index}>{"\n"}</Text>;
+    }
+    return <Text key={index}>{part}</Text>;
+  });
+};
 
 const COLORS = {
   PRIMARY: "#EE4D2D",
@@ -38,6 +64,27 @@ const COLORS = {
   WARNING: "#f59e0b",
 };
 
+interface PaymentInfo {
+  ma_don_hang: string;
+  tong_tien: number | string;
+  qr_code?: string;
+  checkout_url?: string;
+  message?: string;
+}
+
+interface RestaurantItem {
+  id: number;
+  name: string;
+  image: string;
+  address: string;
+  rating?: number;
+  so_mon?: number;
+  min_price?: number;
+  max_price?: number;
+  open_time?: string;
+  close_time?: string;
+}
+
 interface FoodItem {
   id: number;
   id_quan_an: number;
@@ -45,6 +92,7 @@ interface FoodItem {
   description: string;
   price: number;
   sale_price?: number;
+  original_price?: number;
   discount_percent?: number;
   is_on_sale: boolean;
   hinh_anh: string;
@@ -52,6 +100,8 @@ interface FoodItem {
   address: string;
   category: string;
   slug: string;
+  rating?: number;
+  so_danh_gia?: number;
 }
 
 interface Message {
@@ -60,6 +110,8 @@ interface Message {
   text?: string;
   quickReplies?: string[];
   foods?: FoodItem[];
+  restaurants?: RestaurantItem[];
+  payment?: PaymentInfo;
   time: string;
 }
 
@@ -85,6 +137,7 @@ const INITIAL_MESSAGE: Message = {
 // ════════════════════════════════════════════════════════
 const ChatBot: React.FC<ChatBotProps> = ({ navigation }) => {
   const [messages, setMessages] = useState<Message[]>([INITIAL_MESSAGE]);
+  const [sessionToken, setSessionToken] = useState<string>("");
   const [inputText, setInputText] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
@@ -121,6 +174,46 @@ const ChatBot: React.FC<ChatBotProps> = ({ navigation }) => {
         try {
           const saved: Message[] = JSON.parse(raw);
           if (saved.length > 0) setMessages(saved);
+        } catch (_) {}
+      }
+    });
+    AsyncStorage.getItem(SESSION_TOKEN_KEY).then(async (token) => {
+      if (token) {
+        setSessionToken(token);
+        // Start BE session using stored token (resume) or create new
+        try {
+          const apiBase = "https://be.foodbee.io.vn";
+          const rawUser = await AsyncStorage.getItem('userData');
+          const khId = rawUser ? (() => { try { const p = JSON.parse(rawUser); return p?.id ?? null; } catch { return null; } })() : null;
+          const res = await fetch(`${apiBase}/api/chatbot/session/start`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify({ id_khach_hang: khId, session_token: token }),
+          });
+          const data = await res.json();
+          if (data?.status && data?.session_id) {
+            // Save BE session_id for later use
+            await AsyncStorage.setItem('@chatbot_be_session_id', String(data.session_id));
+          }
+        } catch (_) {}
+      } else {
+        // No token → create new BE session
+        try {
+          const apiBase = "https://be.foodbee.io.vn";
+          const rawUser = await AsyncStorage.getItem('userData');
+          const khId = rawUser ? (() => { try { const p = JSON.parse(rawUser); return p?.id ?? null; } catch { return null; } })() : null;
+          const res = await fetch(`${apiBase}/api/chatbot/session/start`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify({ id_khach_hang: khId }),
+          });
+          const data = await res.json();
+          if (data?.status && data?.session_token) {
+            const newToken = data.session_token;
+            setSessionToken(newToken);
+            await AsyncStorage.setItem(SESSION_TOKEN_KEY, newToken);
+            await AsyncStorage.setItem('@chatbot_be_session_id', String(data.session_id ?? ''));
+          }
         } catch (_) {}
       }
     });
@@ -197,7 +290,8 @@ const ChatBot: React.FC<ChatBotProps> = ({ navigation }) => {
       const requestBody = { 
         message: text.trim(),
         history: history,
-        user_context: user_context
+        user_context: user_context,
+        session_token: sessionToken || null,
       };
       let response: Response | null = null;
       let usedEndpoint = "";
@@ -238,12 +332,16 @@ const ChatBot: React.FC<ChatBotProps> = ({ navigation }) => {
       try {
         data = JSON.parse(rawText);
         console.log("📥 [ChatBot] PARSED JSON →", JSON.stringify(data, null, 2));
+        if (data?.session_token && data.session_token !== sessionToken) {
+          setSessionToken(data.session_token);
+          AsyncStorage.setItem(SESSION_TOKEN_KEY, data.session_token).catch(() => {});
+        }
       } catch (parseErr) {
         console.warn("⚠️ [ChatBot] Response không phải JSON:", rawText);
       }
 
       // Thử lấy text từ các key phổ biến của Python chatbot
-      const botText =
+      let botText =
         data?.response ??
         data?.reply ??
         data?.message ??
@@ -252,25 +350,137 @@ const ChatBot: React.FC<ChatBotProps> = ({ navigation }) => {
         (typeof data === "string" ? data : null) ??
         rawText;
 
-      console.log("✅ [ChatBot] BOT TEXT →", botText);
-      console.log("✅ [ChatBot] FOODS →", JSON.stringify(data?.foods ?? []));
+      // ── Extract foods ──────────────────────────────────────────
+      let foods: FoodItem[] | undefined;
+      if (data?.foods && Array.isArray(data.foods) && data.foods.length > 0) {
+        foods = data.foods.map((f: any) => ({
+          id: f.id,
+          id_quan_an: f.id_quan_an,
+          title: f.title || f.ten_mon_an || '',
+          description: f.description || f.mo_ta || '',
+          price: f.price || f.gia_ban || 0,
+          sale_price: f.sale_price || f.gia_khuyen_mai || undefined,
+          original_price: f.original_price || f.gia_ban || undefined,
+          discount_percent: f.discount_percent ||
+            (f.sale_price && f.price ? Math.round((1 - f.sale_price / f.price) * 100) : undefined),
+          is_on_sale: !!(f.sale_price && f.sale_price < f.price),
+          hinh_anh: f.hinh_anh || f.image || '',
+          restaurant: f.restaurant || f.ten_quan_an || '',
+          address: f.address || f.dia_chi || '',
+          category: f.category || f.ten_danh_muc || '',
+          slug: f.slug || '',
+          rating: f.rating || 0,
+          so_danh_gia: f.so_danh_gia || 0,
+        }));
+      }
 
-      const quickReplies: string[] | undefined =
+      // ── Extract restaurants ───────────────────────────────────
+      let restaurants: RestaurantItem[] | undefined;
+      if (data?.restaurants && Array.isArray(data.restaurants) && data.restaurants.length > 0) {
+        restaurants = data.restaurants.map((r: any) => ({
+          id: r.id || r.id_quan_an || 0,
+          name: r.name || r.ten_quan_an || '',
+          image: r.image || r.hinh_anh || '',
+          address: r.address || r.dia_chi || '',
+          rating: r.rating || 0,
+          so_mon: r.so_mon || 0,
+          min_price: r.min_price || 0,
+          max_price: r.max_price || 0,
+          open_time: r.open_time || '',
+          close_time: r.close_time || '',
+        }));
+      }
+
+      // ── Extract payment ──────────────────────────────────────
+      let payment: PaymentInfo | undefined = undefined;
+      if (typeof botText === "string") {
+        const paymentIdx = botText.indexOf('__PAYMENT__');
+        if (paymentIdx !== -1) {
+          try {
+            const paymentJson = botText.substring(paymentIdx + '__PAYMENT__'.length);
+            payment = JSON.parse(paymentJson);
+            botText = botText.substring(0, paymentIdx);
+          } catch (e) {
+            console.error("Lỗi parse payment JSON:", e);
+          }
+        }
+      }
+
+      // ── Quick replies + options ───────────────────────────────
+      let quickReplies: string[] | undefined =
         data?.quick_replies ?? data?.suggestions ?? data?.options ?? undefined;
-      const foods: FoodItem[] | undefined =
-        Array.isArray(data?.foods) && data.foods.length > 0 ? data.foods : undefined;
 
+      if (data?.options_step === 'select_size' && data?.size_options) {
+        quickReplies = data.size_options.map((s: any, i: number) => String(i + 1));
+      } else if (data?.options_step === 'select_topping' && data?.topping_options) {
+        quickReplies = data.topping_options.map((t: any, i: number) => String(i + 1));
+        quickReplies.push("Xong");
+      }
+
+      if (data?.buttons && Array.isArray(data.buttons)) {
+        const btnTexts = data.buttons.map((b: any) => b.message || b.text);
+        quickReplies = quickReplies ? [...quickReplies, ...btnTexts] : btnTexts;
+      }
+
+      // ── Send user message to BE for analytics ────────────────
+      try {
+        const beSessionId = await AsyncStorage.getItem('@chatbot_be_session_id');
+        if (beSessionId && beSessionId !== 'null' && beSessionId !== '') {
+          const apiBase = "https://be.foodbee.io.vn";
+          await fetch(`${apiBase}/api/chatbot/session/${beSessionId}/message`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify({
+              role: 'user',
+              content: text.trim(),
+              meta: { intent: 'unknown', response_type: 'text' },
+            }),
+          }).catch(() => {});
+        }
+      } catch (_) {}
+
+      // ── Send bot response to BE for analytics ────────────────
+      try {
+        const beSessionId = await AsyncStorage.getItem('@chatbot_be_session_id');
+        if (beSessionId && beSessionId !== 'null' && beSessionId !== '') {
+          const apiBase = "https://be.foodbee.io.vn";
+          let intent = 'unknown';
+          let responseType = 'text';
+          if (foods && foods.length > 0) { intent = 'search_food'; responseType = 'recommendation'; }
+          else if (restaurants && restaurants.length > 0) { intent = 'search_restaurant'; responseType = 'recommendation'; }
+          else if (payment) { intent = 'order_placed'; responseType = 'order'; }
+          else if (data?.buttons && data.buttons.length > 0) { intent = 'confirm_action'; responseType = 'text'; }
+
+          await fetch(`${apiBase}/api/chatbot/session/${beSessionId}/message`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify({
+              role: 'assistant',
+              content: typeof botText === 'string' ? botText.substring(0, 255) : String(botText ?? '').substring(0, 255),
+              meta: { intent, response_type: responseType, entities: {} },
+            }),
+          }).catch(() => {});
+        }
+      } catch (_) {}
+
+      console.log("✅ [ChatBot] BOT TEXT →", botText);
+      console.log("✅ [ChatBot] FOODS →", JSON.stringify(foods ?? []));
+
+      // ── Compose bot message ────────────────────────────────
       const botMessage: Message = {
         id: Date.now().toString(),
         type: "bot",
-        text: foods ? (botText !== rawText ? String(botText) : undefined) : String(botText),
+        text: (foods || restaurants || payment) ? (botText !== rawText ? String(botText) : undefined) : String(botText),
         quickReplies,
         foods,
+        restaurants,
+        payment,
         time: new Date().toLocaleTimeString("vi-VN", {
           hour: "2-digit",
           minute: "2-digit",
         }),
       };
+      console.log("✅ [ChatBot] BOT MESSAGE →", { hasFoods: !!foods, foodsCount: foods?.length });
       setMessages((prev) => [...prev, botMessage]);
     } catch (error: any) {
       console.error("❌ [ChatBot] ERROR →", error?.message ?? error);
@@ -319,7 +529,7 @@ const ChatBot: React.FC<ChatBotProps> = ({ navigation }) => {
               isUser ? styles.userText : styles.botText,
             ]}
           >
-            {item.text}
+            {isUser ? item.text : formatMessageText(item.text)}
           </Text>
           <Text style={styles.messageTime}>{item.time}</Text>
         </View>
@@ -336,60 +546,148 @@ const ChatBot: React.FC<ChatBotProps> = ({ navigation }) => {
   const renderFoodCards = (message: Message) => {
     if (!message.foods || message.foods.length === 0 || message.type === "user") return null;
     return (
-      <ScrollView
-        key={`foods-${message.id}`}
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.foodScrollView}
-        contentContainerStyle={styles.foodScrollContent}
-        keyboardShouldPersistTaps="handled"
-      >
-        {message.foods.map((food) => (
-          <TouchableOpacity
-            key={food.id}
-            style={styles.foodCard}
-            activeOpacity={0.85}
-            onPress={() =>
-              navigation.navigate("RestaurantDetail", { id: food.id_quan_an })
-            }
-          >
-            <Image
-              source={{ uri: food.hinh_anh }}
-              style={styles.foodImage}
-              resizeMode="cover"
-            />
-            {food.is_on_sale && food.discount_percent != null && (
-              <View style={styles.foodBadge}>
-                <Text style={styles.foodBadgeText}>
-                  -{Math.round(food.discount_percent)}%
+      <View style={styles.foodCardsContainer}>
+        <Text style={styles.foodCardsTitle}>🍜 Gợi ý cho bạn</Text>
+        <ScrollView
+          key={`foods-${message.id}`}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.foodScrollView}
+          contentContainerStyle={styles.foodScrollContent}
+          keyboardShouldPersistTaps="handled"
+        >
+          {message.foods.map((food) => (
+            <TouchableOpacity
+              key={food.id}
+              style={styles.foodCard}
+              activeOpacity={0.85}
+              onPress={() =>
+                handleSendMessage(`tôi muốn đặt món: ${food.title}`)
+              }
+            >
+              <Image
+                source={{ uri: food.hinh_anh }}
+                style={styles.foodImage}
+                resizeMode="cover"
+              />
+              {food.is_on_sale && food.discount_percent != null && (
+                <View style={styles.foodBadge}>
+                  <Text style={styles.foodBadgeText}>
+                    -{Math.round(food.discount_percent)}%
+                  </Text>
+                </View>
+              )}
+              <View style={styles.foodInfo}>
+                <Text style={styles.foodTitle} numberOfLines={2}>{food.title}</Text>
+                <Text style={styles.foodRestaurant} numberOfLines={1}>
+                  🍴 {food.restaurant}
                 </Text>
-              </View>
-            )}
-            <View style={styles.foodInfo}>
-              <Text style={styles.foodTitle} numberOfLines={2}>{food.title}</Text>
-              <Text style={styles.foodRestaurant} numberOfLines={1}>
-                🍴 {food.restaurant}
-              </Text>
-              <View style={styles.foodPriceRow}>
-                {food.is_on_sale && food.sale_price != null ? (
-                  <>
+                {food.address ? (
+                  <Text style={styles.foodAddress} numberOfLines={1}>
+                    📍 {food.address}
+                  </Text>
+                ) : null}
+                <View style={styles.foodPriceRow}>
+                  {food.is_on_sale && food.sale_price != null ? (
+                    <>
+                      <Text style={styles.foodSalePrice}>
+                        {food.sale_price.toLocaleString("vi-VN")}đ
+                      </Text>
+                      <Text style={styles.foodOriginalPrice}>
+                        {food.price.toLocaleString("vi-VN")}đ
+                      </Text>
+                    </>
+                  ) : (
                     <Text style={styles.foodSalePrice}>
-                      {food.sale_price.toLocaleString("vi-VN")}đ
-                    </Text>
-                    <Text style={styles.foodOriginalPrice}>
                       {food.price.toLocaleString("vi-VN")}đ
                     </Text>
-                  </>
-                ) : (
-                  <Text style={styles.foodSalePrice}>
-                    {food.price.toLocaleString("vi-VN")}đ
-                  </Text>
-                )}
+                  )}
+                </View>
+                {food.rating ? (
+                  <View style={styles.foodRatingRow}>
+                    <Text style={styles.foodRating}>⭐ {food.rating}/5</Text>
+                    {food.so_danh_gia ? (
+                      <Text style={styles.foodRatingCount}>({food.so_danh_gia})</Text>
+                    ) : null}
+                  </View>
+                ) : null}
               </View>
-            </View>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+    );
+  };
+
+  const renderRestaurantCards = (message: Message) => {
+    if (!message.restaurants || message.restaurants.length === 0 || message.type === "user") return null;
+    return (
+      <View style={styles.foodCardsContainer}>
+        <Text style={styles.foodCardsTitle}>🏪 Gợi ý {message.restaurants.length} quán ngon</Text>
+        <ScrollView
+          key={`rests-${message.id}`}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.foodScrollView}
+          contentContainerStyle={styles.foodScrollContent}
+          keyboardShouldPersistTaps="handled"
+        >
+          {message.restaurants.map((rest) => (
+            <TouchableOpacity
+              key={rest.id}
+              style={styles.foodCard}
+              activeOpacity={0.85}
+              onPress={() =>
+                handleSendMessage(`chọn quán: ${rest.name}`)
+              }
+            >
+              <Image
+                source={{ uri: rest.image }}
+                style={styles.foodImage}
+                resizeMode="cover"
+              />
+              <View style={styles.foodInfo}>
+                <Text style={styles.foodTitle} numberOfLines={2}>{rest.name}</Text>
+                {rest.address ? (
+                  <Text style={styles.foodAddress} numberOfLines={1}>📍 {rest.address}</Text>
+                ) : null}
+                {rest.rating || rest.so_mon ? (
+                  <View style={styles.foodRatingRow}>
+                    {rest.rating ? <Text style={styles.foodRating}>⭐ {rest.rating}/5</Text> : null}
+                    {rest.so_mon ? <Text style={styles.foodRatingCount}>🍽️ {rest.so_mon} món</Text> : null}
+                  </View>
+                ) : null}
+              </View>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+    );
+  };
+
+  const renderPaymentCard = (message: Message) => {
+    if (!message.payment || message.type === "user") return null;
+    const { ma_don_hang, tong_tien, qr_code, checkout_url, message: paymentMsg } = message.payment;
+    return (
+      <View style={{ marginHorizontal: wp("4%"), marginVertical: hp("1%"), padding: 15, backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: COLORS.BORDER, alignItems: "center", shadowColor: "#000", shadowOffset: {width: 0, height: 2}, shadowOpacity: 0.1, shadowRadius: 4, elevation: 3 }}>
+        <Text style={{ fontSize: 16, fontWeight: "bold", color: COLORS.TEXT_DARK, marginBottom: 5 }}>💳 Thanh toán đơn hàng</Text>
+        {ma_don_hang ? <Text style={{ fontSize: 13, color: COLORS.TEXT_LIGHT, marginBottom: 2 }}>Mã ĐH: {ma_don_hang}</Text> : null}
+        {tong_tien ? <Text style={{ fontSize: 18, fontWeight: "bold", color: COLORS.PRIMARY, marginBottom: 10 }}>{Number(tong_tien).toLocaleString("vi-VN")}đ</Text> : null}
+        {qr_code ? (
+          <Image source={{ uri: qr_code }} style={{ width: 160, height: 160, borderRadius: 8, borderWidth: 1, borderColor: "#e2e8f0", marginBottom: 10 }} resizeMode="contain" />
+        ) : null}
+        {paymentMsg ? <Text style={{ fontSize: 12, color: COLORS.WARNING, textAlign: "center", marginBottom: 10 }}>{paymentMsg}</Text> : null}
+        {checkout_url ? (
+          <TouchableOpacity 
+            style={{ backgroundColor: COLORS.PRIMARY, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 20 }}
+            onPress={() => {
+              Linking.openURL(checkout_url).catch(()=>console.log("Cannot open url"));
+            }}
+          >
+            <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 13 }}>Thanh toán qua PayOS</Text>
           </TouchableOpacity>
-        ))}
-      </ScrollView>
+        ) : null}
+      </View>
     );
   };
 
@@ -429,7 +727,9 @@ const ChatBot: React.FC<ChatBotProps> = ({ navigation }) => {
           <TouchableOpacity
             onPress={() => {
               setMessages([INITIAL_MESSAGE]);
+              setSessionToken("");
               AsyncStorage.removeItem(CHAT_HISTORY_KEY);
+              AsyncStorage.removeItem(SESSION_TOKEN_KEY);
             }}
             hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
           >
@@ -464,6 +764,8 @@ const ChatBot: React.FC<ChatBotProps> = ({ navigation }) => {
           {messages.map((message) => (
             <View key={message.id}>
               {renderMessage(message)}
+              {renderPaymentCard(message)}
+              {renderRestaurantCards(message)}
               {renderFoodCards(message)}
               {renderQuickReply(message)}
             </View>
@@ -720,6 +1022,19 @@ const styles = StyleSheet.create({
     marginBottom: hp("1%"),
   },
 
+  foodCardsContainer: {
+    marginLeft: 36,
+    marginBottom: hp("1%"),
+  },
+
+  foodCardsTitle: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: COLORS.TEXT_DARK,
+    marginBottom: 8,
+    marginLeft: 4,
+  },
+
   foodScrollContent: {
     paddingRight: wp("4%"),
     gap: 10,
@@ -793,6 +1108,30 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: COLORS.TEXT_LIGHT,
     textDecorationLine: "line-through",
+  },
+
+  foodAddress: {
+    fontSize: 11,
+    color: COLORS.TEXT_LIGHT,
+    marginBottom: 4,
+  },
+
+  foodRatingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 4,
+  },
+
+  foodRating: {
+    fontSize: 11,
+    color: COLORS.WARNING,
+    fontWeight: "600",
+  },
+
+  foodRatingCount: {
+    fontSize: 10,
+    color: COLORS.TEXT_LIGHT,
+    marginLeft: 2,
   },
 
   textInputContainer: {

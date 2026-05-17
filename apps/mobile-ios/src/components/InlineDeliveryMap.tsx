@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useRef, useEffect, useMemo } from "react";
 import { View, StyleSheet } from "react-native";
 import { WebView } from "react-native-webview";
 import {
@@ -85,12 +85,17 @@ const buildHTML = (
     var SEC_COORD  = ${secondCoord ? `[${secondCoord[0]}, ${secondCoord[1]}]` : 'null'};
     var SHIP_COORD = ${shipperCoord ? `[${shipperCoord[0]}, ${shipperCoord[1]}]` : 'null'};
 
+    // Áp dụng auto-fix cho tất cả tọa độ
+    if (DEST_COORD) DEST_COORD = autoFixCoord(DEST_COORD);
+    if (SEC_COORD)  SEC_COORD  = autoFixCoord(SEC_COORD);
+    if (SHIP_COORD) SHIP_COORD = autoFixCoord(SHIP_COORD);
+
     function setMsg(t) { document.getElementById('msg').textContent = t; }
     function hideOverlay() { document.getElementById('overlay').classList.add('gone'); }
 
     var map = new ndamapgl.Map({
       container: 'map',
-      style: 'https://nda-tiles.openmap.vn/styles/ndamap/style.json',
+      style: 'https://tiles.openmap.vn/styles/day-v1/style.json',
       center: [108.2022, 16.0544],
       zoom: 12
     });
@@ -104,10 +109,19 @@ const buildHTML = (
       return lon >= 107.85 && lon <= 108.35 && lat >= 15.96 && lat <= 16.22;
     }
 
-    // Fallback: NDAMaps Forward Geocoding
+    // Tự động swap tọa độ nếu bị đảo lat/lng (DB lưu lat ở cột lng)
+    function autoFixCoord(c) {
+      if (!c || !Array.isArray(c) || c.length < 2) return c;
+      var lng = c[0], lat = c[1];
+      if (lat >= 15.8 && lat <= 16.3 && lng >= 107.5 && lng <= 108.5) return c;
+      if (lng >= 15.8 && lng <= 16.3 && lat >= 107.5 && lat <= 108.5) return [lat, lng];
+      return c;
+    }
+
+    // NDAMaps Forward Geocoding
     function geocodeNDA(query, callback) {
       var q = query.toLowerCase().includes('nẵng') ? query : query + ', Đà Nẵng';
-      var url = 'https://mapapis.ndamaps.vn/v1/geocode/forward?text='
+      var url = 'https://mapapis.openmap.vn/v1/geocode/forward?text='
         + encodeURIComponent(q)
         + '&apikey=' + TOKEN;
       fetch(url)
@@ -121,8 +135,8 @@ const buildHTML = (
         .catch(function() { callback(null, null); });
     }
 
-    // Nominatim free-form + nameHint (tên quán → chính xác hơn)
-    function geocodeFreeForm(addr, callback, nameHint) {
+    function geocodeAddr(addr, callback, nameHint) {
+      if (!addr || !addr.trim()) { callback(null, null); return; }
       var street = addr.split(',')[0].trim();
       var query;
       if (nameHint && nameHint.trim()) {
@@ -130,48 +144,7 @@ const buildHTML = (
       } else {
         query = street + ' Đà Nẵng';
       }
-      var url = 'https://nominatim.openstreetmap.org/search?q='
-        + encodeURIComponent(query + ', Việt Nam')
-        + '&format=json&limit=3&countrycodes=vn'
-        + '&viewbox=107.85,16.22,108.35,15.96&bounded=1'
-        + '&accept-language=vi';
-      fetch(url)
-        .then(function(r) { return r.json(); })
-        .then(function(d) {
-          var hit = d && d.find(function(x) { return isInDanang(parseFloat(x.lon), parseFloat(x.lat)); });
-          if (hit) {
-            callback(parseFloat(hit.lon), parseFloat(hit.lat));
-          } else {
-            geocodeNDA(query, callback);
-          }
-        })
-        .catch(function() { geocodeNDA(query, callback); });
-    }
-
-    // Geocode chính: nameHint → Nominatim free-form; không có → structured search → fallback NDAMaps
-    function geocodeAddr(addr, callback, nameHint) {
-      if (!addr || !addr.trim()) { callback(null, null); return; }
-      if (nameHint && nameHint.trim()) {
-        geocodeFreeForm(addr, callback, nameHint);
-      } else {
-        var streetPart = addr.split(',')[0].trim();
-        var structUrl = 'https://nominatim.openstreetmap.org/search?'
-          + 'street=' + encodeURIComponent(streetPart)
-          + '&city=' + encodeURIComponent('Đà Nẵng')
-          + '&country=Vietnam'
-          + '&format=json&limit=3&accept-language=vi';
-        fetch(structUrl)
-          .then(function(r) { return r.json(); })
-          .then(function(d) {
-            var hit = d && d.find(function(x) { return isInDanang(parseFloat(x.lon), parseFloat(x.lat)); });
-            if (hit) {
-              callback(parseFloat(hit.lon), parseFloat(hit.lat));
-            } else {
-              geocodeFreeForm(addr, callback, '');
-            }
-          })
-          .catch(function() { geocodeFreeForm(addr, callback, ''); });
-      }
+      geocodeNDA(query, callback);
     }
 
     // Dùng tọa độ sẵn có nếu hợp lệ, không thì geocode
@@ -198,19 +171,22 @@ const buildHTML = (
       return res;
     }
 
-    // Vẽ tuyến đường NDAMaps Routing API — p1/p2: [lng, lat]
+    // Vẽ tuyến đường OSRM Routing API — p1/p2: [lng, lat]
     var routeIdx = 0;
     function drawRoute(p1, p2) {
-      var url = 'https://mapapis.ndamaps.vn/v1/direction?origin='
-        + p1[1] + ',' + p1[0]
-        + '&destination=' + p2[1] + ',' + p2[0]
-        + '&vehicle=car&apikey=' + TOKEN;
+      var url = 'https://router.project-osrm.org/route/v1/driving/'
+        + p1[0] + ',' + p1[1] + ';' + p2[0] + ',' + p2[1]
+        + '?overview=full&geometries=geojson&alternatives=3';
       fetch(url)
         .then(function(r) { return r.json(); })
         .then(function(d) {
-          if (!d.routes || !d.routes[0] || !d.routes[0].overview_polyline) return;
-          var coords = decodePoly(d.routes[0].overview_polyline.points);
-          if (!coords.length) return;
+          if (!d.routes || !d.routes.length) return;
+          var route = d.routes[0];
+          for (var i = 1; i < d.routes.length; i++) {
+            if (d.routes[i].distance < route.distance) route = d.routes[i];
+          }
+          var coords = route.geometry.coordinates;
+          if (!coords || !coords.length) return;
           var id = 'r' + (routeIdx++);
           map.addSource(id, { type: 'geojson', data: {
             type: 'Feature', properties: {},
@@ -246,11 +222,20 @@ const buildHTML = (
     function makeShipperDot(lngLat, name) {
       var el = document.createElement('div');
       el.style.cssText = 'background:' + PRIMARY + ';width:14px;height:14px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.5);cursor:pointer;';
-      new ndamapgl.Marker(el)
+      window.shipperMarker = new ndamapgl.Marker(el)
         .setLngLat(lngLat)
         .setPopup(new ndamapgl.Popup({ offset: 10 }).setHTML('<b>' + name + '</b>'))
         .addTo(map);
     }
+
+    window.updateShipperLocation = function(lng, lat) {
+      if (window.shipperMarker) {
+        window.shipperMarker.setLngLat([lng, lat]);
+        // map.panTo([lng, lat]); // Optional: keep shipper in view
+      } else {
+        makeShipperDot([lng, lat], SHIP_NAME);
+      }
+    };
 
     // ── dual_address: quán → khách (tinh_trang 0) ──
     function initDualAddress() {
@@ -328,12 +313,30 @@ const InlineDeliveryMap: React.FC<Props> = ({
   height,
 }) => {
   const mapHeight = height ?? hp("42%");
-  const html = buildHTML(mode, destAddress, destName, secondAddress, secondName, shipperAddress, shipperName, destCoord, secondCoord, shipperCoord);
+  const webViewRef = useRef<WebView>(null);
+
+  // Chỉ build lại HTML nếu các thông tin tĩnh thay đổi, bỏ qua shipperCoord để tránh nháy map
+  const html = useMemo(() => {
+    return buildHTML(mode, destAddress, destName, secondAddress, secondName, shipperAddress, shipperName, destCoord, secondCoord, shipperCoord);
+  }, [mode, destAddress, destName, secondAddress, secondName, shipperAddress, shipperName, destCoord, secondCoord]);
+
+  // Khi tọa độ shipper thay đổi, gọi hàm JS trực tiếp trong map thay vì reload toàn bộ WebView
+  useEffect(() => {
+    if (shipperCoord && shipperCoord.length === 2 && webViewRef.current) {
+      webViewRef.current.injectJavaScript(`
+        if (typeof window.updateShipperLocation === 'function') {
+          window.updateShipperLocation(${shipperCoord[0]}, ${shipperCoord[1]});
+        }
+        true;
+      `);
+    }
+  }, [shipperCoord]);
 
   return (
     <View style={[styles.container, { height: mapHeight }]}>
       <WebView
-        source={{ html, baseUrl: 'https://mapapis.ndamaps.vn' }}
+        ref={webViewRef}
+        source={{ html, baseUrl: 'https://mapapis.openmap.vn' }}
         style={StyleSheet.absoluteFill}
         javaScriptEnabled
         domStorageEnabled

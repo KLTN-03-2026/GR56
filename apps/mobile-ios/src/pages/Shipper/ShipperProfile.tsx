@@ -48,13 +48,30 @@ const MOCK_REVIEWS: Review[] = [
     { id: "7", ten_khach: "Bùi Văn Nam",     so_sao: 4, binh_luan: "Giao nhanh, đóng gói cẩn thận.",                                      ngay: "16/03/2026", ma_don_hang: "DH008" },
 ];
 
+const getHangShipper = (totalTrips: number): string => {
+    if (totalTrips < 50) return 'Đồng';
+    if (totalTrips < 200) return 'Bạc';
+    if (totalTrips < 500) return 'Vàng';
+    return 'Kim Cương';
+};
+
+const getHangColor = (hang: string): string => {
+    switch (hang) {
+        case 'Kim Cương': return '#9333EA';
+        case 'Vàng': return '#D97706';
+        case 'Bạc': return '#64748B';
+        default: return '#C2410C'; // Đồng
+    }
+};
+
 const ShipperProfile = ({ navigation }: any) => {
     const [user, setUser] = useState({
         name: "Tài xế",
         phone: "Đang cập nhật...",
         avatar: "https://thichtrangtri.com/wp-content/uploads/2025/05/Hinh-anh-con-bo-9-1-269x300.jpg",
         rating: "5.0",
-        totalTrips: "0",
+        totalTrips: 0,
+        hangShipper: "Đồng",
         earnings: "0đ",
     });
     const [isBothRole, setIsBothRole] = useState(false);
@@ -83,23 +100,16 @@ const ShipperProfile = ({ navigation }: any) => {
         };
         const fetchStats = async () => {
             try {
-                const today = new Date();
-                const pad = (n: number) => String(n).padStart(2, "0");
-                const toDate = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-                const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
-
                 const userDataString = await AsyncStorage.getItem("userData");
                 const userData = userDataString ? JSON.parse(userDataString) : {};
                 const idShipper = userData.id;
 
-                const [balRes, statsRes] = await Promise.allSettled([
+                // Lấy toàn bộ lịch sử đơn hàng (không giới hạn tháng)
+                const [balRes, profileRes] = await Promise.allSettled([
                     apiClient.get("/wallet/chi-tiet", {
                         params: { loai_vi: "shipper", id_chu_vi: idShipper },
                     }),
-                    apiClient.post("/shipper/don-hang/thong-ke", {
-                        day_begin: toDate(firstDay),
-                        day_end: toDate(today),
-                    }),
+                    apiClient.get("/shipper/data-login"),
                 ]);
 
                 setUser(prev => {
@@ -111,11 +121,12 @@ const ShipperProfile = ({ navigation }: any) => {
                             currency: "VND",
                         }).format(soDu);
                     }
-                    if (statsRes.status === "fulfilled" && statsRes.value.data?.data) {
-                        const completed = (statsRes.value.data.data as any[]).filter(
-                            (t: any) => t.tinh_trang === 4
-                        );
-                        next.totalTrips = String(completed.length);
+                    // Lấy tổng chuyến và hạng từ API profile (BE đã tính sẵn)
+                    if (profileRes.status === "fulfilled" && profileRes.value.data?.status) {
+                        const data = profileRes.value.data.data;
+                        const trips = Number(data?.tong_chuyen ?? 0);
+                        next.totalTrips = trips;
+                        next.hangShipper = data?.hang_shipper || getHangShipper(trips);
                     }
                     return next;
                 });
@@ -154,9 +165,11 @@ const ShipperProfile = ({ navigation }: any) => {
     }, []);
 
     const menuOptions = [
-        { id: 1, title: "Lịch sử chuyến xe", icon: "time-outline", color: "#3B82F6" },
-        { id: 3, title: "Cập nhật ứng dụng", icon: "flame-outline", color: "#F59E0B" },
-        { id: 4, title: "Hỗ trợ tài xế", icon: "headset-outline", color: "#8B5CF6" },
+        { id: 1, title: "Lịch sử chuyến xe", icon: "time-outline", color: "#3B82F6", route: "Orders" },
+        { id: 2, title: "Báo cáo sự cố", icon: "warning-outline", color: "#EF4444", route: "ShipperBaoCaoSuCo" },
+        { id: 5, title: "Lịch sử nạp/rút tiền", icon: "receipt-outline", color: "#F59E0B", route: "ShipperWalletHistory" },
+        { id: 3, title: "Cập nhật ứng dụng", icon: "cloud-download-outline", color: "#10B981", route: "AppUpdate" },
+        { id: 4, title: "Hỗ trợ tài xế", icon: "headset-outline", color: "#8B5CF6", route: "HelpCenter" },
     ];
 
     const handleLogout = async () => {
@@ -263,18 +276,20 @@ const ShipperProfile = ({ navigation }: any) => {
                     <View style={styles.walletItem}>
                         <Ionicons name="map" size={24} color="#3B82F6" />
                         <Text style={styles.walletValue}>{user.totalTrips}</Text>
-                        <Text style={styles.walletLabel}>Chuyến đi</Text>
+                        <Text style={styles.walletLabel}>Tổng chuyến</Text>
                     </View>
                     <View style={styles.dividerVertical} />
                     <View style={styles.walletItem}>
                         <Ionicons name="wallet" size={24} color="#10B981" />
                         <Text style={styles.walletValue}>{user.earnings}</Text>
-                        <Text style={styles.walletLabel}>Số Dư </Text>
+                        <Text style={styles.walletLabel}>Số Dư</Text>
                     </View>
                     <View style={styles.dividerVertical} />
                     <View style={styles.walletItem}>
-                        <Ionicons name="trophy" size={24} color="#F59E0B" />
-                        <Text style={styles.walletValue}>Bạc</Text>
+                        <Ionicons name="trophy" size={24} color={getHangColor(user.hangShipper)} />
+                        <Text style={[styles.walletValue, { color: getHangColor(user.hangShipper) }]}>
+                            {user.hangShipper}
+                        </Text>
                         <Text style={styles.walletLabel}>Hạng</Text>
                     </View>
                 </View>
@@ -295,6 +310,24 @@ const ShipperProfile = ({ navigation }: any) => {
                         </View>
                     </View>
                     <Ionicons name="chevron-forward" size={20} color={PRIMARY_COLOR} />
+                </TouchableOpacity>
+
+                {/* RÚT TIỀN BUTTON */}
+                <TouchableOpacity
+                    style={[styles.topUpBanner, { backgroundColor: "#EFF6FF", borderColor: "#BFDBFE", marginTop: hp("1%") }]}
+                    onPress={() => navigation.navigate("ShipperWithdraw")}
+                    activeOpacity={0.85}
+                >
+                    <View style={styles.topUpLeft}>
+                        <View style={[styles.topUpIconWrap, { backgroundColor: "#DBEAFE" }]}>
+                            <Ionicons name="cash-outline" size={24} color="#2563EB" />
+                        </View>
+                        <View>
+                            <Text style={[styles.topUpTitle, { color: "#1D4ED8" }]}>Rút tiền</Text>
+                            <Text style={styles.topUpSub}>Rút tiền về tài khoản ngân hàng</Text>
+                        </View>
+                    </View>
+                    <Ionicons name="chevron-forward" size={20} color="#2563EB" />
                 </TouchableOpacity>
 
                 {/* SWITCH ROLE BANNER */}
@@ -443,7 +476,20 @@ const ShipperProfile = ({ navigation }: any) => {
                         Công cụ & Tiện ích
                     </Text>
                     {menuOptions.map((menu, index) => (
-                        <TouchableOpacity key={menu.id} style={styles.menuItem}>
+                        <TouchableOpacity 
+                            key={menu.id} 
+                            style={styles.menuItem}
+                            activeOpacity={0.7}
+                            onPress={() => {
+                                if (menu.route === "Orders") {
+                                    navigation.navigate("Orders", { initialTab: "lich_su" });
+                                } else if (menu.route) {
+                                    navigation.navigate(menu.route);
+                                } else {
+                                    Alert.alert("Thông báo", "Tính năng đang được phát triển. Vui lòng quay lại sau!");
+                                }
+                            }}
+                        >
                             <View style={styles.menuIconWrap}>
                                 <Ionicons name={menu.icon} size={20} color={menu.color} />
                             </View>

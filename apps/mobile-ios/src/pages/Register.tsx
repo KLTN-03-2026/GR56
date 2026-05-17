@@ -127,6 +127,19 @@ const Register = ({ navigation }: any) => {
       showToast("Mật khẩu không khớp", "error");
       return;
     }
+
+    if (dob) {
+      const [day, month, year] = dob.split('/').map(Number);
+      const birthDate = new Date(year, month - 1, day);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      if (birthDate >= today) {
+        showToast("Ngày sinh không được là ngày hiện tại hoặc tương lai", "error");
+        return;
+      }
+    }
+
     if (!agreeTerms) {
       showToast("Vui lòng đồng ý với điều khoản và chính sách", "error");
       return;

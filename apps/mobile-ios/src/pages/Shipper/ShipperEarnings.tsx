@@ -34,7 +34,7 @@ const BORDER       = "#E2E8F0";
 // ════════════════════════════════════════════════════════
 // Types
 // ════════════════════════════════════════════════════════
-type Period = "week" | "month";
+type Period = "today" | "week" | "month";
 
 interface Transaction {
   id: number;
@@ -166,12 +166,16 @@ const ShipperEarnings = ({ navigation }: any) => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
 
   const PERIODS: { key: Period; label: string }[] = [
+    { key: "today", label: "Hôm nay" },
     { key: "week",  label: "Tuần này" },
     { key: "month", label: "Tháng này" },
   ];
 
   const getDateRange = (p: Period) => {
     const today = new Date();
+    if (p === "today") {
+      return { begin: today, end: today };
+    }
     if (p === "week") {
       const begin = new Date(today); begin.setDate(today.getDate() - 6);
       return { begin, end: today };
@@ -207,16 +211,16 @@ const ShipperEarnings = ({ navigation }: any) => {
 
   // ── Computed stats ───────────────────────────────────
   const completed     = transactions.filter(t => t.tinh_trang === 4);
-  // Ko có status huỷ trong backend — lấy tất cả không phải hoàn thành và có trong dữ liệu
   const canceled      = transactions.filter(t => t.tinh_trang !== 4);
   const todayDdMmYyyy = toApiDate(new Date()).split("-").reverse().join("/");
-  // Dùng getTxDate để xử lý ngay_giao null
   const todayTxs      = completed.filter(t => getTxDate(t) === todayDdMmYyyy);
   const todayEarning  = todayTxs.reduce((s, t) => s + (t.phi_ship ?? 0), 0);
   const todayTrips    = todayTxs.length;
-  const totalEarning  = completed.reduce((s, t) => s + (t.phi_ship ?? 0), 0);
-  const totalTrips    = completed.length;
-  const canceledTrips = canceled.length;
+  
+  // Stats shown based on period
+  const displayEarning = completed.reduce((s, t) => s + (t.phi_ship ?? 0), 0);
+  const displayTrips   = completed.length;
+  const canceledTrips  = canceled.length;
 
   // ── Bar chart 7 ngày gần nhất ────────────────────────
   const chartData: DayData[] = getLast7Days().map((d) => {
@@ -255,9 +259,11 @@ const ShipperEarnings = ({ navigation }: any) => {
       <View style={styles.headerBg}>
         <SafeAreaView edges={["top"]} style={styles.headerSafe}>
           <View style={styles.headerRow}>
-            <Text style={styles.headerTitle}>Thu nhập</Text>
+            <View>
+              <Text style={styles.headerTitle}>Thu nhập</Text>
+              <Text style={styles.headerSubtitle}>Theo dõi doanh thu của bạn</Text>
+            </View>
             <TouchableOpacity style={styles.headerIcon} onPress={handleRefresh}>
-              {/* @ts-ignore */}
               <Ionicons name="refresh-outline" size={20} color="#FFF" />
             </TouchableOpacity>
           </View>
@@ -280,12 +286,13 @@ const ShipperEarnings = ({ navigation }: any) => {
 
           {/* Big earning number */}
           <Animated.View style={[styles.bigEarningRow, { opacity: earningAnim }]}>
-            <Text style={styles.bigEarningLabel}>Tổng thu nhập</Text>
-            <Text style={styles.bigEarningValue}>{formatMoney(totalEarning)}</Text>
+            <Text style={styles.bigEarningLabel}>
+              {period === 'today' ? 'Doanh thu hôm nay' : period === 'week' ? 'Doanh thu tuần này' : 'Doanh thu tháng này'}
+            </Text>
+            <Text style={styles.bigEarningValue}>{formatMoney(displayEarning)}</Text>
             <View style={styles.bigEarningMeta}>
-              {/* @ts-ignore */}
-              <Ionicons name="bicycle-outline" size={14} color="rgba(255,255,255,0.75)" />
-              <Text style={styles.bigEarningMetaText}>{totalTrips} chuyến hoàn thành</Text>
+              <Ionicons name="bicycle" size={14} color="#FFF" />
+              <Text style={styles.bigEarningMetaText}>{displayTrips} chuyến hoàn thành</Text>
             </View>
           </Animated.View>
         </SafeAreaView>
@@ -298,64 +305,66 @@ const ShipperEarnings = ({ navigation }: any) => {
           <RefreshControl
             refreshing={isRefreshing}
             onRefresh={handleRefresh}
-            tintColor={PRIMARY}
+            tintColor="#FFF"
             colors={[PRIMARY]}
           />
         }
       >
         {/* ── Summary Cards ── */}
         <View style={styles.cardRow}>
-          <View style={[styles.summaryCard, { flex: 1.3 }]}>
+          <View style={[styles.summaryCard, { flex: 1, backgroundColor: '#FFF' }]}>
             <View style={[styles.summaryIconWrap, { backgroundColor: "#FFF0ED" }]}>
-              {/* @ts-ignore */}
-              <Ionicons name="today-outline" size={20} color={PRIMARY} />
+              <Ionicons name="wallet" size={20} color={PRIMARY} />
             </View>
-            <Text style={styles.summaryValue}>{formatMoney(todayEarning)}</Text>
-            <Text style={styles.summaryLabel}>Hôm nay</Text>
+            <Text style={styles.summaryValue}>{formatMoney(displayEarning)}</Text>
+            <Text style={styles.summaryLabel}>Thu nhập</Text>
           </View>
-          <View style={[styles.summaryCard, { flex: 1 }]}>
+          <View style={[styles.summaryCard, { flex: 1, backgroundColor: '#FFF' }]}>
             <View style={[styles.summaryIconWrap, { backgroundColor: "#EFF6FF" }]}>
-              {/* @ts-ignore */}
-              <Ionicons name="bicycle-outline" size={20} color="#3B82F6" />
+              <Ionicons name="bicycle" size={20} color="#3B82F6" />
             </View>
-            <Text style={styles.summaryValue}>{todayTrips}</Text>
-            <Text style={styles.summaryLabel}>Chuyến hôm nay</Text>
+            <Text style={styles.summaryValue}>{displayTrips}</Text>
+            <Text style={styles.summaryLabel}>Chuyến đi</Text>
           </View>
-          <View style={[styles.summaryCard, { flex: 1 }]}>
+          <View style={[styles.summaryCard, { flex: 1, backgroundColor: '#FFF' }]}>
             <View style={[styles.summaryIconWrap, { backgroundColor: "#FEF2F2" }]}>
-              {/* @ts-ignore */}
-              <Ionicons name="close-circle-outline" size={20} color="#EF4444" />
+              <Ionicons name="close-circle" size={20} color="#EF4444" />
             </View>
             <Text style={styles.summaryValue}>{canceledTrips}</Text>
-            <Text style={styles.summaryLabel}>Đã huỷ</Text>
+            <Text style={styles.summaryLabel}>Đã hủy</Text>
           </View>
         </View>
 
-        {/* ── Bar Chart ── */}
-        <View style={styles.sectionCard}>
-          <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionTitle}>Doanh thu 7 ngày</Text>
-            <Text style={styles.sectionSubtitle}>
-              {formatMoney(chartData.reduce((s, d) => s + d.value, 0))}
-            </Text>
-          </View>
-          <BarChart data={chartData} />
-          <View style={styles.chartLegend}>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: PRIMARY }]} />
-              <Text style={styles.legendText}>Hôm nay</Text>
+        {/* ── Bar Chart (Only show for week/month) ── */}
+        {period !== 'today' && (
+          <View style={styles.sectionCard}>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.sectionTitle}>Biểu đồ doanh thu</Text>
+              <Text style={styles.sectionSubtitle}>
+                Tổng: {formatMoney(chartData.reduce((s, d) => s + d.value, 0))}
+              </Text>
             </View>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: "rgba(238,77,45,0.35)" }]} />
-              <Text style={styles.legendText}>Các ngày khác</Text>
+            <BarChart data={chartData} />
+            <View style={styles.chartLegend}>
+              <View style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: PRIMARY }]} />
+                <Text style={styles.legendText}>Hôm nay</Text>
+              </View>
+              <View style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: "rgba(238,77,45,0.35)" }]} />
+                <Text style={styles.legendText}>Ngày khác</Text>
+              </View>
             </View>
           </View>
-        </View>
+        )}
 
         {/* ── Transaction History ── */}
         <View style={[styles.sectionCard, { paddingBottom: 0 }]}>
-          <View style={[styles.sectionHeaderRow, { marginBottom: 0 }]}>
+          <View style={[styles.sectionHeaderRow, { marginBottom: 10 }]}>
             <Text style={styles.sectionTitle}>Lịch sử giao dịch</Text>
+            <View style={styles.dateChip}>
+               <Text style={styles.dateChipText}>Hôm nay, {todayDdMmYyyy}</Text>
+            </View>
           </View>
 
           {isLoading ? (
@@ -435,20 +444,30 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: BG },
 
   // ── Header ──
-  headerBg: { backgroundColor: PRIMARY },
+  headerBg: { 
+    backgroundColor: PRIMARY,
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
+    shadowColor: PRIMARY,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.2,
+    shadowRadius: 20,
+    elevation: 10,
+  },
   headerSafe: { paddingTop: Platform.OS === "android" ? hp("1.5%") : 0 },
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: wp("5%"),
+    paddingHorizontal: wp("6%"),
     paddingTop: hp("1.5%"),
     paddingBottom: hp("0.5%"),
   },
-  headerTitle: { fontSize: wp("5.5%"), fontWeight: "800", color: "#FFF", letterSpacing: 0.3 },
+  headerTitle: { fontSize: wp("6%"), fontWeight: "900", color: "#FFF", letterSpacing: -0.5 },
+  headerSubtitle: { fontSize: wp("3.2%"), color: "rgba(255,255,255,0.8)", fontWeight: "500", marginTop: 2 },
   headerIcon: {
-    width: 38, height: 38, borderRadius: 19,
-    backgroundColor: "rgba(255,255,255,0.18)",
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.15)",
     justifyContent: "center", alignItems: "center",
   },
 
@@ -456,102 +475,122 @@ const styles = StyleSheet.create({
   periodSelector: {
     flexDirection: "row",
     marginHorizontal: wp("5%"),
-    marginTop: hp("1%"),
-    backgroundColor: "rgba(255,255,255,0.15)",
-    borderRadius: 10,
-    padding: 3,
+    marginTop: hp("2%"),
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderRadius: 12,
+    padding: 4,
   },
-  periodBtn: { flex: 1, paddingVertical: hp("0.7%"), borderRadius: 8, alignItems: "center" },
-  periodBtnActive: { backgroundColor: "#FFFFFF" },
-  periodBtnText: { fontSize: wp("3%"), fontWeight: "600", color: "rgba(255,255,255,0.75)" },
-  periodBtnTextActive: { color: PRIMARY_DARK, fontWeight: "800" },
+  periodBtn: { flex: 1, paddingVertical: hp("1%"), borderRadius: 10, alignItems: "center" },
+  periodBtnActive: { backgroundColor: "#FFFFFF", shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 2 },
+  periodBtnText: { fontSize: wp("3.4%"), fontWeight: "600", color: "rgba(255,255,255,0.7)" },
+  periodBtnTextActive: { color: PRIMARY, fontWeight: "800" },
 
   // Big earning
-  bigEarningRow: { alignItems: "center", paddingVertical: hp("2.5%") },
+  bigEarningRow: { alignItems: "center", paddingVertical: hp("3%") },
   bigEarningLabel: {
-    fontSize: wp("3.2%"), color: "rgba(255,255,255,0.75)",
+    fontSize: wp("3.5%"), color: "rgba(255,255,255,0.85)",
     fontWeight: "600", marginBottom: hp("0.5%"),
   },
   bigEarningValue: {
-    fontSize: wp("9%"), fontWeight: "900", color: "#FFFFFF", letterSpacing: -0.5,
+    fontSize: wp("10%"), fontWeight: "900", color: "#FFFFFF", letterSpacing: -1,
   },
-  bigEarningMeta: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: hp("0.5%") },
-  bigEarningMetaText: { fontSize: wp("3%"), color: "rgba(255,255,255,0.75)", fontWeight: "500" },
+  bigEarningMeta: { 
+    flexDirection: "row", 
+    alignItems: "center", 
+    gap: 6, 
+    marginTop: hp("1%"),
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 20,
+  },
+  bigEarningMetaText: { fontSize: wp("3%"), color: "#FFFFFF", fontWeight: "700" },
 
   // Scroll
-  scrollContent: { paddingHorizontal: wp("4%"), paddingTop: hp("2%") },
+  scrollContent: { paddingHorizontal: wp("5%"), paddingTop: hp("3%"), paddingBottom: hp("5%") },
 
   // Summary Cards
-  cardRow: { flexDirection: "row", gap: wp("2.5%"), marginBottom: hp("2%") },
+  cardRow: { flexDirection: "row", gap: wp("3%"), marginBottom: hp("2.5%") },
   summaryCard: {
     backgroundColor: SURFACE,
-    borderRadius: 16,
-    padding: wp("3.5%"),
-    alignItems: "flex-start",
+    borderRadius: 20,
+    padding: wp("4%"),
+    alignItems: "center",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
     elevation: 3,
   },
   summaryIconWrap: {
-    width: 38, height: 38, borderRadius: 10,
-    justifyContent: "center", alignItems: "center", marginBottom: hp("1%"),
+    width: 42, height: 42, borderRadius: 14,
+    justifyContent: "center", alignItems: "center", marginBottom: hp("1.2%"),
   },
-  summaryValue: { fontSize: wp("3.8%"), fontWeight: "800", color: TEXT_DARK, marginBottom: 2 },
-  summaryLabel: { fontSize: wp("2.8%"), color: TEXT_LIGHT, fontWeight: "500" },
+  summaryValue: { fontSize: wp("4%"), fontWeight: "900", color: TEXT_DARK, marginBottom: 2 },
+  summaryLabel: { fontSize: wp("2.8%"), color: TEXT_LIGHT, fontWeight: "600" },
 
   // Section Card
   sectionCard: {
     backgroundColor: SURFACE,
-    borderRadius: 16,
-    paddingHorizontal: wp("4%"),
-    paddingVertical: hp("1.8%"),
-    marginBottom: hp("2%"),
+    borderRadius: 20,
+    paddingHorizontal: wp("4.5%"),
+    paddingVertical: hp("2%"),
+    marginBottom: hp("2.5%"),
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    elevation: 4,
   },
   sectionHeaderRow: {
     flexDirection: "row", justifyContent: "space-between",
-    alignItems: "center", marginBottom: hp("1%"),
+    alignItems: "center", marginBottom: hp("1.5%"),
   },
-  sectionTitle: { fontSize: wp("4%"), fontWeight: "800", color: TEXT_DARK },
-  sectionSubtitle: { fontSize: wp("3.5%"), fontWeight: "700", color: PRIMARY },
+  sectionTitle: { fontSize: wp("4.2%"), fontWeight: "900", color: TEXT_DARK },
+  sectionSubtitle: { fontSize: wp("3.8%"), fontWeight: "800", color: PRIMARY },
+  dateChip: {
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  dateChipText: {
+    fontSize: wp('2.8%'),
+    color: TEXT_MUTED,
+    fontWeight: '700',
+  },
 
   // Chart legend
-  chartLegend: { flexDirection: "row", justifyContent: "center", gap: wp("5%"), marginTop: hp("1%") },
-  legendItem: { flexDirection: "row", alignItems: "center", gap: 5 },
-  legendDot: { width: 8, height: 8, borderRadius: 4 },
-  legendText: { fontSize: 11, color: TEXT_MUTED, fontWeight: "500" },
+  chartLegend: { flexDirection: "row", justifyContent: "center", gap: wp("6%"), marginTop: hp("1.5%") },
+  legendItem: { flexDirection: "row", alignItems: "center", gap: 6 },
+  legendDot: { width: 10, height: 10, borderRadius: 5 },
+  legendText: { fontSize: 11, color: TEXT_MUTED, fontWeight: "600" },
 
   // Transaction History
   dayHeader: {
     flexDirection: "row", justifyContent: "space-between", alignItems: "center",
-    paddingVertical: hp("1%"), marginTop: hp("0.5%"),
+    paddingVertical: hp("1.2%"), marginTop: hp("0.5%"),
     borderTopWidth: 1, borderTopColor: BORDER,
   },
   dayLabel: {
-    fontSize: wp("3.2%"), fontWeight: "700",
-    color: TEXT_MUTED, textTransform: "uppercase", letterSpacing: 0.4,
+    fontSize: wp("3.2%"), fontWeight: "800",
+    color: TEXT_MUTED, textTransform: "uppercase", letterSpacing: 0.5,
   },
-  dayTotal: { fontSize: wp("3.5%"), fontWeight: "800", color: PRIMARY },
+  dayTotal: { fontSize: wp("3.8%"), fontWeight: "900", color: PRIMARY },
   txRow: {
     flexDirection: "row", alignItems: "center",
-    paddingVertical: hp("1.2%"),
+    paddingVertical: hp("1.5%"),
     borderBottomWidth: 1, borderBottomColor: BORDER,
-    gap: wp("3%"),
+    gap: wp("3.5%"),
   },
-  txIcon: { width: 40, height: 40, borderRadius: 12, justifyContent: "center", alignItems: "center", flexShrink: 0 },
+  txIcon: { width: 44, height: 44, borderRadius: 14, justifyContent: "center", alignItems: "center", flexShrink: 0 },
   txInfo: { flex: 1 },
-  txOrderId: { fontSize: wp("3.5%"), fontWeight: "800", color: TEXT_DARK, marginBottom: 2 },
-  txAddressRow: { flexDirection: "row", alignItems: "center", gap: 3 },
-  txAddress: { fontSize: wp("2.8%"), color: TEXT_LIGHT, flex: 1 },
+  txOrderId: { fontSize: wp("3.8%"), fontWeight: "800", color: TEXT_DARK, marginBottom: 2 },
+  txAddressRow: { flexDirection: "row", alignItems: "center", gap: 4 },
+  txAddress: { fontSize: wp("3%"), color: TEXT_LIGHT, flex: 1, fontWeight: '500' },
   txRight: { alignItems: "flex-end", flexShrink: 0 },
-  txAmount: { fontSize: wp("3.8%"), fontWeight: "800", marginBottom: 3 },
-  txTime: { fontSize: wp("2.8%"), color: TEXT_LIGHT, fontWeight: "500" },
+  txAmount: { fontSize: wp("4%"), fontWeight: "900", marginBottom: 3 },
+  txTime: { fontSize: wp("3%"), color: TEXT_LIGHT, fontWeight: "600" },
 });
 
 export default ShipperEarnings;

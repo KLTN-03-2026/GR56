@@ -1,17 +1,17 @@
 /**
  * NDAMaps configuration
  *
- * Thay YOUR_NDA_API_KEY bằng API key thực của bạn từ https://ndamaps.vn/
+ * Thay YOUR_NDA_API_KEY bằng API key thực của bạn từ https://openmap.vn/
  * Map rendering: ndamap-gl (MapLibre-based) via unpkg CDN
- * REST APIs: https://mapapis.ndamaps.vn/v1
+ * REST APIs: https://mapapis.openmap.vn/v1
  */
-export const NDA_API_KEY = 'qrm8fXPZ7HM4nqYZVrEhFepxgxnzarmG';
+export const NDA_API_KEY = '6TTIZbUWJmRMSpiYzQ0YY8z5v8wv43w0';
 
-/** Style bản đồ ban ngày của NDAMaps */
-export const NDA_MAP_STYLE = `https://nda-tiles.openmap.vn/styles/ndamap/style.json?apikey=${NDA_API_KEY}`;
+/** Style bản đồ ban ngày */
+export const NDA_MAP_STYLE = `https://tiles.openmap.vn/styles/day-v1/style.json`;
 
 /** Base URL cho NDAMaps REST APIs */
-export const NDA_BASE_URL = 'https://mapapis.ndamaps.vn/v1';
+export const NDA_BASE_URL = 'https://mapapis.openmap.vn/v1';
 
 /**
  * Tạo URL cho NDAMaps Forward Geocoding API.
