@@ -63,12 +63,12 @@ export default function AdminKhachHang() {
   const fetchList = async () => {
     setLoading(true);
     try { const r = await adm('/api/admin/khach-hang/data'); setList(r.data.data || []); }
-    catch {} finally { setLoading(false); }
+    catch (e) {} finally { setLoading(false); }
   };
 
   const doSearch = useCallback(debounce(async (kw) => {
     if (!kw.trim()) { fetchList(); return; }
-    try { const r = await adm('/api/admin/khach-hang/tim-kiem', 'post', { noi_dung_tim: kw }); setList(r.data.data || []); } catch {}
+    try { const r = await adm('/api/admin/khach-hang/tim-kiem', 'post', { noi_dung_tim: kw }); setList(r.data.data || []); } catch (e) { console.error(e); }
   }, 400), []);
 
   const handleSearch = (e) => { setSearch(e.target.value); doSearch(e.target.value); };
@@ -83,13 +83,13 @@ export default function AdminKhachHang() {
   };
   const handleDel = async () => {
     try { const r = await adm('/api/admin/khach-hang/delete', 'post', delForm); if (r.data.status) { toast.success(r.data.message); setShowDel(false); fetchList(); } else toast.error(r.data.message); }
-    catch {}
+    catch (e) {}
   };
   const handleChangeStatus = async (kh) => {
-    try { const r = await adm('/api/admin/khach-hang/change-status', 'post', kh); if (r.data.status) { toast.success(r.data.message); fetchList(); } } catch {}
+    try { const r = await adm('/api/admin/khach-hang/change-status', 'post', kh); if (r.data.status) { toast.success(r.data.message); fetchList(); } } catch (e) { console.error(e); }
   };
   const handleChangeActive = async (kh) => {
-    try { const r = await adm('/api/admin/khach-hang/change-active', 'post', kh); if (r.data.status) { toast.success(r.data.message); fetchList(); } else toast.error(r.data.message); } catch {}
+    try { const r = await adm('/api/admin/khach-hang/change-active', 'post', kh); if (r.data.status) { toast.success(r.data.message); fetchList(); } else toast.error(r.data.message); } catch (e) { console.error(e); }
   };
   const handleCapNhatXu = async () => {
     if (!xuForm.so_xu || xuForm.so_xu === 0 || !xuForm.mo_ta) { toast.error('Nhập số xu (≠0) và lý do!'); return; }

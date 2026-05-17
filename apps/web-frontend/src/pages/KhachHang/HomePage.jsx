@@ -611,28 +611,33 @@ export default function HomePage() {
   // Filter functions
   const filterByPrice = (range) => {
     setSelectedPrice(range);
-    const src = data.originalMonAnData;
-    let filtered;
-    switch (range) {
-      case 'under50': filtered = src.filter(i => i.gia_khuyen_mai < 50000); break;
-      case '50to100': filtered = src.filter(i => i.gia_khuyen_mai >= 50000 && i.gia_khuyen_mai <= 100000); break;
-      case '100to200': filtered = src.filter(i => i.gia_khuyen_mai > 100000 && i.gia_khuyen_mai <= 200000); break;
-      case '200to300': filtered = src.filter(i => i.gia_khuyen_mai > 200000 && i.gia_khuyen_mai <= 300000); break;
-      case 'above300': filtered = src.filter(i => i.gia_khuyen_mai > 300000); break;
-      default: filtered = src;
-    }
-    setDisplayMonAn(filtered);
-    setFoodLimit(12);
+    applyFilters(selectedCategory, range);
   };
 
   const filterByCategory = (id) => {
     setSelectedCategory(id);
-    setSelectedPrice('all');
-    if (id === null) {
-      setDisplayMonAn(data.originalMonAnData);
-    } else {
-      setDisplayMonAn(data.originalMonAnData.filter(i => i.id_danh_muc === id));
+    applyFilters(id, selectedPrice);
+  };
+
+  const applyFilters = (categoryId, priceRange) => {
+    let filtered = data.originalMonAnData;
+
+    // Filter by category
+    if (categoryId !== null) {
+      filtered = filtered.filter(i => i.id_danh_muc === categoryId);
     }
+
+    // Filter by price
+    switch (priceRange) {
+      case 'under50': filtered = filtered.filter(i => i.gia_khuyen_mai < 50000); break;
+      case '50to100': filtered = filtered.filter(i => i.gia_khuyen_mai >= 50000 && i.gia_khuyen_mai <= 100000); break;
+      case '100to200': filtered = filtered.filter(i => i.gia_khuyen_mai > 100000 && i.gia_khuyen_mai <= 200000); break;
+      case '200to300': filtered = filtered.filter(i => i.gia_khuyen_mai > 200000 && i.gia_khuyen_mai <= 300000); break;
+      case 'above300': filtered = filtered.filter(i => i.gia_khuyen_mai > 300000); break;
+      default: break;
+    }
+
+    setDisplayMonAn(filtered);
     setFoodLimit(12);
   };
 

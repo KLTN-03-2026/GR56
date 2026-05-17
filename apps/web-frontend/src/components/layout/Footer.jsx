@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import logoFood from '../../assets/logoFood.png';
+import qrAndroid from '../../assets/qrAndroid.png';
 
 export default function Footer() {
   return (
@@ -132,7 +133,7 @@ export default function Footer() {
               </ul>
 
               {/* App Badges */}
-              <div className="mt-6 space-y-2">
+              <div className="mt-6 space-y-3">
                 <div className="flex items-center gap-3 bg-gray-800 rounded-xl px-4 py-2.5 cursor-pointer hover:bg-gray-700 transition-colors">
                   <i className="fab fa-apple text-2xl text-white"></i>
                   <div>
@@ -140,11 +141,26 @@ export default function Footer() {
                     <p className="text-white text-sm font-bold">App Store</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-3 bg-gray-800 rounded-xl px-4 py-2.5 cursor-pointer hover:bg-gray-700 transition-colors">
+
+                <a
+                  href="https://play.google.com/store/apps/details?id=com.shoppefood"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-3 bg-gray-800 rounded-xl px-4 py-2.5 cursor-pointer hover:bg-gray-700 transition-colors"
+                >
                   <i className="fab fa-google-play text-2xl text-green-400"></i>
                   <div>
                     <p className="text-gray-400 text-xs">Tải trên</p>
                     <p className="text-white text-sm font-bold">Google Play</p>
+                  </div>
+                </a>
+
+                {/* QR Code Android */}
+                <div className="flex items-center gap-3 bg-gray-800/50 border border-gray-800 rounded-xl p-2.5 mt-2">
+                  <img src={qrAndroid} alt="QR Code Android" className="w-12 h-12 object-contain rounded bg-white p-0.5" />
+                  <div>
+                    <p className="text-[11px] text-gray-300 font-semibold">Hoặc quét mã QR</p>
+                    <p className="text-[10px] text-gray-400 leading-tight">Dành cho thiết bị Android</p>
                   </div>
                 </div>
               </div>

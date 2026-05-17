@@ -26,8 +26,16 @@ export default function DangKy() {
 
   const handleChange = e => setForm({ ...form, [e.target.name]: e.target.value });
 
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const maxDate = yesterday.toISOString().split('T')[0];
+
   const handleSubmit = async e => {
     e.preventDefault();
+    if (form.ngay_sinh >= new Date().toISOString().split('T')[0]) {
+      toast.error('Ngày sinh không được là ngày hiện tại hoặc tương lai!');
+      return;
+    }
     if (form.password !== form.re_password) { toast.error('Mật khẩu xác nhận không khớp!'); return; }
     setLoading(true);
     try {
@@ -49,7 +57,7 @@ export default function DangKy() {
     { name: 'ho_va_ten', label: 'Họ và Tên', icon: 'fa-user', type: 'text', placeholder: 'Nguyễn Văn A' },
     { name: 'email', label: 'Email', icon: 'fa-envelope', type: 'email', placeholder: 'example@email.com' },
     { name: 'so_dien_thoai', label: 'Số Điện Thoại', icon: 'fa-phone', type: 'tel', placeholder: '0123456789' },
-    { name: 'ngay_sinh', label: 'Ngày Sinh', icon: 'fa-calendar-days', type: 'date', placeholder: '' },
+    { name: 'ngay_sinh', label: 'Ngày Sinh', icon: 'fa-calendar-days', type: 'date', placeholder: '', max: maxDate },
   ];
 
   return (
@@ -75,7 +83,7 @@ export default function DangKy() {
                   <i className={`fa-solid ${f.icon} mr-2 text-orange-400`} />{f.label}
                 </label>
                 <input type={f.type} name={f.name} value={form[f.name]} onChange={handleChange}
-                  placeholder={f.placeholder} required className="input-modern" />
+                  placeholder={f.placeholder} required className="input-modern" max={f.max} />
               </div>
             ))}
 

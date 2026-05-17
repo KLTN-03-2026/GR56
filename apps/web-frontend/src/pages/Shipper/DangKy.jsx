@@ -25,6 +25,7 @@ export default function DangKy() {
   const navigate = useNavigate();
 
   useEffect(() => {
+    document.title = "FOODBEE-SHIPPER";
     loadProvinces();
   }, []);
 
@@ -32,7 +33,7 @@ export default function DangKy() {
     try {
       const res = await api.get('/api/khach-hang/tinh-thanh/data');
       if (res.data?.data) setProvinces(res.data.data);
-    } catch {}
+    } catch (e) { console.error(e); }
   };
 
   const loadDistricts = async (id_tinh) => {
@@ -47,7 +48,7 @@ export default function DangKy() {
         setDistricts(res.data.data);
         setFormData(prev => ({ ...prev, id_quan_huyen: '' }));
       }
-    } catch {}
+    } catch (e) { console.error(e); }
   };
 
   const handleChange = (e) => {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, NavLink, useNavigate, Outlet } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
@@ -8,9 +8,10 @@ const adm = (url) => api.get(url, { headers: { Authorization: `Bearer ${localSto
 
 // ── Hệ thống thông báo real-time admin ─────────────────────────────────────
 const ALERT_CONFIG = {
-  yeu_cau_huy:  { icon: 'fa-triangle-exclamation', color: 'text-red-500',    bg: 'bg-red-50 border-red-200',    label: 'Yêu cầu hủy đơn',    navTo: '/admin/reports' },
-  bao_cao_moi:  { icon: 'fa-flag',                color: 'text-orange-500',  bg: 'bg-orange-50 border-orange-200', label: 'Báo cáo / khiếu nại', navTo: '/admin/reports' },
-  refund_failed:{ icon: 'fa-rotate-left',          color: 'text-rose-500',    bg: 'bg-rose-50 border-rose-200',  label: 'Hoàn tiền thất bại',  navTo: '/admin/rut-tien' },
+  yeu_cau_huy:       { icon: 'fa-triangle-exclamation', color: 'text-red-500',    bg: 'bg-red-50 border-red-200',          label: 'Yêu cầu hủy đơn',    navTo: '/admin/reports' },
+  bao_cao_moi:       { icon: 'fa-flag',                  color: 'text-orange-500', bg: 'bg-orange-50 border-orange-200',    label: 'Báo cáo / khiếu nại', navTo: '/admin/reports' },
+  refund_failed:      { icon: 'fa-rotate-left',           color: 'text-rose-500',   bg: 'bg-rose-50 border-rose-200',         label: 'Hoàn tiền thất bại',  navTo: '/admin/rut-tien' },
+  don_hang_chatbot_moi:{ icon: 'fa-robot',               color: 'text-purple-500', bg: 'bg-purple-50 border-purple-200',    label: 'Đơn Chatbot mới',    navTo: '/admin/don-hang' },
 };
 
 // Global event bus — các tab admin subscribe để biết khi nào cần reload
@@ -20,6 +21,7 @@ const adminEventBus = {
   off(event, fn) { this._listeners[event] = (this._listeners[event] || []).filter(f => f !== fn); },
   emit(event, data) { (this._listeners[event] || []).forEach(fn => fn(data)); },
 };
+window.adminEventBus = adminEventBus; // expose globally so other pages can subscribe
 export { adminEventBus };
 
 function AdminAlertPanel({ alerts, onClear, onClearAll, onNavigate }) {
@@ -73,6 +75,11 @@ export default function AdminLayout() {
     adm('/api/admin/profile').then(r => { if (r.data.status) setAdmin(r.data.data); }).catch(() => {});
   }, []);
 
+  useEffect(() => {
+    document.title = "FOODBEE-ADMIN";
+    return () => { document.title = "FOODBEE"; };
+  }, []);
+
   // ── Setup real-time admin-alerts channel ──────────────────────────────────
   useEffect(() => {
     let channel = null;
@@ -95,20 +102,31 @@ export default function AdminLayout() {
             ? `🚨 Yêu cầu hủy đơn từ ${data?.nguoi_gui || 'người dùng'}!`
             : loai === 'refund_failed'
             ? `⚠️ Hoàn tiền thất bại: Đơn #${data?.ma_don_hang || ''}`
+            : loai === 'don_hang_chatbot_moi'
+            ? `🤖 Đơn chatbot mới #${data?.ma_don_hang || ''} — ${data?.ten_quan_an || ''}`
             : `📋 Báo cáo mới từ ${data?.nguoi_gui || 'người dùng'}`;
 
+          const toastIcon = loai === 'yeu_cau_huy' ? '🚨' : loai === 'refund_failed' ? '⚠️' : loai === 'don_hang_chatbot_moi' ? '🤖' : '📋';
+          const toastBg = loai === 'yeu_cau_huy' ? '#fef2f2' : loai === 'refund_failed' ? '#fff1f2' : loai === 'don_hang_chatbot_moi' ? '#faf5ff' : '#fffbeb';
+          const toastBorder = loai === 'yeu_cau_huy' ? '#fecaca' : loai === 'refund_failed' ? '#fecdd3' : loai === 'don_hang_chatbot_moi' ? '#e9d5ff' : '#fde68a';
+
           toast(toastMsg, {
-            icon: loai === 'yeu_cau_huy' ? '🚨' : loai === 'refund_failed' ? '⚠️' : '📋',
+            icon: toastIcon,
             duration: 8000,
             style: {
-              background: loai === 'yeu_cau_huy' ? '#fef2f2' : loai === 'refund_failed' ? '#fff1f2' : '#fffbeb',
-              border: `1px solid ${loai === 'yeu_cau_huy' ? '#fecaca' : loai === 'refund_failed' ? '#fecdd3' : '#fde68a'}`,
+              background: toastBg,
+              border: `1px solid ${toastBorder}`,
               color: '#1f2937',
               fontWeight: '600',
               cursor: 'pointer',
             },
             onClick: () => navigate(cfg.navTo),
           });
+
+          // Emit event để DonHang page reload khi có đơn chatbot mới
+          if (loai === 'don_hang_chatbot_moi') {
+            adminEventBus.emit('reload_chatbot_orders', { data });
+          }
 
           // Thêm vào panel alerts
           setAlerts(prev => [{ loai, data, time }, ...prev].slice(0, 20));
@@ -131,7 +149,7 @@ export default function AdminLayout() {
     setup();
     return () => {
       isCancelled = true;
-      try { if (channel) channel.stopListening('.admin.alert'); } catch {}
+      try { if (channel) channel.stopListening('.admin.alert'); } catch (e) { console.error(e); }
     };
   }, []);
   // ──────────────────────────────────────────────────────────────────────────
@@ -165,7 +183,8 @@ export default function AdminLayout() {
     { to: '/admin/cau-hinh-he-thong', icon: 'fa-gears', label: 'Cấu Hình Nền Tảng' },
     { to: '/admin/reports', icon: 'fa-flag', label: 'Báo Cáo / Khiếu Nại' },
     { to: '/admin/danh-gia', icon: 'fa-star', label: 'Đánh Giá' },
-    { to: '/admin/thong-bao', icon: 'fa-bullhorn', label: 'Gửi Thông Báo' },
+    { to: '/admin/thong-bao', icon: 'fa-bullhorn', label: 'Gui Thong Bao' },
+    { to: '/admin/chatbot-analytics', icon: 'fa-robot', label: 'AI Chatbot' },
   ];
 
   return (

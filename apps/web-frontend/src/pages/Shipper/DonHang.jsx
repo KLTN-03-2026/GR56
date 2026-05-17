@@ -4,6 +4,8 @@ import toast from 'react-hot-toast';
 import { rtToast } from '../../components/RealtimeToast';
 import { formatVND } from '../../utils/helpers';
 import ChatBox from '../../components/ChatBox';
+import NavigationGuide from '../../components/NavigationGuide';
+import { useShipperLocation } from '../../hooks/useShipperLocation';
 
 const sA = (url, method = 'get', data = null) => {
   const token = localStorage.getItem('shipper_login');
@@ -57,6 +59,52 @@ function Pagination({ current, total, onChange, activeColor = 'bg-orange-500' })
   );
 }
 
+/* ----- Countdown Timer Component ----- */
+function CountdownTimer({ expiresIn = 60, arrivedAt }) {
+  const calcRemaining = () => {
+    if (arrivedAt) {
+      const elapsed = (Date.now() - arrivedAt) / 1000;
+      return Math.max(0, Math.round(expiresIn - elapsed));
+    }
+    return expiresIn;
+  };
+
+  const [secondsLeft, setSecondsLeft] = useState(calcRemaining);
+
+  useEffect(() => {
+    setSecondsLeft(calcRemaining());
+    const timer = setInterval(() => {
+      setSecondsLeft(calcRemaining());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [arrivedAt, expiresIn]);
+
+  const mm = String(Math.floor(secondsLeft / 60)).padStart(2, '0');
+  const ss = String(secondsLeft % 60).padStart(2, '0');
+  const isUrgent = secondsLeft <= 15;
+  const progress = (secondsLeft / expiresIn) * 100;
+
+  return (
+    <div className="mt-2 mb-3">
+      <div className="flex items-center justify-between mb-1">
+        <div className={`flex items-center gap-1.5 text-[11px] font-bold ${isUrgent ? 'text-red-500 animate-pulse' : 'text-orange-500'}`}>
+          <i className="fa-solid fa-clock-rotate-left" />
+          {isUrgent ? 'SẮP HẾT GIỜ!' : 'Thời gian xác nhận'}
+        </div>
+        <div className={`text-xs font-black px-2 py-0.5 rounded-lg ${isUrgent ? 'bg-red-500 text-white' : 'bg-orange-100 text-orange-600'}`}>
+          {mm}:{ss}
+        </div>
+      </div>
+      <div className="w-full bg-gray-100 h-1.5 rounded-full overflow-hidden">
+        <div 
+          className={`h-full transition-all duration-1000 ease-linear ${isUrgent ? 'bg-red-500' : 'bg-orange-400'}`} 
+          style={{ width: `${progress}%` }} 
+        />
+      </div>
+    </div>
+  );
+}
+
 /* ----- Confirm Modal ----- */
 function ConfirmNhanDon({ open, onClose, onConfirm, order }) {
   if (!open) return null;
@@ -69,7 +117,8 @@ function ConfirmNhanDon({ open, onClose, onConfirm, order }) {
         <div className="p-6 text-center">
           <i className="fa-solid fa-box text-5xl text-yellow-300 mb-4 block" />
           <p className="text-gray-600">Xác nhận nhận đơn <b className="text-yellow-600">#{order?.ma_don_hang}</b>?</p>
-          <p className="text-gray-400 text-sm mt-1">Bạn sẽ chịu trách nhiệm giao đơn này!</p>
+          <p className="text-gray-400 text-sm mt-1 mb-4">Bạn sẽ chịu trách nhiệm giao đơn này!</p>
+          {order?.tinh_trang === 0 && <CountdownTimer expiresIn={order.expires_in} arrivedAt={order.arrivedAt} />}
         </div>
         <div className="p-4 border-t flex gap-3 justify-end">
           <button onClick={onClose} className="px-5 py-2 rounded-xl bg-gray-100 text-gray-700 font-semibold text-sm">Hủy</button>
@@ -145,7 +194,7 @@ function ConfirmGiaoHangModal({ open, onClose, onConfirm, order }) {
 }
 
 /* ----- Chi Tiết Modal ----- */
-function ChiTietModal({ open, onClose, order, items }) {
+function ChiTietModal({ open, onClose, order, items, onNavigate, onNavigateToRestaurant }) {
   if (!open || !order) return null;
   const ST_BADGE = {
     1: 'bg-yellow-100 text-yellow-800',
@@ -154,6 +203,10 @@ function ChiTietModal({ open, onClose, order, items }) {
     4: 'bg-green-100 text-green-800',
     5: 'bg-red-100 text-red-800',
   };
+
+  const hasCustomerCoords = order.customer_lat && order.customer_lng;
+  const hasRestaurantCoords = order.restaurant_lat || (order.latitude_quan && order.longitude_quan);
+
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl" onClick={e => e.stopPropagation()}>
@@ -172,6 +225,30 @@ function ChiTietModal({ open, onClose, order, items }) {
             {(() => { const st = STATUS_MAP[order.tinh_trang] || STATUS_MAP[4]; return <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${st.color}`}><i className={`fa-solid ${st.icon}`} />{st.label}</span>; })()}
             <span className="text-gray-400 text-xs">{fDT(order.created_at)}</span>
           </div>
+
+          {order.tinh_trang === 0 && (
+             <div className="bg-orange-50 p-4 rounded-2xl border border-orange-100">
+                <CountdownTimer expiresIn={order.expires_in} arrivedAt={order.arrivedAt} />
+             </div>
+          )}
+
+          {/* Navigation quick actions */}
+          {(order.tinh_trang >= 1 || hasRestaurantCoords) && (
+            <div className="flex gap-2">
+              {hasRestaurantCoords && (
+                <button onClick={() => onNavigateToRestaurant(order)}
+                  className="flex-1 py-2.5 rounded-xl bg-orange-50 border border-orange-200 text-orange-600 font-bold text-sm hover:bg-orange-100 transition-colors flex items-center justify-center gap-2">
+                  <i className="fa-solid fa-store" /> Đến Quán
+                </button>
+              )}
+              {hasCustomerCoords && (
+                <button onClick={() => onNavigate(order)}
+                  className="flex-1 py-2.5 rounded-xl bg-green-50 border border-green-200 text-green-600 font-bold text-sm hover:bg-green-100 transition-colors flex items-center justify-center gap-2">
+                  <i className="fa-solid fa-location-arrow" /> Đến Khách Hàng
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Restaurant + Customer */}
           <div className="grid sm:grid-cols-2 gap-4">
@@ -243,8 +320,10 @@ function ChiTietModal({ open, onClose, order, items }) {
 }
 
 /* ----- Order Card (available) ----- */
-function AvailableCard({ order, onNhan, onXemChiTiet }) {
-  const pttt = order.phuong_thuc_thanh_toan == 1 ? { label: 'COD', cls: 'text-orange-600' } : order.is_thanh_toan == 1 ? { label: 'Đã CK', cls: 'text-green-600' } : { label: 'Chưa TT', cls: 'text-red-500' };
+function AvailableCard({ order, onNhan, onTuChoi, onXemChiTiet }) {
+
+  // Check if order has coordinates (might be available in data from BE if we update the query)
+  // For now we show the button as disabled with a hint
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-orange-100 overflow-hidden hover:shadow-md transition-all">
       <div className="px-4 py-3 flex items-center justify-between" style={{ background: 'linear-gradient(135deg, #f7971e, #ffd200)' }}>
@@ -275,8 +354,12 @@ function AvailableCard({ order, onNhan, onXemChiTiet }) {
           <div className="text-center"><div>Ship Nhận</div><div className="font-bold text-green-600 text-sm">{formatVND(order.phi_ship)}</div></div>
           <div className="text-right"><div>Loại thanh toán</div><div className={`font-bold mt-0.5 px-2 py-0.5 rounded-full inline-block ${order.is_thanh_toan == 1 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{order.is_thanh_toan == 1 ? 'Đã CK' : 'Tiền Mặt'}</div></div>
         </div>
+        <CountdownTimer expiresIn={order.expires_in ?? 60} arrivedAt={order.arrivedAt} />
       </div>
       <div className="px-4 pb-4 flex gap-2">
+        <button onClick={() => onTuChoi(order)} className="px-3 py-3 rounded-xl border border-gray-200 text-gray-500 font-bold hover:bg-gray-50 hover:text-red-500 hover:border-red-200 transition-all" title="Từ chối đơn này">
+          <i className="fa-solid fa-xmark" />
+        </button>
         <button onClick={() => onXemChiTiet(order)} className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-700 font-bold hover:bg-gray-50 transition-all">
           <i className="fa-solid fa-eye mr-2" />Chi Tiết
         </button>
@@ -290,9 +373,11 @@ function AvailableCard({ order, onNhan, onXemChiTiet }) {
 }
 
 /* ----- Order Card (delivering) ----- */
-function DeliveringCard({ order, onGiao, onXemChiTiet, onChat, onReport }) {
-  const pct = Math.min(order.tinh_trang * 35, 100);
-  const pttt = order.phuong_thuc_thanh_toan == 1 ? { label: 'COD', cls: 'text-orange-600' } : order.is_thanh_toan == 1 ? { label: 'Đã CK', cls: 'text-green-600' } : { label: 'Chưa TT', cls: 'text-red-500' };
+function DeliveringCard({ order, onGiao, onXemChiTiet, onChat, onReport, onNavigate, onNavigateToRestaurant }) {
+
+  const hasCustomerCoords = order.customer_lat && order.customer_lng;
+  const hasRestaurantCoords = order.restaurant_lat && order.restaurant_lng;
+
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-blue-100 overflow-hidden hover:shadow-md transition-all">
       <div className="px-4 py-3 flex items-center justify-between bg-cyan-500">
@@ -325,6 +410,46 @@ function DeliveringCard({ order, onGiao, onXemChiTiet, onChat, onReport }) {
             <div className="font-bold text-gray-800">{order.ten_nguoi_nhan}</div>
             <div className="text-xs text-gray-400">{order.dia_chi_khach}</div>
           </div>
+        </div>
+
+        {/* Navigation buttons */}
+        <div className="grid grid-cols-2 gap-2 mb-3">
+          {order.tinh_trang >= 3 ? (
+            // Shipper has food → go to customer
+            <button
+              onClick={() => onNavigate(order)}
+              disabled={!hasCustomerCoords}
+              className={`py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all active:scale-[0.97] ${hasCustomerCoords
+                ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-lg shadow-orange-500/30 hover:opacity-90'
+                : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>
+              <i className="fa-solid fa-location-arrow" />
+              Chỉ Đường KH
+            </button>
+          ) : order.tinh_trang === 2 ? (
+            // Food ready → go to restaurant
+            <button
+              onClick={() => onNavigateToRestaurant(order)}
+              disabled={!hasRestaurantCoords}
+              className={`py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all active:scale-[0.97] ${hasRestaurantCoords
+                ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-lg shadow-orange-500/30 hover:opacity-90'
+                : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>
+              <i className="fa-solid fa-location-arrow" />
+              Đến Quán
+            </button>
+          ) : (
+            <button disabled className="py-2.5 rounded-xl bg-gray-50 text-gray-400 font-bold text-sm flex items-center justify-center gap-2 cursor-not-allowed">
+              <i className="fa-solid fa-location-dot" />
+              Chưa có lộ trình
+            </button>
+          )}
+          {order.tinh_trang >= 3 && hasRestaurantCoords && (
+            <button
+              onClick={() => onNavigateToRestaurant(order)}
+              className="py-2.5 rounded-xl bg-gray-100 text-gray-700 font-bold text-sm flex items-center justify-center gap-2 hover:bg-gray-200 transition-all active:scale-[0.97]">
+              <i className="fa-solid fa-store text-orange-400" />
+              Đến Quán
+            </button>
+          )}
         </div>
 
         <div className="grid grid-cols-3 gap-2 text-xs text-gray-500 border-t pt-3 mb-3">
@@ -466,6 +591,13 @@ export default function ShipperDonHang() {
   const [reportForm, setReportForm] = useState({ tieu_de: '', noi_dung: '', hinh_anh: null, yeu_cau_huy: false, ly_do_huy: '' });
   const [reportLoading, setReportLoading] = useState(false);
 
+  // ── Navigation state ──────────────────────────────────────────────────
+  const [navOrder, setNavOrder] = useState(null);      // order object
+  const [navMode, setNavMode] = useState('to-customer'); // 'to-customer' | 'to-restaurant'
+  const { location: currentLocation } = useShipperLocation();
+
+  // ── Ref để Echo listener check available orders (tránh stale closure) ──
+
   const currentAvailable = available.slice((pageAvailable - 1) * itemsPerPage, pageAvailable * itemsPerPage);
   const totalAvailable = Math.ceil(available.length / itemsPerPage);
 
@@ -478,6 +610,7 @@ export default function ShipperDonHang() {
   const currentCancelled = cancelled.slice((pageCancelled - 1) * itemsPerPage, pageCancelled * itemsPerPage);
   const totalCancelled = Math.ceil(cancelled.length / itemsPerPage);
 
+  const pollIntervalRef = useRef(null);
   const unmountEchoRef = useRef(null);
 
   useEffect(() => {
@@ -496,10 +629,45 @@ export default function ShipperDonHang() {
       } catch {
          if (isMounted) unmountEchoRef.current = await setupRealtime(null);
       }
-      
+
       if (isMounted) {
          await loadAll();
       }
+
+      // ── Polling fallback: refresh every 5s ──
+      if (isMounted) {
+         pollIntervalRef.current = setInterval(() => {
+            loadAll(true);
+         }, 5000);
+      }
+
+      // ── Cascade Timer: Chạy mỗi giây để tự động chuyển đơn khi hết hạn ──
+      const cascadeInterval = setInterval(() => {
+        setAvailable(prev => {
+          const now = Date.now();
+          const expired = prev.filter(o => {
+            if (!o.arrivedAt) return false;
+            const elapsed = (now - o.arrivedAt) / 1000;
+            return elapsed >= (o.expires_in ?? 60);
+          });
+
+          if (expired.length === 0) return prev;
+
+          expired.forEach(o => {
+            console.log('[Cascade] Order expired, moving to next shipper:', o.ma_don_hang);
+            sA('/api/shipper/don-hang/cascade-next', 'post', { id: o.id }).catch(() => {});
+            // Nếu đang mở modal xác nhận đơn này thì đóng lại
+            setConfirmOrder(curr => curr?.id === o.id ? null : curr);
+            setChiTietOrder(curr => curr?.id === o.id ? null : curr);
+          });
+
+          return prev.filter(o => !expired.some(e => e.id === o.id));
+        });
+      }, 1000);
+
+      return () => {
+        clearInterval(cascadeInterval);
+      };
     };
 
     init();
@@ -510,56 +678,113 @@ export default function ShipperDonHang() {
           unmountEchoRef.current();
           unmountEchoRef.current = null;
        }
+       if (pollIntervalRef.current) {
+          clearInterval(pollIntervalRef.current);
+          pollIntervalRef.current = null;
+       }
     };
   }, []);
+
+  const isFirstLoad = useRef(true);
 
   const loadAll = async (silent = false) => {
     if (!silent) setLoading(true);
     try {
       const [r1, r2] = await Promise.all([
-        sA('/api/shipper/don-hang/data'),
-        sA('/api/shipper/don-hang/data-dang-giao'),
+        sA('/api/shipper/don-hang/cho-nhan'),
+        sA('/api/shipper/don-hang/dang-giao-chi-tiet'),
       ]);
-      setAvailable(r1.data.list_don_hang_co_the_nhan || []);
+      
+      const newAvailable = r1.data.list_don_hang_co_the_nhan || [];
+      const now = Date.now();
+      setAvailable(prev => {
+        const prevMap = {};
+        prev.forEach(o => { prevMap[o.id] = o; });
+
+        if (!isFirstLoad.current) {
+          const prevIds = new Set(prev.map(o => o.id));
+          newAvailable.forEach(order => {
+            if (!prevIds.has(order.id)) {
+              console.log('[Polling] Detected new order!', order.ma_don_hang);
+              rtToast.show({
+                type: 'order',
+                title: 'Có đơn hàng mới!',
+                message: `Đơn #${order.ma_don_hang || ''} cần được giao. Bấm để nhận!`,
+                orderCode: order.ma_don_hang,
+                duration: 10000,
+              });
+            }
+          });
+        }
+        return newAvailable.map(o => ({
+          ...o,
+          arrivedAt: prevMap[o.id]?.arrivedAt ?? now,
+          expires_in: o.expires_in ?? 60
+        }));
+      });
+
       setDelivering(r2.data.data || []);
       setCompleted(r2.data.list_don_hang_hoan_thanh || []);
       setCancelled(r2.data.list_don_hang_da_huy || []);
-    } catch {}
+      
+      isFirstLoad.current = false;
+    } catch { /* silent fail */ }
     finally { if (!silent) setLoading(false); }
   };
 
   const setupRealtime = async (userId) => {
-    const { default: echo, updateEchoToken } = await import('../../utils/echo');
-    updateEchoToken();
-    
-    // 1. All shippers channel
-    const allChannel = echo.private('all-shippers');
-    allChannel.listen('.don-hang.moi', (data) => {
-       const dh = data.don_hang || data || {};
-       toast.success(`📦 Có đơn hàng mới! mã đơn: ${dh.ma_don_hang || ''}`, {
-          duration: 10000,
-          position: 'top-right'
-       });
-       setTab('available'); // ← Tự chuyển sang tab "Có thể nhận"
-       setTimeout(() => loadAll(true), 500); // silent refresh
-    });
-    allChannel.listen('.don-hang.da-thanh-toan', (data) => {
-       const dh = data.don_hang || data || {};
-       if (dh.ma_don_hang) {
-          toast.success(`💳 Đơn #${dh.ma_don_hang} vừa được khách thanh toán online!`, {
-             duration: 8000,
-             position: 'top-right'
-          });
-          setTimeout(() => loadAll(true), 500); // silent refresh
-       }
-    });
-    allChannel.listen('.don-hang.cho-nhan', () => {
-       setTimeout(() => loadAll(true), 500); // silent refresh
-    });
+    const { getEchoInstance } = await import('../../utils/echo');
+    const shipperToken = localStorage.getItem('shipper_login') || '';
+    const echo = getEchoInstance('shipper', shipperToken);
+    if (!echo) return () => {};
 
-    // 2. Personal channel
+    // Kênh CÁ NHÂN — tất cả events đều đến đây (sequential cascade 1-1)
+    // Đơn hàng mới chỉ gửi đến shipper được chọn, không broadcast cho tất cả
     if (userId) {
        const personalChannel = echo.private(`shipper.${userId}`);
+
+       // Đơn mới được dispatch cho MÌNH
+       personalChannel.listen('.dispatch.candidate', (data) => {
+          console.log('[Echo] dispatch.candidate (personal) received:', data);
+          const order = data.order || data || {};
+          const orderCode = order.ma_don_hang || data.ma_don_hang;
+          rtToast.show({
+             type: 'order',
+             title: '🛵 Có đơn hàng mới cho bạn!',
+             message: `Đơn #${orderCode || ''} đang chờ bạn nhận!`,
+             orderCode: orderCode,
+             duration: 10000,
+          });
+          setTab('available');
+          setAvailable(prev => {
+            if (prev.some(o => o.id === (order.id || data.id))) return prev;
+            return [{
+              ...(order.id ? order : data),
+              arrivedAt: Date.now(),
+              expires_in: order.expires_in ?? data.expires_in ?? 60
+            }, ...prev];
+          });
+          setTimeout(() => loadAll(true), 500);
+       });
+
+       // Đơn bị hủy / shipper khác nhận
+       personalChannel.listen('.dispatch.cancelled', (data) => {
+          const orderId = data?.order_id || data?.id;
+          if (!orderId) return;
+          setAvailable(prev => prev.filter(o => o.id !== Number(orderId)));
+          if (data?.reason === 'taken_by_other') {
+             toast.error(`❌ Đơn #${data?.ma_don_hang || ''} đã có người khác nhận rồi.`, { duration: 5000, position: 'top-right' });
+          }
+       });
+
+       // Thanh toán online
+       personalChannel.listen('.don-hang.da-thanh-toan', (data) => {
+          const dh = data.don_hang || data || {};
+          if (dh.ma_don_hang) {
+             toast.success(`💳 Đơn #${dh.ma_don_hang} vừa được thanh toán online!`, { duration: 8000, position: 'top-right' });
+             setTimeout(() => loadAll(true), 500);
+          }
+       });
        personalChannel.listen('.don-hang.dang-lam', (data) => {
           const dh = data.don_hang || data || {};
           rtToast.show({ type: 'order', title: 'Quán đang chế biến!', message: `Quán đang nấu đơn #${dh.ma_don_hang || ''}.`, orderCode: dh.ma_don_hang, duration: 6000 });
@@ -569,10 +794,6 @@ export default function ShipperDonHang() {
           const dh = data.don_hang || data || {};
           rtToast.show({ type: 'success', title: 'Quán đã cận xịp xong!', message: `Đơn #${dh.ma_don_hang || ''} đã sẵn sàng. Hãy đến lấy hàng!`, orderCode: dh.ma_don_hang, duration: 8000 });
           setTab('delivering');
-          setTimeout(() => loadAll(true), 500);
-       });
-       personalChannel.listen('.don-hang.thu-hoi', () => {
-          rtToast.show({ type: 'error', title: 'Một đơn bị thu hồi!', message: 'Một đơn hàng đã bị hệ thống thu hồi.', duration: 6000 });
           setTimeout(() => loadAll(true), 500);
        });
        personalChannel.listen('.don-hang.da-huy', (data) => {
@@ -587,11 +808,37 @@ export default function ShipperDonHang() {
           setTab('cancelled');
           setTimeout(() => loadAll(true), 500);
        });
+       personalChannel.listen('.don-hang.da-nhan', (data) => {
+          // Event này gửi về cho shipper đã nhận đơn + khách hàng + quán
+          // Chỉ xử lý khi data.id === order.id đang hiển thị
+          const dh = data.don_hang || data || {};
+          const donHangId = data.id || dh.id;
+          const orderCode = dh.ma_don_hang || data.ma_don_hang;
+          rtToast.show({
+            type: 'success',
+            title: 'Đã nhận đơn!',
+            message: `Bạn đã nhận đơn #${orderCode || ''} thành công.`,
+            orderCode: orderCode,
+            duration: 5000,
+          });
+          setTab('picking');
+          setTimeout(() => loadAll(true), 500);
+       });
     }
 
     return () => {
-       echo.leave('all-shippers');
-       if (userId) echo.leave(`shipper.${userId}`);
+       try {
+         if (userId) {
+            const pChan = echo.private(`shipper.${userId}`);
+            pChan.stopListening('.dispatch.candidate');
+            pChan.stopListening('.dispatch.cancelled');
+            pChan.stopListening('.don-hang.da-thanh-toan');
+            pChan.stopListening('.don-hang.dang-lam');
+            pChan.stopListening('.don-hang.da-xong');
+            pChan.stopListening('.don-hang.da-huy');
+            pChan.stopListening('.don-hang.da-nhan');
+         }
+       } catch (e) { console.error(e); }
     };
   };
 
@@ -605,6 +852,18 @@ export default function ShipperDonHang() {
         loadAll(true); // silent refresh — không show skeleton
       } else toast.error(r.data.message);
     } catch { toast.error('Lỗi!'); }
+  };
+
+  const handleTuChoi = async (order) => {
+    try {
+      const r = await sA('/api/shipper/don-hang/tu-choi', 'post', { id: order.id });
+      if (r.data.status) {
+        toast.success(r.data.message || 'Đã từ chối đơn.');
+        loadAll(true);
+      } else {
+        toast.error(r.data.message || 'Không thể từ chối đơn.');
+      }
+    } catch { toast.error('Lỗi kết nối!'); }
   };
 
   const handleGiao = async (order, file) => {
@@ -636,7 +895,18 @@ export default function ShipperDonHang() {
         setChiTietItems(r.data.data || []);
         if (r.data.don_hang) setChiTietOrder(r.data.don_hang);
       }
-    } catch {}
+    } catch { /* silent */ }
+  };
+
+  // ── Navigation handlers ─────────────────────────────────────────────────
+  const handleNavigate = (order) => {
+    setNavOrder(order);
+    setNavMode('to-customer');
+  };
+
+  const handleNavigateToRestaurant = (order) => {
+    setNavOrder(order);
+    setNavMode('to-restaurant');
   };
 
   const handleReport = (order) => {
@@ -714,7 +984,7 @@ export default function ShipperDonHang() {
                 ? <div className="text-center py-24 bg-white rounded-2xl border-dashed border-2 border-gray-200"><i className="fa-solid fa-box-open text-6xl text-gray-300 mb-4 block" /><p className="text-gray-400 font-semibold">Không có đơn nào để nhận</p></div>
                 : <>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {currentAvailable.map((o, i) => <AvailableCard key={o.id || i} order={o} onNhan={setConfirmOrder} onXemChiTiet={handleXemChiTiet} />)}
+                      {currentAvailable.map((o, i) => <AvailableCard key={o.id || i} order={o} onNhan={setConfirmOrder} onTuChoi={handleTuChoi} onXemChiTiet={handleXemChiTiet} />)}
                     </div>
                     {totalAvailable > 1 && (
                       <Pagination current={pageAvailable} total={totalAvailable} onChange={setPageAvailable} activeColor="bg-orange-500" />
@@ -727,13 +997,15 @@ export default function ShipperDonHang() {
                 : <>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                       {currentDelivering.map((o, i) => (
-                        <DeliveringCard 
-                          key={o.id || i} 
-                          order={o} 
-                          onGiao={setGiaoHangOrder} 
-                          onXemChiTiet={handleXemChiTiet} 
+                        <DeliveringCard
+                          key={o.id || i}
+                          order={o}
+                          onGiao={setGiaoHangOrder}
+                          onXemChiTiet={handleXemChiTiet}
                           onChat={setChatOrder}
                           onReport={handleReport}
+                          onNavigate={handleNavigate}
+                          onNavigateToRestaurant={handleNavigateToRestaurant}
                         />
                       ))}
                     </div>
@@ -776,7 +1048,7 @@ export default function ShipperDonHang() {
       {/* Modals */}
       <ConfirmNhanDon open={!!confirmOrder} onClose={() => setConfirmOrder(null)} onConfirm={handleNhanDon} order={confirmOrder} />
       <ConfirmGiaoHangModal open={!!giaoHangOrder} onClose={() => setGiaoHangOrder(null)} onConfirm={handleGiao} order={giaoHangOrder} />
-      <ChiTietModal open={!!chiTietOrder} onClose={() => setChiTietOrder(null)} order={chiTietOrder} items={chiTietItems} />
+      <ChiTietModal open={!!chiTietOrder} onClose={() => setChiTietOrder(null)} order={chiTietOrder} items={chiTietItems} onNavigate={handleNavigate} onNavigateToRestaurant={handleNavigateToRestaurant} />
       
       {chatOrder && (
           <ChatBox 
@@ -785,6 +1057,16 @@ export default function ShipperDonHang() {
             onClose={() => setChatOrder(null)}
             otherPartyName={chatOrder.ten_nguoi_nhan}
           />
+      )}
+
+      {/* Navigation Guide Modal */}
+      {navOrder && (
+        <NavigationGuide
+          order={navOrder}
+          currentLocation={currentLocation}
+          mode={navMode}
+          onClose={() => setNavOrder(null)}
+        />
       )}
 
       {/* Report Modal */}

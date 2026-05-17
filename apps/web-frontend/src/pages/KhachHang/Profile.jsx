@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../utils/api';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext';
+import { ndaGeocodeForward, ndaGeocodeReverse } from '../../config/map';
 
 export default function Profile() {
   const { user: authUser, loadUser } = useAuth();
@@ -19,6 +20,7 @@ export default function Profile() {
   const [modalType, setModalType] = useState(null); // 'add' | 'edit' | 'delete' | 'add-bank'
   const [avatarPreview, setAvatarPreview] = useState(null);
   const [geocoding, setGeocoding] = useState(false); // trạng thái đang geocode
+  const [loading, setLoading] = useState(false);
 
   // ── Tài khoản NH hoàn tiền (MỚI) ───────────────────────────────────────
   const [banks, setBanks] = useState([]);
@@ -42,7 +44,7 @@ export default function Profile() {
     try {
       const res = await api.get('/api/khach-hang/tai-khoan-ngan-hang');
       if (res.data.status) setBanks(res.data.data || []);
-    } catch {}
+    } catch (e) { console.error(e); }
   };
 
   const addBank = async () => {
@@ -73,45 +75,51 @@ export default function Profile() {
       const res = await api.delete(`/api/khach-hang/tai-khoan-ngan-hang/${id}`);
       if (res.data.status) { toast.success(res.data.message); loadBanks(); }
       else toast.error(res.data.message);
-    } catch {}
+    } catch (e) { console.error(e); }
   };
 
   const setDefaultBank = async (id) => {
     try {
       const res = await api.post(`/api/khach-hang/tai-khoan-ngan-hang/${id}/default`);
       if (res.data.status) { toast.success(res.data.message); loadBanks(); }
-    } catch {}
+    } catch (e) { console.error(e); }
   };
 
   const loadProfile = async () => {
     try {
       const res = await api.get('/api/khach-hang/data-login');
       if (res.data.status) setUser(res.data.data);
-    } catch {}
+    } catch (e) { console.error(e); }
   };
 
   const loadDiaChi = async () => {
     try {
       const res = await api.get('/api/khach-hang/dia-chi/data');
       setListDiaChi(res.data.data || []);
-    } catch {}
+    } catch (e) { console.error(e); }
   };
 
   const loadTinhThanh = async () => {
     try {
       const res = await api.get('/api/khach-hang/tinh-thanh/data');
       setListTinhThanh(res.data.data || []);
-    } catch {}
+    } catch (e) { console.error(e); }
   };
 
   const loadQuanHuyen = async (id) => {
     try {
       const res = await api.post('/api/khach-hang/quan-huyen/data', { id_tinh_thanh: id });
-      setListQuanHuyen(res.data.data || []);
-    } catch {}
+      const data = res.data.data || [];
+      setListQuanHuyen(data);
+      return data;
+    } catch {
+      return [];
+    }
   };
 
   const updateProfile = async () => {
+    if (loading) return;
+    setLoading(true);
     try {
       const res = await api.post('/api/khach-hang/update-profile', user);
       if (res.data.status) { toast.success(res.data.message); loadProfile(); if (loadUser) loadUser(); }
@@ -120,10 +128,14 @@ export default function Profile() {
       const errs = err?.response?.data?.errors;
       if (errs) Object.values(errs).forEach(v => toast.error(v[0]));
       else toast.error('Cập nhật thất bại!');
+    } finally {
+      setLoading(false);
     }
   };
 
   const doiMatKhauSubmit = async () => {
+    if (loading) return;
+    setLoading(true);
     try {
       const res = await api.post('/api/khach-hang/update-password', doiMatKhau);
       if (res.data.status) { toast.success(res.data.message); setDoiMatKhau({ old_password: '', password: '', re_password: '' }); }
@@ -132,10 +144,14 @@ export default function Profile() {
       const errs = err?.response?.data?.errors;
       if (errs) Object.values(errs).forEach(v => toast.error(v[0]));
       else toast.error('Đổi mật khẩu thất bại!');
+    } finally {
+      setLoading(false);
     }
   };
 
   const addDiaChi = async () => {
+    if (loading) return;
+    setLoading(true);
     try {
       const res = await api.post('/api/khach-hang/dia-chi/create', diaChi);
       if (res.data.status) {
@@ -152,18 +168,24 @@ export default function Profile() {
     } catch (err) {
       const errs = err?.response?.data?.errors;
       if (errs) Object.values(errs).forEach(v => toast.error(v[0]));
+    } finally {
+      setLoading(false);
     }
   };
 
   const updateDiaChi = async () => {
+    if (loading) return;
+    setLoading(true);
     try {
       const res = await api.post('/api/khach-hang/dia-chi/update', detailDiaChi);
       if (res.data.status) { toast.success(res.data.message); loadDiaChi(); setModalType(null); }
       else toast.error(res.data.message);
-    } catch {}
+    } catch (e) { console.error(e); } finally {
+      setLoading(false);
+    }
   };
 
-  // ── Geocode từ FE dùng Nominatim (OpenStreetMap) ────────────────
+  // ── Geocode từ FE dùng NDAMaps (OpenMap VN) ────────────────
   const geocodeFromFE = async (addrObj, setter) => {
     const { dia_chi, id_quan_huyen } = addrObj;
     if (!dia_chi && !id_quan_huyen) return toast('Điền địa chỉ hoặc chọn quận/huyện trước', { icon: '⚠️' });
@@ -175,60 +197,42 @@ export default function Profile() {
       const tenQH = qh?.ten_quan_huyen || '';
       const tenTT = tt?.ten_tinh_thanh || '';
 
-      // Trích xuất tên đường (bỏ số nhà như "63/1", "12B", "số 5"...)
       const extractStreet = (addr) => {
-        // Bỏ phần số nhà đầu: "63/1 Lý Tự Trọng" → "Lý Tự Trọng"
         return addr.replace(/^(\d+[\/\-\w]*\s+)/, '').trim();
       };
 
       const tryGeocode = async (query) => {
-        const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=vn&q=${encodeURIComponent(query)}`;
-        const res = await fetch(url, { headers: { 'Accept-Language': 'vi,en' } });
+        const res = await fetch(ndaGeocodeForward(query));
         const data = await res.json();
-        return data.length > 0 ? data[0] : null;
+        return data.features && data.features.length > 0 ? data.features[0] : null;
       };
 
       let result = null;
 
-      // Chiến lược 1: Địa chỉ đầy đủ
       if (dia_chi && tenQH && tenTT) {
-        result = await tryGeocode(`${dia_chi}, ${tenQH}, ${tenTT}, Việt Nam`);
+        result = await tryGeocode(`${dia_chi}, ${tenQH}, ${tenTT}`);
       }
 
-      // Chiến lược 2: Tên đường (bỏ số nhà) + quận + tỉnh
       if (!result && dia_chi) {
         const street = extractStreet(dia_chi);
         if (street !== dia_chi) {
-          result = await tryGeocode(`${street}, ${tenQH}, ${tenTT}, Việt Nam`);
+          result = await tryGeocode(`${street}, ${tenQH}, ${tenTT}`);
         }
       }
 
-      // Chiến lược 3: Tên đường + tỉnh (bỏ quận)
       if (!result && dia_chi) {
         const street = extractStreet(dia_chi);
-        result = await tryGeocode(`${street}, ${tenTT}, Việt Nam`);
+        result = await tryGeocode(`${street}, ${tenTT}`);
       }
 
-      // Chiến lược 4: Chỉ quận + tỉnh (tọa độ xấp xỉ)
       if (!result && tenQH && tenTT) {
-        result = await tryGeocode(`${tenQH}, ${tenTT}, Việt Nam`);
-      }
-
-      // Chiến lược 5: Structured search (đường + thành phố)
-      if (!result && dia_chi && tenTT) {
-        const street = extractStreet(dia_chi);
-        const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=vn&street=${encodeURIComponent(street)}&city=${encodeURIComponent(tenTT)}`;
-        const res = await fetch(url, { headers: { 'Accept-Language': 'vi,en' } });
-        const data = await res.json();
-        if (data.length > 0) result = data[0];
+        result = await tryGeocode(`${tenQH}, ${tenTT}`);
       }
 
       if (result) {
-        const lat = parseFloat(result.lat);
-        const lng = parseFloat(result.lon);
+        const [lng, lat] = result.geometry.coordinates;
         setter(d => ({ ...d, lat, lng, toa_do_x: lat, toa_do_y: lng }));
-        const note = result.display_name?.substring(0, 60) + '...';
-        toast.success(`📍 Đã xác định: ${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+        toast.success(`Đã xác định: ${lat.toFixed(5)}, ${lng.toFixed(5)}`);
       } else {
         toast.error('Không tìm thấy tọa độ. Hãy thử nhập tên đường rõ hơn (ví dụ: "Lý Tự Trọng")');
       }
@@ -244,11 +248,84 @@ export default function Profile() {
     if (!navigator.geolocation) return toast.error('Trình duyệt không hỗ trợ GPS');
     setGeocoding(true);
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
+      async (pos) => {
         const lat = parseFloat(pos.coords.latitude.toFixed(6));
         const lng = parseFloat(pos.coords.longitude.toFixed(6));
-        setter(d => ({ ...d, lat, lng, toa_do_x: lat, toa_do_y: lng }));
-        toast.success(`📍 Vị trí hiện tại: ${lat}, ${lng}`);
+
+        // Reverse geocoding to get address
+        try {
+          const res = await fetch(ndaGeocodeReverse(lat, lng));
+          const data = await res.json();
+          const feature = data.features && data.features.length > 0 ? data.features[0] : null;
+
+          if (feature) {
+            const props = feature.properties;
+            const address = props.label || props.name || "";
+            
+            // Tìm Tỉnh/Thành và Quận/Huyện
+            let provinceId = null;
+            let districtId = null;
+
+            // 1. Tìm Tỉnh/Thành phố
+            const foundProvince = listTinhThanh.find(t => {
+              const tName = t.ten_tinh_thanh.toLowerCase();
+              return [props.city, props.state, props.province, props.label]
+                .some(s => s && s.toLowerCase().includes(tName));
+            });
+
+            if (foundProvince) {
+              provinceId = foundProvince.id;
+              // Load Quận/Huyện của tỉnh này
+              const fetchedDistricts = await loadQuanHuyen(provinceId);
+              
+              // 2. Tìm Quận/Huyện (tìm trong tất cả các trường có thể)
+              const searchFields = [props.district, props.city, props.county, props.suburb, props.town, props.label]
+                .filter(Boolean)
+                .map(s => s.toLowerCase());
+
+              const foundDistrict = fetchedDistricts.find(d => {
+                const dName = d.ten_quan_huyen.replace(/^(Quận|Huyện|Thành phố|Thị xã)\s+/i, '').trim().toLowerCase();
+                return searchFields.some(sf => {
+                  const cleanSf = sf.replace(/^(quận|huyện|thành phố|thị xã)\s+/i, '').trim().toLowerCase();
+                  return cleanSf.includes(dName) || dName.includes(cleanSf);
+                });
+              });
+              
+              if (foundDistrict) districtId = foundDistrict.id;
+            }
+
+            // Clean up address (remove redundant city/state/country from the end)
+            let cleanAddress = address;
+            const redundantParts = [
+              props.city, props.state, props.province, props.country, 
+              "Việt Nam", "Vietnam"
+            ].filter(Boolean);
+
+            redundantParts.forEach(part => {
+              const regex = new RegExp(`,?\\s*${part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`, 'i');
+              cleanAddress = cleanAddress.replace(regex, '').trim();
+            });
+            // Nếu có dấu phẩy ở cuối thì bỏ đi
+            cleanAddress = cleanAddress.replace(/,\s*$/, '');
+
+            setter(d => ({ 
+              ...d, 
+              lat, lng, 
+              toa_do_x: lat, toa_do_y: lng, 
+              dia_chi: cleanAddress,
+              ...(provinceId !== null && { id_tinh_thanh: provinceId }),
+              ...(districtId !== null && { id_quan_huyen: districtId })
+            }));
+            toast.success(`📍 Vị trí: ${cleanAddress}`);
+          } else {
+            setter(d => ({ ...d, lat, lng, toa_do_x: lat, toa_do_y: lng }));
+            toast.success(`📍 Tọa độ: ${lat}, ${lng}`);
+          }
+        } catch (e) {
+          console.error(e);
+          setter(d => ({ ...d, lat, lng, toa_do_x: lat, toa_do_y: lng }));
+          toast.success(`📍 Tọa độ: ${lat}, ${lng}`);
+        }
         setGeocoding(false);
       },
       () => { toast.error('Không lấy được vị trí. Kiểm tra quyền GPS!'); setGeocoding(false); },
@@ -262,7 +339,7 @@ export default function Profile() {
       const res = await api.post('/api/khach-hang/dia-chi/delete', detailDiaChi);
       if (res.data.status) { toast.success(res.data.message); loadDiaChi(); setModalType(null); }
       else toast.error(res.data.message);
-    } catch {}
+    } catch (e) { console.error(e); }
   };
 
   const handleAvatarChange = async e => {
@@ -584,7 +661,10 @@ export default function Profile() {
             </div>
             <div className="p-4 border-t flex gap-3 justify-end">
               <button onClick={() => setModalType(null)} className="px-5 py-2 rounded-xl bg-gray-100 text-gray-700 font-semibold hover:bg-gray-200">Đóng</button>
-              <button onClick={addDiaChi} className="px-6 py-2 rounded-xl text-white font-bold" style={{ background: 'linear-gradient(135deg, #ff6b35, #f7931e)' }}>Thêm mới</button>
+              <button onClick={addDiaChi} disabled={loading} className="px-6 py-2 rounded-xl text-white font-bold disabled:opacity-50" style={{ background: 'linear-gradient(135deg, #ff6b35, #f7931e)' }}>
+                {loading ? <i className="fa-solid fa-spinner fa-spin mr-2" /> : null}
+                Thêm mới
+              </button>
             </div>
           </div>
         </div>
@@ -640,7 +720,10 @@ export default function Profile() {
             </div>
             <div className="p-4 border-t flex gap-3 justify-end">
               <button onClick={() => setModalType(null)} className="px-5 py-2 rounded-xl bg-gray-100 text-gray-700 font-semibold hover:bg-gray-200">Đóng</button>
-              <button onClick={updateDiaChi} className="px-6 py-2 rounded-xl text-white font-bold" style={{ background: 'linear-gradient(135deg, #ff6b35, #f7931e)' }}>Xác nhận</button>
+              <button onClick={updateDiaChi} disabled={loading} className="px-6 py-2 rounded-xl text-white font-bold disabled:opacity-50" style={{ background: 'linear-gradient(135deg, #ff6b35, #f7931e)' }}>
+                {loading ? <i className="fa-solid fa-spinner fa-spin mr-2" /> : null}
+                Xác nhận
+              </button>
             </div>
           </div>
         </div>

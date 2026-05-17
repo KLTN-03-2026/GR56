@@ -37,6 +37,12 @@ export const AuthProvider = ({ children }) => {
     loadUser();
   };
 
+  const _clearChatbotStorage = () => {
+    localStorage.removeItem('foodbee_chat_messages');
+    localStorage.removeItem('foodbee_chat_history');
+    localStorage.removeItem('foodbee_chat_session_token');
+  };
+
   const logout = async () => {
     try {
       await api.get('/api/khach-hang/dang-xuat');
@@ -44,6 +50,7 @@ export const AuthProvider = ({ children }) => {
       console.error(err);
     } finally {
       localStorage.removeItem('khach_hang_login');
+      _clearChatbotStorage();
       setUser(null);
       toast.success('Đăng xuất thành công!');
     }
@@ -56,6 +63,7 @@ export const AuthProvider = ({ children }) => {
       console.error(err);
     } finally {
       localStorage.removeItem('khach_hang_login');
+      _clearChatbotStorage();
       setUser(null);
       toast.success('Đã đăng xuất khỏi tất cả thiết bị!');
     }

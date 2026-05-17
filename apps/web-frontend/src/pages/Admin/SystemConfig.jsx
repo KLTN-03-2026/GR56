@@ -9,6 +9,7 @@ const SystemConfig = () => {
   // ── Config hiện có ─────────────────────────────────────────────
   const [formData, setFormData] = useState({
     chiet_khau_phan_tram: 15,
+    chiet_khau_shipper_phan_tram: 10,
     phi_ship_km_binh_thuong: 15000,
     phi_ship_km_cao_diem: 20000,
     phi_ship_toi_thieu: 15000,
@@ -39,6 +40,7 @@ const SystemConfig = () => {
         const data = res.data.data;
         setFormData({
           chiet_khau_phan_tram: Number(data.chiet_khau_phan_tram || 15),
+          chiet_khau_shipper_phan_tram: Number(data.chiet_khau_shipper_phan_tram || 10),
           phi_ship_km_binh_thuong: Number(data.phi_ship_km_binh_thuong || 15000),
           phi_ship_km_cao_diem: Number(data.phi_ship_km_cao_diem || 20000),
           phi_ship_toi_thieu: Number(data.phi_ship_toi_thieu || 15000),
@@ -137,17 +139,31 @@ const SystemConfig = () => {
         {/* Card 1 — Chiết khấu */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
           <h3 className="text-lg font-semibold text-gray-800 mb-4 border-b pb-2">1. Chiết khấu nền tảng</h3>
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Hoa hồng thu từ quán ăn (%) <span className="text-red-500">*</span>
-            </label>
-            <div className="flex bg-gray-50 rounded-lg overflow-hidden border border-gray-200 focus-within:ring-2 focus-within:ring-orange-500 focus-within:border-orange-500 transition-all">
-              <input type="number" name="chiet_khau_phan_tram" required min="0" max="100"
-                value={formData.chiet_khau_phan_tram} onChange={handleChange}
-                className="flex-1 bg-transparent px-4 py-2.5 outline-none text-gray-800" />
-              <span className="flex items-center px-4 bg-gray-100 text-gray-500 font-medium border-l border-gray-200">%</span>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Hoa hồng thu từ quán ăn (%) <span className="text-red-500">*</span>
+              </label>
+              <div className="flex bg-gray-50 rounded-lg overflow-hidden border border-gray-200 focus-within:ring-2 focus-within:ring-orange-500 transition-all">
+                <input type="number" name="chiet_khau_phan_tram" required min="0" max="100"
+                  value={formData.chiet_khau_phan_tram} onChange={handleChange}
+                  className="flex-1 bg-transparent px-4 py-2.5 outline-none text-gray-800" />
+                <span className="flex items-center px-4 bg-gray-100 text-gray-500 font-medium border-l border-gray-200">%</span>
+              </div>
+              <p className="text-xs text-gray-500 mt-2">Phần trăm trừ vào tiền hàng của quán.</p>
             </div>
-            <p className="text-xs text-gray-500 mt-2">Tỉ lệ phần trăm hệ thống sẽ tự động trừ khi đơn hàng hoàn thành.</p>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Hoa hồng thu từ shipper (%) <span className="text-red-500">*</span>
+              </label>
+              <div className="flex bg-gray-50 rounded-lg overflow-hidden border border-gray-200 focus-within:ring-2 focus-within:ring-orange-500 transition-all">
+                <input type="number" name="chiet_khau_shipper_phan_tram" required min="0" max="100"
+                  value={formData.chiet_khau_shipper_phan_tram} onChange={handleChange}
+                  className="flex-1 bg-transparent px-4 py-2.5 outline-none text-gray-800" />
+                <span className="flex items-center px-4 bg-gray-100 text-gray-500 font-medium border-l border-gray-200">%</span>
+              </div>
+              <p className="text-xs text-gray-500 mt-2">Phần trăm trừ vào cước phí giao hàng.</p>
+            </div>
           </div>
         </div>
 

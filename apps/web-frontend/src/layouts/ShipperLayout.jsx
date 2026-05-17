@@ -8,59 +8,77 @@ import ChatBox from '../components/ChatBox';
 import NotificationBell from '../components/NotificationBell';
 
 export default function ShipperLayout({ children }) {
+  const token = localStorage.getItem('shipper_login');
+  if (!token) return <Navigate to="/shipper/dang-nhap" replace />;
+
   const [shipper, setShipper] = useState({});
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const [chatOrder, setChatOrder] = useState(null);
 
-  const token = localStorage.getItem('shipper_login');
-  if (!token) return <Navigate to="/shipper/dang-nhap" replace />;
-
   useEffect(() => {
     api.get('/api/shipper/data-login', { headers: { Authorization: `Bearer ${token}` } })
-      .then(res => { if (res.data.status) setShipper(res.data.data); })
+      .then(res => { 
+        if (res.data.status) {
+          setShipper(res.data.data); 
+          localStorage.setItem('shipper_is_open', res.data.data.is_open);
+        }
+      })
       .catch(err => { if (err?.response?.status === 401) { localStorage.removeItem('shipper_login'); navigate('/shipper/dang-nhap'); } });
   }, []);
 
-  // ─── Global real-time: new order notification from ANY page ───────────────
   useEffect(() => {
-    if (!token) return;
+    document.title = "FOODBEE-SHIPPER";
+  }, []);
+
+  // ─── Global real-time: new order notification (đơn được gửi cho MÌNH) ───
+  useEffect(() => {
+    if (!shipper?.id) return;  // Chờ shipper.id load xong mới subscribe
     let channel = null;
     let onNewOrder = null;
     let isCancelled = false;
 
     const setup = async () => {
       try {
-        const { default: echo, updateEchoToken } = await import('../utils/echo');
+        const { getEchoInstance } = await import('../utils/echo');
         if (isCancelled) return;
-        updateEchoToken();
-        channel = echo.private('all-shippers');
+        const echoToken = localStorage.getItem('shipper_login') || '';
+        const echo = getEchoInstance('shipper', echoToken);
+        if (!echo) return;
+        // Lắng nghe kênh cá nhân — chỉ TÔI nhận được đơn này
+        channel = echo.private(`shipper.${shipper.id}`);
         onNewOrder = (data) => {
-          if (window.location.pathname.startsWith('/shipper/don-hang')) return;
-          const dh = data.don_hang || data || {};
+          const isOpen = localStorage.getItem('shipper_is_open');
+          if (isOpen == '0') return;
+
+          const order = data.order || data || {};
+          console.log('[Echo] dispatch.candidate (personal) received:', data);
           rtToast.show({
             type: 'order',
-            title: 'Có đơn hàng mới!',
-            message: `Đơn #${dh.ma_don_hang || ''} cần được giao. Bấm để nhận!`,
-            orderCode: dh.ma_don_hang,
-            duration: 8000,
-            onClick: () => navigate('/shipper/don-hang')
+            title: '🛵 Có đơn hàng mới cho bạn!',
+            message: `Đơn #${order.ma_don_hang || data.ma_don_hang || ''} đang chờ bạn nhận. Bấm để xem!`,
+            orderCode: order.ma_don_hang || data.ma_don_hang,
+            duration: 10000,
+            onClick: () => navigate('/shipper/don-hang'),
           });
-          navigate('/shipper/don-hang');
+
+          if (!window.location.pathname.startsWith('/shipper/don-hang')) {
+            navigate('/shipper/don-hang');
+          }
         };
-        channel.listen('.don-hang.moi', onNewOrder);
-      } catch { }
+        channel.listen('.dispatch.candidate', onNewOrder);
+      } catch (e) { console.error(e); }
     };
 
     setup();
     return () => {
       isCancelled = true;
       if (channel && onNewOrder) {
-        try { channel.stopListening('.don-hang.moi', onNewOrder); } catch { }
+        try { channel.stopListening('.dispatch.candidate', onNewOrder); } catch (e) { console.error(e); }
       }
     };
-  }, [location.pathname]);
+  }, [shipper?.id]);  // Re-subscribe khi shipper.id thay đổi
 
   // ─── Global real-time chat for Shipper ──────────────────────────────────
   useEffect(() => {
@@ -70,9 +88,11 @@ export default function ShipperLayout({ children }) {
 
     const setupChat = async () => {
       try {
-        const { default: echo, updateEchoToken } = await import('../utils/echo');
+        const { getEchoInstance } = await import('../utils/echo');
         if (isCancelled) return;
-        updateEchoToken();
+        const echoToken = localStorage.getItem('shipper_login') || '';
+        const echo = getEchoInstance('shipper', echoToken);
+        if (!echo) return;
         channel = echo.private(`shipper.${shipper.id}`);
         channel.listen('.tin-nhan.moi', (data) => {
           const msg = data.tin_nhan;
@@ -97,20 +117,78 @@ export default function ShipperLayout({ children }) {
             onClick: () => navigate('/shipper/don-hang'),
           });
         });
-      } catch { }
+
+        // Quán đang chế biến — tinh_trang = 2
+        channel.listen('.don-hang.dang-lam', (data) => {
+          const dh = data.don_hang || data || {};
+          rtToast.show({
+            type: 'order',
+            title: '🍳 Quán đã nhận đơn!',
+            message: `Quán đang chuẩn bị đơn #${dh.ma_don_hang || ''}. Bạn có thể đến lấy hàng.`,
+            orderCode: dh.ma_don_hang,
+            duration: 8000,
+            onClick: () => navigate('/shipper/don-hang'),
+          });
+        });
+
+        // Quán chuẩn bị xong — tinh_trang = 3
+        channel.listen('.don-hang.da-xong', (data) => {
+          const dh = data.don_hang || data || {};
+          rtToast.show({
+            type: 'order',
+            title: '✅ Quán đã xong! Đến lấy hàng ngay',
+            message: `Đơn #${dh.ma_don_hang || ''} đã sẵn sàng. Hãy đến lấy ngay!`,
+            orderCode: dh.ma_don_hang,
+            duration: 8000,
+            onClick: () => navigate('/shipper/don-hang'),
+          });
+        });
+
+        // Giao hàng thành công — tinh_trang = 4
+        channel.listen('.don-hang.hoan-thanh', (data) => {
+          const dh = data.don_hang || data || {};
+          rtToast.show({
+            type: 'success',
+            title: '🎉 Giao hàng thành công!',
+            message: `Đơn #${dh.ma_don_hang || ''} đã được giao.`,
+            orderCode: dh.ma_don_hang,
+            duration: 6000,
+          });
+        });
+      } catch (e) { console.error(e); }
     };
 
     setupChat();
     return () => {
       isCancelled = true;
       if (channel) {
-        try { channel.stopListening('.tin-nhan.moi'); } catch { }
-        try { channel.stopListening('.don-hang.da-huy'); } catch { }
+        try { channel.stopListening('.tin-nhan.moi'); } catch (e) { console.error(e); }
+        try { channel.stopListening('.don-hang.da-huy'); } catch (e) { console.error(e); }
+        try { channel.stopListening('.don-hang.dang-lam'); } catch (e) { console.error(e); }
+        try { channel.stopListening('.don-hang.da-xong'); } catch (e) { console.error(e); }
+        try { channel.stopListening('.don-hang.hoan-thanh'); } catch (e) { console.error(e); }
       }
     };
   }, [shipper?.id]);
   // ─────────────────────────────────────────────────────────────────────────
   // ─────────────────────────────────────────────────────────────────────────
+
+  const toggleStatus = async () => {
+    try {
+      const res = await api.post('/api/shipper/toggle-status', {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.data.status) {
+        setShipper(prev => ({ ...prev, is_open: res.data.is_open }));
+        localStorage.setItem('shipper_is_open', res.data.is_open);
+        toast.success(res.data.message);
+      } else {
+        toast.error(res.data.message);
+      }
+    } catch (err) {
+      toast.error('Có lỗi xảy ra khi cập nhật trạng thái');
+    }
+  };
 
   const logout = () => {
     localStorage.removeItem('shipper_login');
@@ -123,6 +201,7 @@ export default function ShipperLayout({ children }) {
     { path: '/shipper/vi-tri-hien-tai', icon: 'fa-location-crosshairs', label: 'Vị Trí Hiện Tại' },
     { path: '/shipper/vi-tien', icon: 'fa-wallet', label: 'Ví Tiền' },
     { path: '/shipper/thong-ke', icon: 'fa-chart-column', label: 'Thống Kê' },
+    { path: '/shipper/bao-cao', icon: 'fa-triangle-exclamation', label: 'Báo Cáo Sự Cố' },
     { path: '/shipper/profile', icon: 'fa-user', label: 'Cá Nhân' }
   ];
 
@@ -194,6 +273,17 @@ export default function ShipperLayout({ children }) {
             </div>
           </div>
           <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3 mr-2">
+              <span className={`text-sm font-medium ${shipper.is_open ? 'text-green-600' : 'text-gray-500'} hidden sm:block`}>
+                {shipper.is_open ? 'Sẵn sàng' : 'Nghỉ'}
+              </span>
+              <button
+                onClick={toggleStatus}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${shipper.is_open ? 'bg-green-500' : 'bg-gray-300'}`}
+              >
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${shipper.is_open ? 'translate-x-6' : 'translate-x-1'}`} />
+              </button>
+            </div>
             <NotificationBell userType="shipper" userId={shipper?.id} token={token} />
             <Link to="/" className="w-10 h-10 rounded-xl bg-gray-50 text-gray-600 hover:bg-orange-50 hover:text-orange-600 flex items-center justify-center transition-colors shadow-sm" title="Về trang khách">
               <i className="fa-solid fa-house" />
@@ -201,7 +291,6 @@ export default function ShipperLayout({ children }) {
             <div className="hidden sm:flex items-center gap-3 pl-4 border-l border-gray-200">
               <div className="text-right">
                 <div className="text-sm font-bold text-gray-800">{shipper.ho_va_ten || 'Shipper'}</div>
-                <div className="text-xs text-gray-500 font-medium">Online</div>
               </div>
             </div>
           </div>
@@ -209,6 +298,20 @@ export default function ShipperLayout({ children }) {
 
         {/* Content area */}
         <main className="flex-1 overflow-y-auto bg-gray-50/50 relative">
+          {shipper.is_open === 0 && location.pathname !== '/shipper/profile' && location.pathname !== '/shipper/vi-tien' && location.pathname !== '/shipper/bao-cao' ? (
+             <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-white/80 backdrop-blur-sm">
+                <div className="p-6 bg-white rounded-2xl shadow-xl text-center max-w-sm border border-orange-100">
+                   <div className="w-16 h-16 bg-orange-100 text-orange-500 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">
+                     <i className="fa-solid fa-power-off"></i>
+                   </div>
+                   <h3 className="text-xl font-bold text-gray-800 mb-2">Bạn đang ngoại tuyến</h3>
+                   <p className="text-gray-500 mb-6 text-sm">Vui lòng bật hoạt động để có thể nhận đơn hàng mới và sử dụng các tính năng giao hàng.</p>
+                   <button onClick={toggleStatus} className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-bold transition-colors">
+                     Bật Hoạt Động Ngay
+                   </button>
+                </div>
+             </div>
+          ) : null}
           {children || <Outlet />}
         </main>
 

@@ -20,7 +20,12 @@ export default function ShipperQuenMatKhau() {
 
   const otp = otpDigits.join('');
 
-  useEffect(() => () => clearInterval(timerRef.current), []);
+  useEffect(() => {
+    document.title = "FOODBEE-SHIPPER";
+    return () => { 
+      clearInterval(timerRef.current);
+    };
+  }, []);
 
   const startCooldown = () => {
     setCooldown(60);

@@ -17,7 +17,7 @@ export default function YeuThich() {
     try {
       const r = await api.get('/api/khach-hang/yeu-thich/data', cfg());
       if (r.data?.status) setItems(r.data.data || []);
-    } catch { }
+    } catch (e) { console.error(e); }
     finally { setLoading(false); }
   }, []);
 
@@ -28,7 +28,7 @@ export default function YeuThich() {
     try {
       await api.post('/api/khach-hang/yeu-thich/toggle', { id_mon_an: idMonAn }, cfg());
       setItems(prev => prev.filter(i => i.id_mon_an !== idMonAn));
-    } catch { }
+    } catch (e) { console.error(e); }
     finally { setRemoving(null); }
   };
 

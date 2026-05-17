@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import api from '../utils/api';
+import OpenMapView from './OpenMapView';
 
 export default function OrderTracking({ orderId }) {
   const [canTrack, setCanTrack] = useState(false);
@@ -62,28 +63,28 @@ export default function OrderTracking({ orderId }) {
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
   };
 
-  // Google Maps IFrame URL logic
-  let mapUrl = '';
+  // Map data
+  let mapCenter = null;
+  let mapMarkers = [];
+  let mapRoute = null;
   let distance = null;
-  let sLat = null, sLng = null, dLat = null, dLng = null;
 
-  if (orderInfo.shipper_lat && orderInfo.shipper_lng) {
-     sLat = orderInfo.shipper_lat;
-     sLng = orderInfo.shipper_lng;
-     // Always show route to customer
-     dLat = orderInfo.customer_lat;
-     dLng = orderInfo.customer_lng;
-  }
+  const sLat = orderInfo.shipper_lat;
+  const sLng = orderInfo.shipper_lng;
+  const cLat = orderInfo.customer_lat;
+  const cLng = orderInfo.customer_lng;
 
-  const centerLat = sLat || orderInfo.customer_lat;
-  const centerLng = sLng || orderInfo.customer_lng;
-
-  if (sLat && sLng && (dLat || orderInfo.customer_address)) {
-      const destUrl = (dLat && dLng) ? `${dLat},${dLng}` : `${orderInfo.customer_address}`;
-      mapUrl = `https://maps.google.com/maps?saddr=${sLat},${sLng}&daddr=${encodeURIComponent(destUrl)}&output=embed`;
-      distance = getDistance(sLat, sLng, dLat, dLng);
-  } else if (centerLat && centerLng) {
-      mapUrl = `https://maps.google.com/maps?q=${centerLat},${centerLng}&t=m&z=15&output=embed`;
+  if (sLat && sLng) {
+    mapCenter = [sLng, sLat];
+    mapMarkers.push({ lng: sLng, lat: sLat, color: '#3b82f6', label: 'Shipper' });
+    if (cLat && cLng) {
+      mapMarkers.push({ lng: cLng, lat: cLat, color: '#f97316', label: 'Khách hàng' });
+      mapRoute = { origin: [sLng, sLat], destination: [cLng, cLat] };
+      distance = getDistance(sLat, sLng, cLat, cLng);
+    }
+  } else if (cLat && cLng) {
+    mapCenter = [cLng, cLat];
+    mapMarkers.push({ lng: cLng, lat: cLat, color: '#f97316', label: 'Khách hàng' });
   }
 
   if (orderInfo.tinh_trang === 4 || orderInfo.tinh_trang === 5) {
@@ -111,20 +112,17 @@ export default function OrderTracking({ orderId }) {
        ) : (
          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 relative h-[350px] sm:h-[450px] w-full bg-gray-100 rounded-2xl overflow-hidden border border-gray-200">
-               {mapUrl ? (
+               {mapCenter ? (
                  <>
                    <div className="absolute top-4 left-4 z-10 bg-white/90 backdrop-blur-sm px-3 py-2 rounded-lg font-bold text-xs shadow text-gray-700 flex items-center">
                      <span className="w-2.5 h-2.5 rounded-full bg-green-500 mr-2 animate-pulse"></span>
                      LIVE TRACKING
                    </div>
-                   <iframe
-                     width="100%"
-                     height="100%"
-                     style={{ border: 0 }}
-                     loading="lazy"
-                     allowFullScreen
-                     referrerPolicy="no-referrer-when-downgrade"
-                     src={mapUrl}
+                   <OpenMapView
+                     center={mapCenter}
+                     zoom={14}
+                     markers={mapMarkers}
+                     route={mapRoute}
                    />
                  </>
                ) : (

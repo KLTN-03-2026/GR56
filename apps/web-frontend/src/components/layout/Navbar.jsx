@@ -30,13 +30,36 @@ export default function Navbar() {
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  useEffect(() => {
+  const fetchDynamicMenus = useCallback(() => {
     api.get('/api/khach-hang/client-menu/data')
       .then(res => {
         if (res.data.status) setDynamicMenus(res.data.data);
       })
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    fetchDynamicMenus();
+    let isCancelled = false;
+    let channel = null;
+    const setupEcho = async () => {
+      try {
+        const { default: echo } = await import('../../utils/echo');
+        if (isCancelled) return;
+        channel = echo.channel('public-client-events');
+        channel.listen('.client.menu.updated', () => {
+          fetchDynamicMenus();
+        });
+      } catch (e) {
+        console.error('[Navbar] Echo setup error:', e);
+      }
+    };
+    setupEcho();
+    return () => {
+      isCancelled = true;
+      if (channel) channel.stopListening('.client.menu.updated');
+    };
+  }, [fetchDynamicMenus]);
 
   // Load Cart Summary
   const fetchCartSummary = useCallback(async () => {
@@ -46,7 +69,7 @@ export default function Navbar() {
       if (res.data.status) {
         setCartSummary({ count: res.data.count, id_quan_an: res.data.id_quan_an });
       }
-    } catch {}
+    } catch (e) { console.error(e); }
   }, [isLoggedIn]);
 
   useEffect(() => {
@@ -81,7 +104,7 @@ export default function Navbar() {
           setSuggestedRestaurants((res.data.quan_an || []).slice(0, 5));
           setShowSuggestions(true);
         }
-      } catch {}
+      } catch (e) { console.error(e); }
     }, 300),
     []
   );
@@ -252,22 +275,55 @@ export default function Navbar() {
             )}
             {!isLoggedIn ? (
               <>
-                <Link
-                  to="/khach-hang/dang-nhap"
-                  className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-full border-2 text-sm font-semibold transition-all duration-200 hover:border-orange-500 hover:text-orange-500"
-                  style={{ borderColor: '#e2e8f0', color: '#4a5568' }}
-                >
-                  <i className="fa-solid fa-sign-in-alt"></i>
-                  Đăng nhập
-                </Link>
-                <Link
-                  to="/khach-hang/dang-ky"
-                  className="flex items-center gap-2 px-4 py-2 rounded-full text-white text-sm font-semibold transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5"
-                  style={{ background: 'linear-gradient(135deg, #ff6b35, #f7931e)' }}
-                >
-                  <i className="fa-solid fa-user-plus"></i>
-                  <span className="hidden sm:inline">Đăng ký</span>
-                </Link>
+                {/* Đăng nhập Dropdown */}
+                <div className="relative group hidden sm:block">
+                  <button
+                    className="flex items-center gap-2 px-4 py-2 rounded-full border-2 text-sm font-semibold transition-all duration-200 group-hover:border-orange-500 group-hover:text-orange-500"
+                    style={{ borderColor: '#e2e8f0', color: '#4a5568' }}
+                  >
+                    <i className="fa-solid fa-sign-in-alt"></i>
+                    Đăng nhập
+                    <i className="fa-solid fa-chevron-down text-[10px] ml-0.5 transition-transform group-hover:rotate-180"></i>
+                  </button>
+                  <div className="absolute right-0 top-full pt-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 translate-y-2 group-hover:translate-y-0 z-50">
+                    <div className="w-48 bg-[#0f172a] rounded-2xl shadow-xl overflow-hidden border border-slate-800">
+                      <Link to="/khach-hang/dang-nhap" className="flex items-center gap-3 px-4 py-3.5 text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800 transition-colors">
+                        <i className="fa-solid fa-user text-orange-400 w-5 text-center"></i> Khách hàng
+                      </Link>
+                      <Link to="/shipper/dang-nhap" className="flex items-center gap-3 px-4 py-3.5 text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800 transition-colors">
+                        <i className="fa-solid fa-motorcycle text-orange-400 w-5 text-center"></i> Shipper
+                      </Link>
+                      <Link to="/quan-an/dang-nhap" className="flex items-center gap-3 px-4 py-3.5 text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800 transition-colors">
+                        <i className="fa-solid fa-store text-orange-400 w-5 text-center"></i> Quán ăn
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Đăng ký Dropdown */}
+                <div className="relative group hidden sm:block">
+                  <button
+                    className="flex items-center gap-2 px-4 py-2 rounded-full text-white text-sm font-semibold transition-all duration-200 shadow-md group-hover:shadow-lg"
+                    style={{ background: 'linear-gradient(135deg, #ff6b35, #f7931e)' }}
+                  >
+                    <i className="fa-solid fa-user-plus"></i>
+                    Đăng ký
+                    <i className="fa-solid fa-chevron-down text-[10px] ml-0.5 transition-transform group-hover:rotate-180"></i>
+                  </button>
+                  <div className="absolute right-0 top-full pt-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 translate-y-2 group-hover:translate-y-0 z-50">
+                    <div className="w-48 bg-[#0f172a] rounded-2xl shadow-xl overflow-hidden border border-slate-800">
+                      <Link to="/khach-hang/dang-ky" className="flex items-center gap-3 px-4 py-3.5 text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800 transition-colors">
+                        <i className="fa-solid fa-user text-orange-400 w-5 text-center"></i> Khách hàng
+                      </Link>
+                      <Link to="/shipper/dang-ky" className="flex items-center gap-3 px-4 py-3.5 text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800 transition-colors">
+                        <i className="fa-solid fa-motorcycle text-orange-400 w-5 text-center"></i> Shipper
+                      </Link>
+                      <Link to="/quan-an/dang-ky" className="flex items-center gap-3 px-4 py-3.5 text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800 transition-colors">
+                        <i className="fa-solid fa-store text-orange-400 w-5 text-center"></i> Quán ăn
+                      </Link>
+                    </div>
+                  </div>
+                </div>
               </>
             ) : (
               <div className="flex items-center gap-2">
@@ -417,17 +473,23 @@ export default function Navbar() {
             ))}
 
             {!isLoggedIn && (
-              <div className="flex gap-2 mt-2">
-                <Link to="/khach-hang/dang-nhap" onClick={() => setMobileOpen(false)}
-                  className="flex-1 text-center py-2.5 rounded-xl border-2 text-sm font-semibold text-gray-600 hover:border-orange-500 hover:text-orange-500 transition-colors"
-                  style={{ borderColor: '#e2e8f0' }}>
-                  Đăng nhập
-                </Link>
-                <Link to="/khach-hang/dang-ky" onClick={() => setMobileOpen(false)}
-                  className="flex-1 text-center py-2.5 rounded-xl text-white text-sm font-semibold"
-                  style={{ background: 'linear-gradient(135deg, #ff6b35, #f7931e)' }}>
-                  Đăng ký
-                </Link>
+              <div className="mt-4 border-t border-gray-100 pt-4 space-y-4">
+                <div>
+                  <p className="text-xs font-bold text-gray-400 uppercase mb-2 px-4">Đăng nhập</p>
+                  <div className="grid grid-cols-3 gap-2 px-4">
+                    <Link to="/khach-hang/dang-nhap" onClick={() => setMobileOpen(false)} className="text-center py-2.5 rounded-xl bg-gray-50 border border-gray-100 text-xs font-semibold text-gray-700 hover:bg-orange-50 hover:text-orange-600 transition-colors"><i className="fa-solid fa-user block mb-1.5 text-lg"></i>Khách</Link>
+                    <Link to="/shipper/dang-nhap" onClick={() => setMobileOpen(false)} className="text-center py-2.5 rounded-xl bg-gray-50 border border-gray-100 text-xs font-semibold text-gray-700 hover:bg-orange-50 hover:text-orange-600 transition-colors"><i className="fa-solid fa-motorcycle block mb-1.5 text-lg"></i>Shipper</Link>
+                    <Link to="/quan-an/dang-nhap" onClick={() => setMobileOpen(false)} className="text-center py-2.5 rounded-xl bg-gray-50 border border-gray-100 text-xs font-semibold text-gray-700 hover:bg-orange-50 hover:text-orange-600 transition-colors"><i className="fa-solid fa-store block mb-1.5 text-lg"></i>Quán ăn</Link>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-gray-400 uppercase mb-2 px-4">Đăng ký</p>
+                  <div className="grid grid-cols-3 gap-2 px-4">
+                    <Link to="/khach-hang/dang-ky" onClick={() => setMobileOpen(false)} className="text-center py-2.5 rounded-xl bg-orange-50 border border-orange-100 text-xs font-semibold text-orange-600 hover:bg-orange-100 transition-colors"><i className="fa-solid fa-user block mb-1.5 text-lg"></i>Khách</Link>
+                    <Link to="/shipper/dang-ky" onClick={() => setMobileOpen(false)} className="text-center py-2.5 rounded-xl bg-orange-50 border border-orange-100 text-xs font-semibold text-orange-600 hover:bg-orange-100 transition-colors"><i className="fa-solid fa-motorcycle block mb-1.5 text-lg"></i>Shipper</Link>
+                    <Link to="/quan-an/dang-ky" onClick={() => setMobileOpen(false)} className="text-center py-2.5 rounded-xl bg-orange-50 border border-orange-100 text-xs font-semibold text-orange-600 hover:bg-orange-100 transition-colors"><i className="fa-solid fa-store block mb-1.5 text-lg"></i>Quán ăn</Link>
+                  </div>
+                </div>
               </div>
             )}
           </div>

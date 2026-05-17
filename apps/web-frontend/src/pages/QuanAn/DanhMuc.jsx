@@ -80,10 +80,10 @@ export default function QuanAnDanhMuc() {
   const [editForm, setEditForm] = useState({});
   const [delForm, setDelForm] = useState({});
 
-  useEffect(() => { fetchList(); fetchParents(); }, []);
+  const fetchList = async () => { try { const r = await qA('/api/quan-an/danh-muc/data'); setList(r.data.data || []); } catch (e) { console.error(e); } };
+  const fetchParents = async () => { try { const r = await qA('/api/quan-an/danh-muc/data-danh-muc-cha'); setParents(r.data.data || []); } catch (e) { console.error(e); } };
 
-  const fetchList = async () => { try { const r = await qA('/api/quan-an/danh-muc/data'); setList(r.data.data || []); } catch {} };
-  const fetchParents = async () => { try { const r = await qA('/api/quan-an/danh-muc/data-danh-muc-cha'); setParents(r.data.data || []); } catch {} };
+  useEffect(() => { fetchList(); fetchParents(); }, []);
 
   const handleAdd = async () => {
     try { const r = await qA('/api/quan-an/danh-muc/create', 'post', addForm); if (r.data.status) { toast.success(r.data.message); setShowAdd(false); setAddForm({ tinh_trang: '1' }); fetchList(); fetchParents(); } else toast.error(r.data.message); }
@@ -95,11 +95,11 @@ export default function QuanAnDanhMuc() {
   };
   const handleDel = async () => {
     try { const r = await qA('/api/quan-an/danh-muc/delete', 'post', delForm); if (r.data.status) { toast.success(r.data.message); setShowDel(false); fetchList(); fetchParents(); } else toast.error(r.data.message); }
-    catch {}
+    catch (e) {}
   };
   const handleChange = async (item) => {
     try { const r = await qA('/api/quan-an/danh-muc/change', 'post', item); if (r.data.status) { toast.success(r.data.message); fetchList(); } else toast.error(r.data.message); }
-    catch {}
+    catch (e) {}
   };
 
   return (

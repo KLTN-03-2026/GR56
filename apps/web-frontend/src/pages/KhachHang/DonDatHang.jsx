@@ -108,6 +108,23 @@ function ToppingModal({ mon, toppings, onClose, onConfirm }) {
 function ConfirmModal({ orderData, onClose, onConfirm }) {
   if (!orderData) return null;
   const { idDonHang, listGioHang, tongTien, phiShip, soTienGiamVoucher, tienGiamXu, tongCuoi, diaChi } = orderData;
+  const [qrImage, setQrImage] = useState(null);
+  const [qrLoading, setQrLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchQR = async () => {
+      try {
+        const res = await api.get(`/api/transaction/viet-qr-image?amount=${tongCuoi}&addInfo=DZ${idDonHang}`);
+        if (res.data.status && res.data.qr_image) {
+          setQrImage(res.data.qr_image);
+        }
+      } catch (e) { console.error(e); } finally {
+        setQrLoading(false);
+      }
+    };
+    fetchQR();
+  }, [tongCuoi, idDonHang]);
+
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-3xl w-full max-w-xl max-h-[90vh] overflow-y-auto shadow-2xl" onClick={e => e.stopPropagation()}>
@@ -139,8 +156,15 @@ function ConfirmModal({ orderData, onClose, onConfirm }) {
           </div>
           {/* QR */}
           <div className="mt-4 text-center p-4 bg-gray-50 rounded-2xl">
-            <img src={`https://img.vietqr.io/image/MB-0394425076-qr_only.png?amount=${tongCuoi}&addInfo=DZ${idDonHang}`}
-              alt="QR" className="w-44 mx-auto mb-3" />
+            {qrLoading ? (
+              <div className="w-44 h-44 mx-auto mb-3 flex items-center justify-center">
+                <div className="w-10 h-10 border-3 border-purple-200 border-t-purple-500 rounded-full animate-spin" />
+              </div>
+            ) : qrImage ? (
+              <img src={qrImage} alt="QR" className="w-44 mx-auto mb-3" />
+            ) : (
+              <div className="w-44 h-44 mx-auto mb-3 flex items-center justify-center bg-gray-100 rounded-xl text-gray-400 text-xs">Không tải được QR</div>
+            )}
             <p className="text-gray-400 text-sm mb-1">Quét mã để thanh toán</p>
             <h4 className="font-bold text-purple-600 text-lg">Mã Đơn: DZ{idDonHang}</h4>
             <div className="text-2xl font-black text-red-500">{formatVND(tongCuoi)}</div>
@@ -273,21 +297,21 @@ export default function DonDatHang() {
     try {
       const res = await api.get('/api/khach-hang/data-login');
       if (res.data.status) setUserInfo(res.data.data);
-    } catch {}
+    } catch (e) { console.error(e); }
   };
 
   const loadThongKe = async () => {
     try {
       const res = await api.get(`/api/khach-hang/quan-an/thong-ke-danh-gia/${id_quan}`);
       if (res.data.status) setThongKe(res.data.data);
-    } catch {}
+    } catch (e) { console.error(e); }
   };
 
   const loadDanhGia = async () => {
     try {
       const res = await api.get(`/api/khach-hang/quan-an/danh-gia/${id_quan}`);
       if (res.data.status) setDanhGia(res.data.data || []);
-    } catch {}
+    } catch (e) { console.error(e); }
   };
 
   const loadDeXuatVoucher = async (tong) => {
@@ -295,7 +319,7 @@ export default function DonDatHang() {
     try {
       const res = await api.get('/api/khach-hang/voucher/de-xuat', { params: { id_quan_an: id_quan, tong_tien: tong } });
       if (res.data.status) setDeXuatVouchers(res.data.data || []);
-    } catch {}
+    } catch (e) { console.error(e); }
   };
 
   const openToppingModal = (mon) => { setMonDangChon(mon); setShowTopping(true); };
@@ -386,7 +410,7 @@ export default function DonDatHang() {
           }
         }
       } else toast.error(res.data.message);
-    } catch {}
+    } catch (e) { console.error(e); }
   };
 
   const xoaGioHang = async (item) => {
@@ -398,7 +422,7 @@ export default function DonDatHang() {
         window.dispatchEvent(new CustomEvent('cart-updated'));
         loadData(); 
       }
-    } catch {}
+    } catch (e) { console.error(e); }
   };
 
   const tinhPhiShip = async (idDC) => {
@@ -406,7 +430,7 @@ export default function DonDatHang() {
     try {
       const res = await api.post('/api/khach-hang/don-dat-hang/phi-ship', { id_quan_an: id_quan, id_dia_chi_khach: idDC });
       if (res.data.status) setPhiShip(res.data.phi_ship || 0);
-    } catch {}
+    } catch (e) { console.error(e); }
   };
 
   const applyVoucher = async (codeToApply = '') => {

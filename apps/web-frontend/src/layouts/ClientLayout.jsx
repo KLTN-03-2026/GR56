@@ -14,6 +14,10 @@ export default function ClientLayout() {
   const location = useLocation();
   const [chatOrder, setChatOrder] = useState(null);
 
+  useEffect(() => {
+    document.title = "FOODBEE";
+  }, []);
+
   // ─── Global real-time: order status from ANY customer page ───────────────
   useEffect(() => {
     if (!user?.id) return;
@@ -23,17 +27,22 @@ export default function ClientLayout() {
 
     const setup = async () => {
       try {
-        const { default: echo, updateEchoToken } = await import('../utils/echo');
+        const { getEchoInstance } = await import('../utils/echo');
         if (isCancelled) return;
-        updateEchoToken();
+        const token = localStorage.getItem('khach_hang_login') || '';
+        const echo = getEchoInstance('khach_hang', token);
+        if (!echo) return;
         channel = echo.private(`khach-hang.${user.id}`);
 
+          // goToOrders hỗ trợ CẢ flat data (DonHangDaNhanEvent, DonHangQuanDangLamEvent,
+        // DonHangDaXongEvent, DonHangHoanThanhEvent) VÀ nested data (DonHangDaHuyEvent).
+        // Events trả flat: .don-hang.da-nhan, .don-hang.dang-lam, .don-hang.da-xong, .don-hang.hoan-thanh
         const goToOrders = (tab) => (data) => {
           const dh = data.don_hang || data || {};
           const configs = {
             '1': { title: 'Shipper đã nhận đơn!', message: `Shipper đang trên đường đến quán lấy đơn #${dh.ma_don_hang || ''}.`, type: 'order' },
             '2': { title: 'Quán đang nấu món!', message: `Đơn #${dh.ma_don_hang || ''} đang được chuẩn bị.`, type: 'order' },
-            '3': { title: 'Đơn đang trên đường giao!', message: `Shipper đang giao đơn #${dh.ma_don_hang || ''} đến bạn.`, type: 'order' },
+            '3': { title: 'Quán đã xong! Đến lấy hàng ngay', message: `Shipper sẽ đến lấy đơn #${dh.ma_don_hang || ''} và giao đến bạn.`, type: 'order' },
             '4': { title: 'Giao hàng thành công!', message: `Đơn #${dh.ma_don_hang || ''} đã đến tay bạn. Cảm ơn!`, type: 'success' },
             '5': { title: 'Đơn hàng đã bị hủy', message: `Yêu cầu hủy đơn #${dh.ma_don_hang || ''} đã được admin duyệt.`, type: 'cancel' },
           };
@@ -46,10 +55,40 @@ export default function ClientLayout() {
         };
 
         handlers = {
+          // .don-hang.moi được phát ngay khi khách đặt đơn thành công
+          '.don-hang.moi': (data) => {
+            const dh = data.don_hang || data || {};
+            const tien = dh.tong_tien ? new Intl.NumberFormat('vi-VN').format(dh.tong_tien) + 'đ' : '';
+            rtToast.show({
+              title: '📋 Đơn hàng đã được tạo!',
+              message: `Đơn #${dh.ma_don_hang || ''} đang chờ thanh toán.${tien ? ' Tổng: ' + tien : ''}`,
+              type: 'order',
+              orderCode: dh.ma_don_hang,
+              duration: 6000,
+              onClick: () => navigate('/khach-hang/don-hang', { state: { tab: '0' } })
+            });
+            if (!window.location.pathname.startsWith('/khach-hang/don-hang')) {
+              navigate('/khach-hang/don-hang', { state: { tab: '0' } });
+            }
+          },
           '.don-hang.da-nhan': goToOrders('1'),
           '.don-hang.dang-lam': goToOrders('2'),
           '.don-hang.da-xong': goToOrders('3'),
           '.don-hang.hoan-thanh': goToOrders('4'),
+          '.don-hang.da-thanh-toan': (data) => {
+            const dh = data.don_hang || data || {};
+            rtToast.show({
+              title: '💳 Thanh toán thành công!',
+              message: `Đơn #${dh.ma_don_hang || ''} đã được thanh toán online.`,
+              type: 'order',
+              orderCode: dh.ma_don_hang,
+              duration: 6000,
+              onClick: () => navigate('/khach-hang/don-hang', { state: { tab: '0' } })
+            });
+            if (!window.location.pathname.startsWith('/khach-hang/don-hang')) {
+              navigate('/khach-hang/don-hang', { state: { tab: '0' } });
+            }
+          },
           '.don-hang.da-huy': (data) => {
             const dh = data.don_hang || data || {};
             const isAutoCancel = dh.ly_do === 'auto_cancel';
@@ -82,7 +121,7 @@ export default function ClientLayout() {
           }
         };
         Object.entries(handlers).forEach(([evt, fn]) => channel.listen(evt, fn));
-      } catch { }
+      } catch (e) { console.error(e); }
     };
 
     setup();
@@ -90,7 +129,7 @@ export default function ClientLayout() {
       isCancelled = true;
       if (channel) {
         Object.entries(handlers).forEach(([evt, fn]) => {
-          try { channel.stopListening(evt, fn); } catch { }
+          try { channel.stopListening(evt, fn); } catch (e) { console.error(e); }
         });
         // Không leave channel ở đây vì KhachHang/DonHang.jsx cùng dùng
       }

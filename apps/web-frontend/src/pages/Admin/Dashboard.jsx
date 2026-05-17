@@ -78,8 +78,6 @@ export default function AdminDashboard() {
   const monthlyChart = useRef(null);
   const doughnutChart = useRef(null);
 
-  useEffect(() => { loadData(); }, []);
-
   const loadData = async () => {
     setLoading(true);
     try {
@@ -88,9 +86,26 @@ export default function AdminDashboard() {
         setData(r.data.data);
         setTimeout(() => drawCharts(r.data.data), 100);
       }
-    } catch {}
+    } catch (e) { console.error(e); }
     finally { setLoading(false); }
   };
+
+  useEffect(() => {
+    loadData();
+    const handleUpdate = (e) => {
+      if (e.loai === 'dashboard_update') {
+        loadData();
+      }
+    };
+    if (window.adminEventBus) {
+      window.adminEventBus.on('admin_alert', handleUpdate);
+    }
+    return () => {
+      if (window.adminEventBus) {
+        window.adminEventBus.off('admin_alert', handleUpdate);
+      }
+    };
+  }, []);
 
   const destroyCharts = () => {
     [dailyChart, monthlyChart, doughnutChart].forEach(ref => { if (ref.current) { ref.current.destroy(); ref.current = null; } });

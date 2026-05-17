@@ -20,7 +20,7 @@ export default function MonAn() {
     try {
       const res = await api.get('/api/khach-hang/data-mon-an');
       setList(res.data.data || []);
-    } catch {}
+    } catch (e) { console.error(e); }
     finally { setLoading(false); }
   };
 

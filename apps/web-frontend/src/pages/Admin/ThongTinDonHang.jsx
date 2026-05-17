@@ -3,6 +3,7 @@ import api from '../../utils/api';
 import toast from 'react-hot-toast';
 import { formatVND, formatDate } from '../../utils/helpers';
 import { exportToExcel } from '../../utils/exportExcel';
+import OpenMapView from '../../components/OpenMapView';
 
 const adm = (url) => {
   const cfg = { headers: { Authorization: `Bearer ${localStorage.getItem('nhan_vien_login')}` } };
@@ -104,7 +105,7 @@ export default function AdminThongTinDonHang() {
     try {
       const r = await admPost('/api/admin/don-hang/theo-doi', { id });
       if (r.data.status) setTrackingData(r.data.order);
-    } catch {}
+    } catch (e) { console.error(e); }
   };
 
   useEffect(() => {
@@ -362,27 +363,29 @@ export default function AdminThongTinDonHang() {
                         </div>
                       )}
                       {trackingData.customer_lat && (trackingData.shipper_lat || trackingData.restaurant_lat) ? (
-                        // Hiển thị đường đi: shipper (hoặc quán) → khách
-                        <iframe
-                          key={`${trackingData.shipper_lat ?? trackingData.restaurant_lat}-${trackingData.customer_lat}`}
-                          width="100%"
-                          height="360"
-                          style={{ border: 0, display: 'block' }}
-                          loading="lazy"
-                          src={`https://maps.google.com/maps?saddr=${
-                            trackingData.shipper_lat
-                              ? `${trackingData.shipper_lat},${trackingData.shipper_lng}`
-                              : `${trackingData.restaurant_lat},${trackingData.restaurant_lng}`
-                          }&daddr=${trackingData.customer_lat},${trackingData.customer_lng}&output=embed`}
+                        <OpenMapView
+                          center={[
+                            parseFloat(trackingData.shipper_lng || trackingData.restaurant_lng),
+                            parseFloat(trackingData.shipper_lat || trackingData.restaurant_lat)
+                          ]}
+                          zoom={14}
+                          markers={[
+                            ...(trackingData.shipper_lat ? [{ lng: parseFloat(trackingData.shipper_lng), lat: parseFloat(trackingData.shipper_lat), color: '#3b82f6', label: 'Shipper' }] : []),
+                            ...(trackingData.restaurant_lat ? [{ lng: parseFloat(trackingData.restaurant_lng), lat: parseFloat(trackingData.restaurant_lat), color: '#f97316', label: 'Quán' }] : []),
+                            { lng: parseFloat(trackingData.customer_lng), lat: parseFloat(trackingData.customer_lat), color: '#10b981', label: 'Khách' }
+                          ]}
+                          route={{
+                            origin: [parseFloat(trackingData.shipper_lng || trackingData.restaurant_lng), parseFloat(trackingData.shipper_lat || trackingData.restaurant_lat)],
+                            destination: [parseFloat(trackingData.customer_lng), parseFloat(trackingData.customer_lat)]
+                          }}
+                          style={{ height: '360px' }}
                         />
                       ) : trackingData.restaurant_lat ? (
-                        // Không có tọa độ khách, chỉ hiển thị vị trí quán
-                        <iframe
-                          width="100%"
-                          height="360"
-                          style={{ border: 0, display: 'block' }}
-                          loading="lazy"
-                          src={`https://maps.google.com/maps?q=${trackingData.restaurant_lat},${trackingData.restaurant_lng}&t=m&z=15&output=embed&iwloc=near`}
+                        <OpenMapView
+                          center={[parseFloat(trackingData.restaurant_lng), parseFloat(trackingData.restaurant_lat)]}
+                          zoom={15}
+                          markers={[{ lng: parseFloat(trackingData.restaurant_lng), lat: parseFloat(trackingData.restaurant_lat), color: '#f97316', label: 'Quán' }]}
+                          style={{ height: '360px' }}
                         />
                       ) : (
                         <div className="h-full flex flex-col items-center justify-center text-gray-400 bg-gray-50">

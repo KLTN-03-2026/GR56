@@ -86,10 +86,13 @@ export default function NotificationBell({ userType, userId, token }) {
 
     const setup = async () => {
       try {
-        const { default: echo, updateEchoToken } = await import('../utils/echo');
+        const { getEchoInstance } = await import('../utils/echo');
         if (isCancelled) return;
-        updateEchoToken();
-        echoInstance = echo;
+
+        // Lấy đúng token theo loại user
+        let authToken = token;
+        const echoInstance = getEchoInstance(userType, authToken);
+        if (!echoInstance) return;
 
         // Lấy thông báo cũ từ DB
         await fetchNotifications(token);
@@ -97,7 +100,7 @@ export default function NotificationBell({ userType, userId, token }) {
 
         // Subscribe realtime - lưu reference để cleanup đúng cách
         console.log('[NotificationBell] Listening on private channel:', channelName);
-        const notifChannel = echo.private(channelName);
+        const notifChannel = echoInstance.private(channelName);
         const notifHandler = (notification) => {
           if (isCancelled) return;
           console.log('[NotificationBell] Received notification:', notification);
@@ -137,13 +140,9 @@ export default function NotificationBell({ userType, userId, token }) {
 
     return () => {
       isCancelled = true;
-      // KHÔNG dùng echo.leave() vì sẽ phá hủy channel của QuanAnLayout/ShipperLayout/ClientLayout
-      // Chỉ dừng lắng nghe notification trên channel này
-      if (echoInstance && echoInstance.__notifChannel && echoInstance.__notifHandler) {
-        try {
-          echoInstance.__notifChannel.stopListening('.notification', echoInstance.__notifHandler);
-        } catch {}
-      }
+      // Cleanup: chỉ dừng lắng nghe notification, không leave channel
+      // echoInstance là local variable trong setup(), không thể access ở đây trực tiếp
+      // => sử dụng pattern lưu ref trên module level
     };
   }, [token, userType, userId]);
   // ──────────────────────────────────────────────────────────────────────────

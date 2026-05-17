@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import api from '../../utils/api';
-import toast from 'react-hot-toast';
 import { formatVND } from '../../utils/helpers';
 
 /**
@@ -49,7 +48,7 @@ export default function PaymentReturn() {
             
             // TỰ ĐỘNG CHỐNG TỊT WEBHOOK: Gọi thêm 1 request update S2S để chắc chắn Đơn được gạch nợ
             await api.post(`/api/payos/xac-nhan-s2s`, { orderCode });
-          } catch {}
+          } catch (e) { console.error(e); }
         }
       } else {
         setStatus('error');

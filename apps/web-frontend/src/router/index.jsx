@@ -36,7 +36,9 @@ const LichSuGiaoDich = lazy(() => import('../pages/KhachHang/LichSuGiaoDich'));
 const TimKiem = lazy(() => import('../pages/KhachHang/TimKiem'));
 const KichHoat = lazy(() => import('../pages/KhachHang/KichHoat'));
 const PaymentReturn = lazy(() => import('../pages/KhachHang/PaymentReturn'));
+const ChatbotPaymentReturn = lazy(() => import('../pages/KhachHang/ChatbotPaymentReturn'));
 const YeuThich = lazy(() => import('../pages/KhachHang/YeuThich'));
+const BanDo = lazy(() => import('../pages/KhachHang/BanDo'));
 
 // Lazy QuanAn auth
 const QuanAnDangKy = lazy(() => import('../pages/QuanAn/DangKy'));
@@ -63,6 +65,7 @@ const ShipperThongKe = lazy(() => import('../pages/Shipper/ThongKe'));
 const ShipperViTien = lazy(() => import('../pages/Shipper/ViTien'));
 const ShipperViTriHienTai = lazy(() => import('../pages/Shipper/ViTriHienTai'));
 const ShipperQuenMatKhau = lazy(() => import('../pages/Shipper/QuenMatKhau'));
+const ShipperBaoCaoSuCo = lazy(() => import('../pages/Shipper/BaoCaoSuCo'));
 
 // Lazy Admin auth
 const AdminDangNhap = lazy(() => import('../pages/Admin/DangNhap'));
@@ -90,6 +93,7 @@ const AdminSystemConfig = lazy(() => import('../pages/Admin/SystemConfig'));
 const AdminReport = lazy(() => import('../pages/Admin/Report'));
 const AdminThongBao = lazy(() => import('../pages/Admin/ThongBao'));
 const AdminDanhGia = lazy(() => import('../pages/Admin/DanhGia'));
+const AdminChatbotAnalytics = lazy(() => import('../pages/Admin/ChatbotAnalytics'));
 const S = (Component) => (
   <Suspense fallback={<PageLoader />}>
     <Component />
@@ -121,6 +125,7 @@ const router = createBrowserRouter([
       { path: '/khach-hang/lich-su-xu', element: <PrivateRoute>{S(LichSuXu)}</PrivateRoute> },
       { path: '/khach-hang/lich-su-giao-dich', element: <PrivateRoute>{S(LichSuGiaoDich)}</PrivateRoute> },
       { path: '/khach-hang/yeu-thich', element: <PrivateRoute>{S(YeuThich)}</PrivateRoute> },
+      { path: '/ban-do', element: <PrivateRoute>{S(BanDo)}</PrivateRoute> },
       { path: '/tim-kiem/:thong_tin', element: S(TimKiem) },
     ],
   },
@@ -149,6 +154,9 @@ const router = createBrowserRouter([
       // PayOS Callback Pages (không cần auth)
       { path: '/payment/payos/return', element: S(PaymentReturn) },
       { path: '/payment/payos/cancel', element: S(PaymentReturn) },
+      // Chatbot PayOS Callback Pages
+      { path: '/chatbot/payment/return', element: S(ChatbotPaymentReturn) },
+      { path: '/chatbot/payment/cancel', element: S(ChatbotPaymentReturn) },
     ],
   },
 
@@ -165,6 +173,7 @@ const router = createBrowserRouter([
       { path: '/shipper/thong-ke', element: S(ShipperThongKe) },
       { path: '/shipper/vi-tien', element: S(ShipperViTien) },
       { path: '/shipper/vi-tri-hien-tai', element: S(ShipperViTriHienTai) },
+      { path: '/shipper/bao-cao', element: S(ShipperBaoCaoSuCo) },
     ],
   },
 
@@ -214,6 +223,7 @@ const router = createBrowserRouter([
       { path: '/admin/reports', element: S(AdminReport) },
       { path: '/admin/thong-bao', element: S(AdminThongBao) },
       { path: '/admin/danh-gia', element: S(AdminDanhGia) },
+      { path: '/admin/chatbot-analytics', element: S(AdminChatbotAnalytics) },
     ],
   },
 

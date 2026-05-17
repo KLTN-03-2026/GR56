@@ -81,26 +81,10 @@ export default function ShipperProfile() {
   );
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Top bar */}
-      <div className="text-white px-4 py-5 mb-8" style={{ background: 'linear-gradient(135deg, #0f2027, #2c5364)' }}>
-        <div className="max-w-5xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <i className="fa-solid fa-motorcycle text-2xl text-yellow-400" />
-            <div>
-              <h1 className="text-xl font-extrabold">Trang Cá Nhân</h1>
-              <p className="text-white/50 text-xs">Shipper Dashboard</p>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <Link to="/shipper/don-hang" className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/10 text-white text-sm font-semibold hover:bg-white/20 border border-white/20">
-              <i className="fa-solid fa-bag-shopping" />Đơn hàng
-            </Link>
-            <button onClick={logout} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-red-500/20 text-red-300 text-sm font-semibold hover:bg-red-500/30 border border-red-400/30">
-              <i className="fa-solid fa-right-from-bracket" />Đăng xuất
-            </button>
-          </div>
-        </div>
+    <div className="p-6">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-gray-900"><i className="fa-solid fa-user mr-3 text-orange-500" />Cá Nhân</h1>
+        <p className="text-gray-500 text-sm mt-1">Thông tin và cài đặt tài khoản</p>
       </div>
 
       <div className="max-w-5xl mx-auto px-4 pb-10">
@@ -126,6 +110,35 @@ export default function ShipperProfile() {
 
               <div className="flex items-center justify-center gap-1.5 text-green-500 text-sm font-semibold">
                 <i className="fa-solid fa-circle text-xs" />Đang hoạt động
+              </div>
+
+              {/* Thành tích & Hạng */}
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <div className="bg-orange-50 rounded-xl p-3 border border-orange-100">
+                  <div className="text-2xl font-extrabold text-orange-500">{user.tong_chuyen ?? 0}</div>
+                  <div className="text-xs text-gray-500 mt-0.5">Số cuốc xe</div>
+                </div>
+                <div className={`rounded-xl p-3 border ${
+                  user.hang_shipper === 'Kim Cương' ? 'bg-purple-50 border-purple-200' :
+                  user.hang_shipper === 'Vàng' ? 'bg-yellow-50 border-yellow-200' :
+                  user.hang_shipper === 'Bạc' ? 'bg-gray-100 border-gray-300' :
+                  'bg-orange-50 border-orange-200'
+                }`}>
+                  <div className={`text-xl ${
+                    user.hang_shipper === 'Kim Cương' ? 'text-purple-600' :
+                    user.hang_shipper === 'Vàng' ? 'text-yellow-600' :
+                    user.hang_shipper === 'Bạc' ? 'text-gray-600' :
+                    'text-orange-600'
+                  }`}>
+                    {user.hang_shipper === 'Kim Cương' ? '💎' : user.hang_shipper === 'Vàng' ? '🥇' : user.hang_shipper === 'Bạc' ? '🥈' : '🥉'}
+                  </div>
+                  <div className={`text-xs font-bold mt-0.5 ${
+                    user.hang_shipper === 'Kim Cương' ? 'text-purple-700' :
+                    user.hang_shipper === 'Vàng' ? 'text-yellow-700' :
+                    user.hang_shipper === 'Bạc' ? 'text-gray-700' :
+                    'text-orange-700'
+                  }`}>{user.hang_shipper || 'Đồng'}</div>
+                </div>
               </div>
               <hr className="my-4 border-gray-100" />
               {[

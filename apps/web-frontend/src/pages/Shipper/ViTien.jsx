@@ -165,7 +165,7 @@ export default function ShipperViTien() {
         setWallet(res.data.data.vi || {});
         setGiaoDich(res.data.data.giao_dich || []);
       }
-    } catch {}
+    } catch (e) { console.error(e); }
   };
 
   const loadLichSuRut = async () => {
@@ -175,7 +175,7 @@ export default function ShipperViTien() {
         setLichSuRut(res.data.data);
       }
       if (res.data?.vi) setWallet(res.data.vi);
-    } catch {}
+    } catch (e) { console.error(e); }
   };
 
   const loadBankAccounts = async () => {
@@ -186,7 +186,7 @@ export default function ShipperViTien() {
         const md = res.data.data.find(b => b.is_default);
         if (md && !formRut.id_bank_account) setFormRut(p => ({ ...p, id_bank_account: md.id }));
       }
-    } catch {}
+    } catch (e) { console.error(e); }
   };
 
   const guiYeuCauRut = async () => {
@@ -220,10 +220,10 @@ export default function ShipperViTien() {
         toast.success(res.data.message);
         loadBankAccounts();
       }
-    } catch {}
+    } catch (e) { console.error(e); }
   };
 
-  const kiemTraGiaoDich = async () => {
+  const _kiemTraGiaoDich = async () => {
     setChecking(true);
     try {
       const res = await sA('/api/transaction/sync');
@@ -239,38 +239,28 @@ export default function ShipperViTien() {
     }
   };
 
-  const copy = (text) => {
+  const _copy = (text) => {
     navigator.clipboard.writeText(text).then(() => toast.success('Đã copy: ' + text)).catch(() => toast.error('Lỗi copy'));
   };
 
   const noiDungCK = idShipper ? `NOPVI${idShipper}` : 'NOPVI...';
-  const qrUrl = `https://img.vietqr.io/image/MB-0394425076-qr_only.png?amount=${nopTienAmt}&addInfo=${encodeURIComponent(noiDungCK)}`;
+  const _qrUrl = `https://img.vietqr.io/image/MB-0345933432-qr_only.png?amount=${nopTienAmt}&addInfo=${encodeURIComponent(noiDungCK)}`;
 
   const labelTrangThai = (ts) => ({ cho_duyet: 'Chờ duyệt', da_duyet: 'Đã duyệt', da_chuyen: 'Hoàn tất', tu_choi: 'Từ chối' }[ts] || ts);
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      {/* Top bar */}
-      <div className="text-white px-4 py-5" style={{ background: 'linear-gradient(135deg, #0f2027, #2c5364)' }}>
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-3 mb-1">
-              <i className="fa-solid fa-wallet text-2xl text-blue-400" />
-              <h1 className="text-xl font-extrabold">Ví Thu Nhập</h1>
-            </div>
-            <p className="text-white/50 text-sm">Quản lý số dư và thu nhập của bạn</p>
-          </div>
-          <div className="flex gap-3">
-             <button onClick={loadAll} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/10 text-white text-sm font-semibold hover:bg-white/20 transition-colors border border-white/20">
-               <i className={`fa-solid fa-rotate-right ${loading ? 'fa-spin' : ''}`} />Làm mới
-             </button>
-             <Link to="/shipper/profile" className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/10 text-white text-sm font-semibold hover:bg-white/20 transition-colors border border-white/20"><i className="fa-solid fa-user" /></Link>
-             <Link to="/shipper/don-hang" className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/10 text-white text-sm font-semibold hover:bg-white/20 transition-colors border border-white/20"><i className="fa-solid fa-house" /></Link>
-          </div>
+    <div className="p-6">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900"><i className="fa-solid fa-wallet mr-3 text-blue-500" />Ví Thu Nhập</h1>
+          <p className="text-gray-500 text-sm mt-1">Quản lý số dư và thu nhập của bạn</p>
         </div>
+        <button onClick={loadAll} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-100 text-blue-700 font-semibold text-sm hover:bg-blue-200 transition-colors">
+          <i className={`fa-solid fa-rotate-right ${loading ? 'fa-spin' : ''}`} />Làm mới
+        </button>
       </div>
 
-      <div className="max-w-7xl mx-auto w-full p-4 flex-1">
+      <div className="mx-auto w-full">
         {/* Wallet balance banner */}
         <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-3xl p-6 text-white shadow-xl mb-6 relative overflow-hidden">
            <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -translate-y-20 translate-x-20 blur-2xl"></div>
@@ -516,7 +506,6 @@ export default function ShipperViTien() {
         </div>
       </div>
 
-      {/* Modal Add Bank */}
       {showAddBank && (
          <AddBankModal idShipper={idShipper} onClose={() => setShowAddBank(false)} onSuccess={() => { setShowAddBank(false); loadBankAccounts(); }} />
       )}

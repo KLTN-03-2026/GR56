@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import api from '../../utils/api';
 import toast from 'react-hot-toast';
 import { formatVND } from '../../utils/helpers';
@@ -37,12 +38,15 @@ function Modal({ open, onClose, title, headerCls = 'bg-blue-600', children, foot
 
 export default function AdminDonHang() {
   const [list, setList] = useState([]);
+  const [chatbotList, setChatbotList] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [chatbotLoading, setChatbotLoading] = useState(false);
   const [chiTiet, setChiTiet] = useState([]);
   const [showDetail, setShowDetail] = useState(false);
   const [showHuy, setShowHuy] = useState(false);
   const [donHuy, setDonHuy] = useState({});
   const [selOrder, setSelOrder] = useState(null);
+  const [activeTab, setActiveTab] = useState('all'); // 'all' | 'chatbot'
 
   // Filters
   const [keyword, setKeyword] = useState('');
@@ -51,6 +55,18 @@ export default function AdminDonHang() {
   const [tinhTrang, setTinhTrang] = useState('');
 
   useEffect(() => { fetchList(); }, []);
+  useEffect(() => {
+    if (activeTab === 'chatbot' && chatbotList.length === 0) fetchChatbotList();
+  }, [activeTab]);
+
+  // Auto-reload chatbot list when a new chatbot order is broadcast
+  useEffect(() => {
+    const handler = () => fetchChatbotList();
+    if (window.adminEventBus) {
+      window.adminEventBus.on('reload_chatbot_orders', handler);
+      return () => window.adminEventBus.off('reload_chatbot_orders', handler);
+    }
+  }, []);
 
   const fetchList = async () => {
     setLoading(true);
@@ -58,14 +74,38 @@ export default function AdminDonHang() {
     catch { } finally { setLoading(false); }
   };
 
+  const fetchChatbotList = async () => {
+    setChatbotLoading(true);
+    try { const r = await adm('/api/admin/don-hang/chatbot'); setChatbotList(r.data.data || []); }
+    catch { } finally { setChatbotLoading(false); }
+  };
+
+  // Auto-reload chatbot list when a new chatbot order is broadcast
+  useEffect(() => {
+    const handler = () => fetchChatbotList();
+    if (window.adminEventBus) {
+      window.adminEventBus.on('reload_chatbot_orders', handler);
+      return () => window.adminEventBus.off('reload_chatbot_orders', handler);
+    }
+  }, []);
+
   const xemChiTiet = async (o) => {
     setSelOrder(o); setShowDetail(true);
-    try { const r = await adm('/api/admin/don-hang/data-chi-tiet', 'post', o); setChiTiet(r.data.data || []); } catch { }
+    try { const r = await adm('/api/admin/don-hang/data-chi-tiet', 'post', o); setChiTiet(r.data.data || []); } catch (e) { console.error(e); }
   };
 
   const huyDon = async () => {
-    try { const r = await adm('/api/admin/don-hang/huy-don-hang', 'post', donHuy); if (r.data.status) { toast.success(r.data.message); setShowHuy(false); fetchList(); } else toast.error(r.data.message); } catch { }
+    try { const r = await adm('/api/admin/don-hang/huy-don-hang', 'post', donHuy); if (r.data.status) {
+      toast.success(r.data.message);
+      setShowHuy(false);
+      fetchList();
+      fetchChatbotList();
+    } else toast.error(r.data.message); } catch (e) { console.error(e); }
   };
+
+  // ── Chatbot tab ─────────────────────────────────────────────────────────────
+  const itemsPerPage = 10;
+  const [currentPage, setCurrentPage] = useState(1);
 
   const filtered = useMemo(() => {
     return list.filter(v => {
@@ -86,8 +126,31 @@ export default function AdminDonHang() {
     });
   }, [list, keyword, tinhTrang, tuNgay, denNgay]);
 
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
+  // ── Chatbot tab ─────────────────────────────────────────────────────────────
+  const filteredChatbot = useMemo(() => {
+    return chatbotList.filter(v => {
+      const kw = keyword.toLowerCase();
+      const matchKw = !kw || (v.ma_don_hang || '').toLowerCase().includes(kw)
+        || (v.ten_quan_an || '').toLowerCase().includes(kw)
+        || (v.ten_nguoi_nhan || '').toLowerCase().includes(kw)
+        || (v.so_dien_thoai || '').toLowerCase().includes(kw);
+      const matchTT = tinhTrang === '' || String(v.tinh_trang) === tinhTrang;
+      let matchDate = true;
+      if (v.created_at) {
+        const d = new Date(v.created_at);
+        if (tuNgay) matchDate = matchDate && d >= new Date(tuNgay);
+        if (denNgay) matchDate = matchDate && d <= new Date(denNgay + 'T23:59:59');
+      }
+      return matchKw && matchTT && matchDate;
+    });
+  }, [chatbotList, keyword, tinhTrang, tuNgay, denNgay]);
+
+  const totalChatbotPages = Math.ceil(filteredChatbot.length / itemsPerPage);
+  const currentChatbotItems = useMemo(() => {
+    const indexOfLastItem = currentPage * itemsPerPage;
+    const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+    return filteredChatbot.slice(indexOfFirstItem, indexOfLastItem);
+  }, [filteredChatbot, currentPage]);
 
   useEffect(() => { setCurrentPage(1); }, [keyword, tuNgay, denNgay, tinhTrang]);
 
@@ -156,9 +219,20 @@ export default function AdminDonHang() {
       </Modal>
 
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div><h1 className="text-2xl font-bold text-gray-900"><i className="fa-solid fa-bag-shopping mr-3 text-blue-500" />Quản Lý Đơn Hàng</h1>
-          <p className="text-gray-400 text-sm mt-1">{filtered.length}/{list.length} đơn hàng</p></div>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900"><i className="fa-solid fa-bag-shopping mr-3 text-blue-500" />Quản Lý Đơn Hàng</h1>
+          <div className="flex items-center gap-3 mt-1">
+            <button onClick={() => setActiveTab('all')} className={`flex items-center gap-1.5 text-sm font-semibold px-3 py-1 rounded-lg border transition-all ${activeTab === 'all' ? 'bg-blue-50 border-blue-200 text-blue-700' : 'text-gray-400 border-transparent hover:text-gray-600'}`}>
+              <i className="fa-solid fa-list" />Tất cả
+              <span className="bg-blue-100 text-blue-600 text-[10px] font-bold px-1.5 py-0.5 rounded-full">{list.length}</span>
+            </button>
+            <button onClick={() => { setActiveTab('chatbot'); if (chatbotList.length === 0) fetchChatbotList(); }} className={`flex items-center gap-1.5 text-sm font-semibold px-3 py-1 rounded-lg border transition-all ${activeTab === 'chatbot' ? 'bg-purple-50 border-purple-200 text-purple-700' : 'text-gray-400 border-transparent hover:text-gray-600'}`}>
+              <i className="fa-solid fa-robot" />Đơn Chatbot
+              <span className="bg-purple-100 text-purple-600 text-[10px] font-bold px-1.5 py-0.5 rounded-full">{chatbotList.length}</span>
+            </button>
+          </div>
+        </div>
         <div className="flex gap-3">
           <ExcelButton disabled={filtered.length === 0} onClick={() => exportToExcel(
             filtered.map((item, i) => ({ ...item, __stt: i + 1 })),
@@ -178,10 +252,13 @@ export default function AdminDonHang() {
             ],
             'DonHang', 'Đơn Hàng'
           )} />
-          <button onClick={fetchList} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 transition-colors"><i className="fa-solid fa-rotate-right" />Làm mới</button>
+          <button onClick={() => { fetchList(); fetchChatbotList(); }} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 transition-colors"><i className="fa-solid fa-rotate-right" />Làm mới</button>
         </div>
       </div>
 
+      {/* Filters */}
+      {activeTab === 'all' && (
+      <>
       {/* Filters */}
       <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -300,6 +377,103 @@ export default function AdminDonHang() {
           </div>
         )}
       </div>
+      </>
+      )}
+
+      {/* ── TAB: Đơn Chatbot ── */}
+      {activeTab === 'chatbot' && (
+        <div className="space-y-4">
+          {/* Filters chatbot */}
+          <div className="bg-white rounded-2xl border border-purple-100 p-4 shadow-sm">
+            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="relative">
+                <input value={keyword} onChange={e => { setKeyword(e.target.value); setCurrentPage(1); }} placeholder="Mã đơn, quán, khách..." className="pl-9 pr-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-100 w-full transition-all" />
+                <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs" />
+              </div>
+              <input type="date" value={tuNgay} onChange={e => { setTuNgay(e.target.value); setCurrentPage(1); }} className="px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-purple-400 w-full" />
+              <input type="date" value={denNgay} onChange={e => { setDenNgay(e.target.value); setCurrentPage(1); }} className="px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-purple-400 w-full" />
+              <div className="flex gap-2">
+                <select value={tinhTrang} onChange={e => { setTinhTrang(e.target.value); setCurrentPage(1); }} className="flex-1 px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-purple-400 w-full">
+                  <option value="">Tất cả trạng thái</option>
+                  <option value="0">Chờ shipper</option>
+                  <option value="1">Chờ quán nhận</option>
+                  <option value="2">Đang nấu</option>
+                  <option value="3">Đang giao</option>
+                  <option value="4">Thành công</option>
+                  <option value="5">Đã hủy</option>
+                </select>
+                <button onClick={() => { setKeyword(''); setTuNgay(''); setDenNgay(''); setTinhTrang(''); setCurrentPage(1); }} className="px-3 py-2 rounded-xl bg-gray-100 text-gray-600 text-sm hover:bg-gray-200"><i className="fa-solid fa-xmark" /></button>
+              </div>
+            </div>
+          </div>
+
+          {/* Table chatbot */}
+          <div className="bg-white rounded-2xl shadow-sm border border-purple-100 overflow-hidden">
+            {chatbotLoading ? <div className="flex items-center justify-center py-24"><div className="w-10 h-10 border-4 border-purple-100 border-t-purple-500 rounded-full animate-spin" /></div>
+              : filteredChatbot.length === 0 ? <div className="text-center py-24"><i className="fa-solid fa-robot text-6xl text-purple-200 mb-4 block" /><p className="text-gray-400">Không có đơn hàng chatbot nào</p></div>
+              : <div className="overflow-x-auto"><table className="w-full text-sm">
+                <thead><tr className="bg-purple-50 text-purple-700 font-semibold text-xs uppercase">
+                  <th className="px-3 py-3 text-left">Mã đơn</th>
+                  <th className="px-3 py-3 text-left">Quán ăn</th>
+                  <th className="px-3 py-3 text-left">Người nhận</th>
+                  <th className="px-3 py-3 text-right">Tiền hàng</th>
+                  <th className="px-3 py-3 text-right">Phí ship</th>
+                  <th className="px-3 py-3 text-right">Tổng</th>
+                  <th className="px-3 py-3 text-center">Trạng thái</th>
+                  <th className="px-3 py-3 text-right">Thời gian</th>
+                  <th className="px-3 py-3 text-center">Thao tác</th>
+                </tr></thead>
+                <tbody className="divide-y divide-purple-50">
+                  {currentChatbotItems.map((o, i) => {
+                    const st = STATUS_MAP[o.tinh_trang] || { label: '?', cls: 'bg-gray-100 text-gray-600 border-gray-200' };
+                    return (
+                      <tr key={i} className="hover:bg-purple-50/30 transition-colors">
+                        <td className="px-3 py-3">
+                          <span className="font-bold text-gray-800">#{o.ma_don_hang}</span>
+                          <div className="mt-0.5"><span className="text-[10px] bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded-full font-bold"><i className="fa-solid fa-robot mr-0.5" />Chatbot</span></div>
+                        </td>
+                        <td className="px-3 py-3 text-xs text-gray-600 max-w-28 truncate">{o.ten_quan_an}</td>
+                        <td className="px-3 py-3 text-xs">
+                          <div className="font-medium text-gray-800">{o.ten_nguoi_nhan}</div>
+                          <div className="text-gray-400">{o.so_dien_thoai}</div>
+                          <div className="text-gray-400 truncate max-w-32">{o.dia_chi_khach}</div>
+                        </td>
+                        <td className="px-3 py-3 text-right text-xs text-gray-600">{formatVND(o.tien_hang)}</td>
+                        <td className="px-3 py-3 text-right text-xs text-gray-600">{formatVND(o.phi_ship)}</td>
+                        <td className="px-3 py-3 text-right font-bold text-green-600">{formatVND(o.tong_tien)}</td>
+                        <td className="px-3 py-3 text-center"><span className={`px-2 py-0.5 rounded-full text-xs font-bold border ${st.cls}`}>{st.label}</span></td>
+                        <td className="px-3 py-3 text-right text-xs text-gray-400 whitespace-nowrap">{fDT(o.created_at)}</td>
+                        <td className="px-3 py-3 text-center">
+                          <div className="flex gap-1 justify-center">
+                            <button onClick={() => xemChiTiet(o)} className="px-2.5 py-1.5 rounded-lg bg-purple-100 text-purple-700 text-xs hover:bg-purple-200" title="Xem chi tiết"><i className="fa-solid fa-eye" /></button>
+                            {o.tinh_trang !== 4 && o.tinh_trang !== 3 && <button onClick={() => { setDonHuy(o); setShowHuy(true); }} className="px-2.5 py-1.5 rounded-lg bg-red-100 text-red-600 text-xs hover:bg-red-200" title="Hủy đơn"><i className="fa-solid fa-ban" /></button>}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table></div>
+            }
+            {/* Pagination chatbot */}
+            {totalChatbotPages > 1 && (
+              <div className="flex items-center justify-between px-6 py-4 bg-purple-50 border-t border-purple-100">
+                <span className="text-xs text-purple-500">Tổng: {filteredChatbot.length} đơn chatbot</span>
+                <div className="flex gap-1">
+                  <button disabled={currentPage === 1} onClick={() => setCurrentPage(p => p - 1)} className="px-3 py-1.5 rounded-lg bg-white border border-purple-200 text-purple-600 text-xs disabled:opacity-40 hover:bg-purple-100"><i className="fa-solid fa-chevron-left" /></button>
+                  {Array.from({ length: totalChatbotPages }, (_, i) => i + 1).filter(p => p === 1 || p === totalChatbotPages || Math.abs(p - currentPage) <= 1).map((p, idx, arr) => (
+                    <span key={p}>
+                      {idx > 0 && arr[idx - 1] !== p - 1 && <span className="px-2 text-gray-400">…</span>}
+                      <button onClick={() => setCurrentPage(p)} className={`px-3 py-1.5 rounded-lg border text-xs ${p === currentPage ? 'bg-purple-500 text-white border-purple-500' : 'bg-white border-purple-200 text-purple-600 hover:bg-purple-100'}`}>{p}</button>
+                    </span>
+                  ))}
+                  <button disabled={currentPage === totalChatbotPages} onClick={() => setCurrentPage(p => p + 1)} className="px-3 py-1.5 rounded-lg bg-white border border-purple-200 text-purple-600 text-xs disabled:opacity-40 hover:bg-purple-100"><i className="fa-solid fa-chevron-right" /></button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

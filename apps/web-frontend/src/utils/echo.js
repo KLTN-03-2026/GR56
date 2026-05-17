@@ -3,21 +3,6 @@ import Pusher from 'pusher-js';
 
 window.Pusher = Pusher;
 
-export const getToken = () => {
-    // Pick the right token based on the current app section
-    const path = window.location.pathname;
-    if (path.startsWith('/shipper')) {
-        return localStorage.getItem('shipper_login') || '';
-    }
-    if (path.startsWith('/quan-an')) {
-        return localStorage.getItem('quan_an_login') || '';
-    }
-    if (path.startsWith('/admin')) {
-        return localStorage.getItem('admin_login') || '';
-    }
-    return localStorage.getItem('khach_hang_login') || '';
-};
-
 const apiURL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 const wsKey = import.meta.env.VITE_REVERB_APP_KEY || 'local-key-12345';
 const wsHost = import.meta.env.VITE_REVERB_HOST || '127.0.0.1';
@@ -25,14 +10,13 @@ const wsPort = parseInt(import.meta.env.VITE_REVERB_PORT || '8080', 10);
 const wsScheme = import.meta.env.VITE_REVERB_SCHEME || 'http';
 const isProd = wsScheme === 'https';
 
-let echo = null;
-
-try {
-    echo = new Echo({
+/** Tạo Echo instance với token cụ thể */
+export function createEcho(token) {
+    return new Echo({
         broadcaster: 'reverb',
         key: wsKey,
-        wsHost: wsHost,
-        wsPort: wsPort,
+        wsHost,
+        wsPort,
         wssPort: wsPort,
         forceTLS: isProd,
         enableStats: false,
@@ -40,42 +24,86 @@ try {
         authEndpoint: `${apiURL}/api/broadcasting/auth`,
         auth: {
             headers: {
-                Authorization: `Bearer ${getToken()}`,
-                Accept: 'application/json'
-            }
-        }
+                Authorization: `Bearer ${token}`,
+                Accept: 'application/json',
+            },
+        },
     });
-} catch (error) {
-    console.error('Failed to initialize Echo:', error);
-    echo = null;
 }
 
-window.Echo = echo;
+// ─── Cache per userType ───────────────────────────────────────────────────────
+const _cache = {}; // { userType: Echo }
 
-export const updateEchoToken = () => {
-    if (!echo || !echo.connector) {
-        return;
-    }
-
-    const token = getToken();
-
-    if (echo.connector.options?.auth) {
-        echo.connector.options.auth.headers = {
-            Authorization: `Bearer ${token}`,
-            Accept: 'application/json'
-        };
-    }
-
-    const pusher = echo.connector.pusher || (echo.connector.reverb);
-    if (pusher) {
-        const config = pusher.config || pusher.options;
-        if (config?.auth) {
-            if (!config.auth.headers) {
-                config.auth.headers = {};
+/**
+ * Lấy (hoặc tạo) Echo instance cho userType.
+ * Nếu token thay đổi → tạo lại instance mới.
+ */
+export function getEchoInstance(userType, token) {
+    const cached = _cache[userType];
+    if (cached) {
+        // Cập nhật token cho lần subscribe tiếp theo
+        try {
+            if (cached.connector?.options?.auth?.headers) {
+                cached.connector.options.auth.headers.Authorization = `Bearer ${token}`;
             }
-            config.auth.headers.Authorization = `Bearer ${token}`;
-        }
+        } catch (_) { }
+        return cached;
     }
+    try {
+        const inst = createEcho(token);
+        _cache[userType] = inst;
+        return inst;
+    } catch (e) {
+        console.error('[Echo] createEcho error:', e);
+        return null;
+    }
+}
+
+/** Disconnect và xoá cache khi logout */
+export function destroyEchoInstance(userType) {
+    if (_cache[userType]) {
+        try { _cache[userType].disconnect(); } catch (_) { }
+        delete _cache[userType];
+    }
+}
+
+// ─── Backward-compat: default export (dùng cho Shipper) ──────────────────────
+export const getToken = () => {
+    const p = window.location.pathname;
+    if (p.startsWith('/shipper')) return localStorage.getItem('shipper_login') || '';
+    if (p.startsWith('/quan-an')) return localStorage.getItem('quan_an_login') || '';
+    if (p.startsWith('/admin')) return localStorage.getItem('admin_login') || '';
+    return localStorage.getItem('khach_hang_login') || '';
 };
 
-export default echo;
+export const updateEchoToken = () => { /* no-op, giữ compat */ };
+
+// Shipper/DonHang.jsx vẫn dùng default import
+let _shipperEcho = null;
+export default {
+    get private() {
+        return (...args) => {
+            if (!_shipperEcho) {
+                _shipperEcho = createEcho(getToken());
+                _cache['shipper_default'] = _shipperEcho;
+            }
+            return _shipperEcho.private(...args);
+        };
+    },
+    get channel() {
+        return (...args) => {
+            if (!_shipperEcho) {
+                _shipperEcho = createEcho(getToken());
+                _cache['shipper_default'] = _shipperEcho;
+            }
+            return _shipperEcho.channel(...args);
+        };
+    },
+    get connector() {
+        if (!_shipperEcho) _shipperEcho = createEcho(getToken());
+        return _shipperEcho.connector;
+    },
+    disconnect() {
+        if (_shipperEcho) { try { _shipperEcho.disconnect(); } catch (_) { } _shipperEcho = null; }
+    },
+};

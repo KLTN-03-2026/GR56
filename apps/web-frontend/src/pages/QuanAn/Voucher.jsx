@@ -85,9 +85,9 @@ export default function QuanAnVoucher() {
   const [editForm, setEditForm] = useState({});
   const [delForm, setDelForm] = useState({});
 
-  useEffect(() => { fetchVouchers(); }, []);
+  const fetchVouchers = async () => { try { const r = await qA('/api/quan-an/voucher/data'); setVouchers(r.data.data || []); } catch (e) { console.error(e); } };
 
-  const fetchVouchers = async () => { try { const r = await qA('/api/quan-an/voucher/data'); setVouchers(r.data.data || []); } catch {} };
+  useEffect(() => { fetchVouchers(); }, []);
 
   const handleAdd = async () => {
     try { const r = await qA('/api/quan-an/voucher/create', 'post', addForm); if (r.data.status) { toast.success(r.data.message); setShowAdd(false); setAddForm({ ...EMPTY_V }); fetchVouchers(); } else toast.error(r.data.message); }
@@ -99,11 +99,11 @@ export default function QuanAnVoucher() {
   };
   const handleDel = async () => {
     try { const r = await qA('/api/quan-an/voucher/delete', 'post', delForm); if (r.data.status) { toast.success(r.data.message); setShowDel(false); fetchVouchers(); } }
-    catch {}
+    catch (e) {}
   };
   const handleChange = async (item) => {
     try { const r = await qA('/api/quan-an/voucher/change', 'post', item); if (r.data.status) { toast.success(r.data.message); fetchVouchers(); } }
-    catch {}
+    catch (e) {}
   };
 
   const isExpired = (date) => date && new Date(date) < new Date();
