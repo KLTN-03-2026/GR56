@@ -55,16 +55,18 @@ class DonHangDaHuyEvent implements ShouldBroadcastNow
     public function broadcastWith(): array
     {
         return [
-            'id'            => $this->donHang->id,
-            'ma_don_hang'   => $this->donHang->ma_don_hang,
-            'tinh_trang'    => $this->donHang->tinh_trang, // 5 = Đã hủy
-            'id_khach_hang' => $this->donHang->id_khach_hang,
-            'id_quan_an'    => $this->donHang->id_quan_an,
-            'id_shipper'    => $this->donHang->id_shipper,
-            'tong_tien'     => $this->donHang->tong_tien,
-            'ly_do'         => $this->donHang->ly_do ?? 'auto_cancel', // 'auto_cancel' | 'admin' | 'khach'
-            'updated_at'    => $this->donHang->updated_at,
-            'message'       => $this->donHang->ly_do ?? 'auto_cancel',
+            'don_hang' => [
+                'id'            => $this->donHang->id,
+                'ma_don_hang'   => $this->donHang->ma_don_hang,
+                'tinh_trang'    => $this->donHang->tinh_trang,
+                'id_khach_hang' => $this->donHang->id_khach_hang,
+                'id_quan_an'    => $this->donHang->id_quan_an,
+                'id_shipper'    => $this->donHang->id_shipper,
+                'tong_tien'     => $this->donHang->tong_tien,
+                'ly_do'         => $this->donHang->ly_do ?? 'auto_cancel',
+                'updated_at'    => $this->donHang->updated_at,
+            ],
+            'message' => $this->donHang->ly_do ?? 'auto_cancel',
         ];
     }
 }

@@ -33,7 +33,9 @@ class DonHang extends Model
         'refund_at',
         'refund_payout_id',
         'refund_note',
+        'cascade_shipper_id', // Shipper đang được mời nhận đơn (sequential cascade 1-1)
         'ly_do',         // Lý do hủy: 'auto_cancel' | 'admin' | 'khach' | null
+        'is_chatbot',    // Đơn từ chatbot
 
         // Đối soát tài chính (settlement)
         'chiet_khau_phan_tram',  // % chiết khấu nền tảng
@@ -71,5 +73,10 @@ class DonHang extends Model
     public function khachHang()
     {
         return $this->belongsTo(KhachHang::class, 'id_khach_hang');
+    }
+
+    public function diaChiNhan()
+    {
+        return $this->belongsTo(\App\Models\DiaChi::class, 'id_dia_chi_nhan');
     }
 }

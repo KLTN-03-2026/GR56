@@ -34,10 +34,15 @@ class DonHangDaXongEvent implements ShouldBroadcastNow
      */
     public function broadcastOn(): array
     {
-        return [
+        $channels = [
             new PrivateChannel('khach-hang.' . $this->donHang->id_khach_hang),
-            new PrivateChannel('shipper.' . $this->donHang->id_shipper),
         ];
+
+        if ($this->donHang->id_shipper) {
+            $channels[] = new PrivateChannel('shipper.' . $this->donHang->id_shipper);
+        }
+
+        return $channels;
     }
 
     /**
@@ -54,10 +59,12 @@ class DonHangDaXongEvent implements ShouldBroadcastNow
     public function broadcastWith(): array
     {
         return [
-            'id' => $this->donHang->id,
-            'ma_don_hang' => $this->donHang->ma_don_hang,
-            'tinh_trang' => $this->donHang->tinh_trang,
-            'updated_at' => $this->donHang->updated_at,
+            'don_hang' => [
+                'id' => $this->donHang->id,
+                'ma_don_hang' => $this->donHang->ma_don_hang,
+                'tinh_trang' => $this->donHang->tinh_trang,
+                'updated_at' => $this->donHang->updated_at,
+            ],
             'message' => 'Quán ăn đã chuẩn bị xong đơn hàng!',
         ];
     }

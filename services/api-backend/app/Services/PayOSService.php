@@ -11,6 +11,7 @@ use App\Models\Wallet;
 use App\Models\WalletTransaction;
 use App\Models\WithdrawRequest;
 use App\Jobs\SendMailJob;
+use App\Jobs\FindShipperJob;
 use App\Jobs\RefundPayOSJob;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -27,7 +28,7 @@ class PayOSService
 {
     // ── Base URLs ─────────────────────────────────────────────
     const PAYMENT_API_URL = 'https://api-merchant.payos.vn';
-    const PAYOUT_API_URL  = 'https://api-payout.payos.vn';
+    const PAYOUT_API_URL  = 'https://api-merchant.payos.vn';
 
     // ── Payment credentials ────────────────────────────────────
     private static function clientId(): string
@@ -99,9 +100,11 @@ class PayOSService
      * Tạo link thanh toán PayOS cho đơn hàng
      *
      * @param  DonHang $don_hang
+     * @param  string|null $returnUrl  Override return URL (null = dùng .env PAYOS_RETURN_URL)
+     * @param  string|null $cancelUrl  Override cancel URL (null = dùng .env PAYOS_CANCEL_URL)
      * @return array   ['status' => bool, 'checkout_url' => string, 'payment_link_id' => string]
      */
-    public static function taoLinkThanhToan(DonHang $don_hang): array
+    public static function taoLinkThanhToan(DonHang $don_hang, ?string $returnUrl = null, ?string $cancelUrl = null): array
     {
         try {
             // Lần đầu tiên: dùng ID đơn hàng làm orderCode
@@ -120,10 +123,10 @@ class PayOSService
             }
             $amount      = intval($don_hang->tong_tien);
             $description = "DH" . $don_hang->ma_don_hang; // Tối đa 25 ký tự
-            // Ưu tiên biến riêng, fallback tự tính từ FRONTEND_URL (tránh hardcode localhost)
+            // Ưu tiên tham số truyền vào, fallback tự tính từ FRONTEND_URL (tránh hardcode localhost)
             $frontendBase = rtrim(env('FRONTEND_URL', 'http://localhost:5173'), '/');
-            $returnUrl    = env('PAYOS_RETURN_URL', $frontendBase . '/payment/payos/return');
-            $cancelUrl    = env('PAYOS_CANCEL_URL',  $frontendBase . '/payment/payos/cancel');
+            $returnUrl   = $returnUrl ?? env('PAYOS_RETURN_URL', $frontendBase . '/payment/payos/return');
+            $cancelUrl   = $cancelUrl ?? env('PAYOS_CANCEL_URL',  $frontendBase . '/payment/payos/cancel');
 
             $signature = self::taoSignaturePayment($amount, $cancelUrl, $description, $orderCode, $returnUrl);
 
@@ -179,7 +182,7 @@ class PayOSService
                     'status'           => true,
                     'checkout_url'     => $body['data']['checkoutUrl'] ?? '',
                     'payment_link_id'  => $body['data']['paymentLinkId'] ?? '',
-                    'qr_code'          => $body['data']['qrCode'] ?? '',
+                    'qr_code'          => $body['data']['qrUrl'] ?? '',
                     'order_code'       => $orderCode,
                 ];
             }
@@ -239,7 +242,7 @@ class PayOSService
                                     'status'          => true,
                                     'checkout_url'    => $body2['data']['checkoutUrl'] ?? '',
                                     'payment_link_id' => $body2['data']['paymentLinkId'] ?? '',
-                                    'qr_code'         => $body2['data']['qrCode'] ?? '',
+                                    'qr_code'         => $body2['data']['qrUrl'] ?? '',
                                     'order_code'      => $orderCode,
                                 ];
                             }
@@ -260,7 +263,7 @@ class PayOSService
                             'status'          => true,
                             'checkout_url'    => $checkoutUrl,
                             'payment_link_id' => $linkId ?? '',
-                            'qr_code'         => $data['qrCode'] ?? '',
+                            'qr_code'         => $data['qrUrl'] ?? '',
                             'order_code'      => $orderCode,
                             'recovered'       => true,
                         ];
@@ -341,7 +344,7 @@ class PayOSService
                 return [
                     'status'       => true,
                     'checkout_url' => $body['data']['checkoutUrl'] ?? '',
-                    'qr_code'      => $body['data']['qrCode'] ?? '',
+                    'qr_code'      => $body['data']['qrUrl'] ?? '',
                     'order_code'   => $orderCode,
                 ];
             }
@@ -535,7 +538,7 @@ class PayOSService
     {
         try {
             $referenceId     = 'HOANDON-' . $orderId . '-' . time();
-            $description     = mb_substr($description, 0, 25); // PayOS max 25 ký tự
+            $description     = mb_substr($description, 0, 50);
             $toBin           = self::layMaBinNganHang($bank->ten_ngan_hang);
             $toAccountNumber = $bank->so_tai_khoan;
 
@@ -772,6 +775,27 @@ class PayOSService
                     event(new \App\Events\DonHangDaThanhToanEvent($don_hang));
                 } catch (\Exception $e) {
                     Log::error('Lỗi khi phát sự kiện DonHangDaThanhToanEvent trong PayOS: ' . $e->getMessage());
+                }
+
+                // ── DISPATCH: Tự động tìm và gửi đơn ưu tiên cho shipper gần nhất (PayOS) ──
+                try {
+                    FindShipperJob::dispatchSync($don_hang->fresh());
+                } catch (\Exception $e) {
+                    Log::error('Lỗi dispatch FindShipperJob trong PayOS webhook: ' . $e->getMessage());
+                }
+
+                // Thông báo real-time cho khách hàng biết thanh toán thành công
+                try {
+                    $khachHang = \App\Models\KhachHang::find($don_hang->id_khach_hang);
+                    if ($khachHang) {
+                        event(new \App\Events\DonHangDaThanhToanEvent($don_hang));
+                        // Broadcast riêng cho khách hàng qua channel khach-hang
+                        $echo = app(\Illuminate\Contracts\Broadcasting\Factory::class);
+                        // Log notification đã gửi
+                        Log::info("✅ PayOS: Đã gửi thông báo thanh toán cho khách #{$don_hang->id_khach_hang}");
+                    }
+                } catch (\Exception $e) {
+                    Log::error('Lỗi khi thông báo khách hàng trong PayOS webhook: ' . $e->getMessage());
                 }
 
                 DB::commit();
