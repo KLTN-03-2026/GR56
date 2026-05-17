@@ -23,7 +23,9 @@ export default function DangKy() {
   const navigate = useNavigate();
 
   useEffect(() => {
+    document.title = "FOODBEE-QUÁN ĂN";
     loadDistricts();
+    return () => { document.title = "FOODBEE"; };
   }, []);
 
   const loadDistricts = async () => {

@@ -69,7 +69,7 @@ function TabTongQuan() {
 
   useEffect(() => {
     load();
-    return () => { Object.values(charts.current).forEach(c => { try { c.destroy(); } catch {} }); };
+    return () => { Object.values(charts.current).forEach(c => { try { c.destroy(); } catch (e) { console.error(e); } }); };
   }, []);
 
   const load = async () => {
@@ -84,7 +84,7 @@ function TabTongQuan() {
   };
 
   const draw = (d) => {
-    Object.values(charts.current).forEach(c => { try { c.destroy(); } catch {} });
+    Object.values(charts.current).forEach(c => { try { c.destroy(); } catch (e) { console.error(e); } });
     charts.current = {};
     if (!lineRef.current || !d.bieu_do) return;
     charts.current.line = new Chart(lineRef.current, {

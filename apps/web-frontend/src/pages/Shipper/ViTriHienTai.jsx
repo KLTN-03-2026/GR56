@@ -1,7 +1,9 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../utils/api';
 import toast from 'react-hot-toast';
+import OpenMapView from '../../components/OpenMapView';
+import { ndaGeocodeReverse } from '../../config/map';
 
 export default function ShipperViTriHienTai() {
   const [isTracking, setIsTracking] = useState(false);
@@ -10,17 +12,35 @@ export default function ShipperViTriHienTai() {
   const [lastUpdate, setLastUpdate] = useState(null);
   const trackingInterval = useRef(null);
 
-  useEffect(() => {
-    // Tự động lấy vị trí ban đầu
-    getCurrentLocation();
-    
-    return () => {
-      // Dọn dẹp interval khi unmount
-      if (trackingInterval.current) clearInterval(trackingInterval.current);
-    };
+  const getCurrentLocation = useCallback(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          const lat = position.coords.latitude;
+          const lng = position.coords.longitude;
+          setCoords({ lat: lat.toFixed(6), lng: lng.toFixed(6) });
+          setLastUpdate(new Date().toLocaleTimeString('vi-VN'));
+          try {
+             const res = await fetch(ndaGeocodeReverse(lat, lng));
+             const data = await res.json();
+             if (data?.features?.[0]?.properties?.label) setAddress(data.features[0].properties.label);
+          } catch (e) { console.error(e); }
+          try {
+            const token = localStorage.getItem('shipper_login');
+            await api.post('/api/shipper/cap-nhat-vi-tri', { lat, lng }, {
+               headers: { Authorization: `Bearer ${token}` }
+            });
+          } catch (e) { console.error(e); }
+        },
+        () => { toast.error('Không thể lấy vị trí. Vui lòng bật GPS!'); },
+        { enableHighAccuracy: true }
+      );
+    } else {
+       toast.error('Trình duyệt không hỗ trợ Geolocation');
+    }
   }, []);
 
-  const toggleTracking = () => {
+  const toggleTracking = useCallback(() => {
     if (isTracking) {
       if (trackingInterval.current) clearInterval(trackingInterval.current);
       trackingInterval.current = null;
@@ -30,68 +50,25 @@ export default function ShipperViTriHienTai() {
       setIsTracking(true);
       getCurrentLocation();
       toast.success('Đã bật theo dõi vị trí tự động');
-      trackingInterval.current = setInterval(() => {
-        getCurrentLocation();
-      }, 10000); // Mỗi 10 giây
+      trackingInterval.current = setInterval(getCurrentLocation, 10000);
     }
-  };
+  }, [isTracking, getCurrentLocation]);
 
-  const getCurrentLocation = () => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        async (position) => {
-          const lat = position.coords.latitude;
-          const lng = position.coords.longitude;
-          
-          setCoords({ lat: lat.toFixed(6), lng: lng.toFixed(6) });
-          setLastUpdate(new Date().toLocaleTimeString('vi-VN'));
-          
-          // Lấy địa chỉ từ OpenStreetMap
-          try {
-             const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`);
-             const data = await res.json();
-             if (data?.display_name) setAddress(data.display_name);
-          } catch {}
-
-          // Send to backend if tracking
-          if (isTracking || !isTracking) { // Actually always send at least once when requested
-            try {
-              const token = localStorage.getItem('shipper_login');
-              await api.post('/api/shipper/cap-nhat-vi-tri', { lat, lng }, {
-                 headers: { Authorization: `Bearer ${token}` }
-              });
-            } catch {}
-          }
-        },
-        () => {
-          toast.error('Không thể lấy vị trí. Vui lòng bật GPS!');
-        },
-        { enableHighAccuracy: true }
-      );
-    } else {
-       toast.error('Trình duyệt không hỗ trợ Geolocation');
-    }
-  };
+  useEffect(() => {
+    getCurrentLocation();
+    return () => {
+      if (trackingInterval.current) clearInterval(trackingInterval.current);
+    };
+  }, []);
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      {/* Top bar */}
-      <div className="text-white px-4 py-5 pb-8" style={{ background: 'linear-gradient(135deg, #0f2027, #2c5364)' }}>
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-3 mb-1">
-              <i className="fa-solid fa-map-location-dot text-2xl text-blue-400" />
-              <h1 className="text-xl font-extrabold">Vị Trí Của Tôi</h1>
-            </div>
-          </div>
-          <div className="flex gap-2">
-             <Link to="/shipper/profile" className="w-10 h-10 flex items-center justify-center rounded-xl bg-white/10 text-white font-semibold hover:bg-white/20 transition-colors border border-white/20"><i className="fa-solid fa-user" /></Link>
-             <Link to="/shipper/don-hang" className="w-10 h-10 flex items-center justify-center rounded-xl bg-white/10 text-white font-semibold hover:bg-white/20 transition-colors border border-white/20"><i className="fa-solid fa-house" /></Link>
-          </div>
-        </div>
+    <div className="p-6">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-gray-900"><i className="fa-solid fa-map-location-dot mr-3 text-blue-500" />Vị Trí Của Tôi</h1>
+        <p className="text-gray-500 text-sm mt-1">Quản lý định vị GPS</p>
       </div>
 
-      <div className="max-w-7xl mx-auto w-full p-4 flex-1 -mt-6">
+      <div className="mx-auto w-full">
         
         {/* Card info */}
         <div className="bg-white rounded-3xl p-6 shadow-xl border border-gray-100 mb-6 relative overflow-hidden">
@@ -159,15 +136,12 @@ export default function ShipperViTriHienTai() {
         {/* Map iframe */}
         <div className="bg-white rounded-3xl p-2 shadow-sm border border-gray-100 overflow-hidden h-[400px]">
            {coords ? (
-              <iframe 
-                width="100%" 
-                height="100%" 
-                style={{ border: 0, borderRadius: '20px' }}
-                loading="lazy" 
-                allowFullScreen 
-                referrerPolicy="no-referrer-when-downgrade" 
-                src={`https://maps.google.com/maps?q=${coords.lat},${coords.lng}&t=m&z=16&output=embed&iwloc=near`}>
-              </iframe>
+              <OpenMapView
+                center={[parseFloat(coords.lng), parseFloat(coords.lat)]}
+                zoom={16}
+                markers={[{ lng: parseFloat(coords.lng), lat: parseFloat(coords.lat), color: '#3b82f6', label: 'Vị trí của bạn' }]}
+                style={{ borderRadius: '20px' }}
+              />
            ) : (
               <div className="w-full h-full bg-gray-50 rounded-[20px] flex items-center justify-center text-gray-400 flex-col">
                  <i className="fa-solid fa-map-location-dot text-6xl mb-3 text-gray-300"></i>

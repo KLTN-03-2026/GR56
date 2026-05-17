@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import api from '../../utils/api';
 import toast from 'react-hot-toast';
 import { rtToast } from '../../components/RealtimeToast';
+import OpenMapView from '../../components/OpenMapView';
 import { useAuth } from '../../context/AuthContext';
 import { formatVND } from '../../utils/helpers';
 import OrderTracking from '../../components/OrderTracking';
@@ -56,6 +57,8 @@ export default function DonHang() {
   const [rating, setRating] = useState({ sao_quan_an: 5, nhan_xet_quan_an: '', sao_shipper: 5, nhan_xet_shipper: '' });
   const [payosLoading, setPayosLoading] = useState(false);
   const [payosData, setPayosData] = useState(null);
+  const [qrImage, setQrImage] = useState(null);
+  const [qrLoading, setQrLoading] = useState(false);
   const [chatOrder, setChatOrder] = useState(null);
   const [detailTab, setDetailTab] = useState('info'); // 'info' | 'map'
   const [trackingData, setTrackingData] = useState(null);
@@ -66,6 +69,9 @@ export default function DonHang() {
   const [reportForm, setReportForm] = useState({ tieu_de: '', noi_dung: '', hinh_anh: null, yeu_cau_huy: false, ly_do_huy: '' });
   const [reportLoading, setReportLoading] = useState(false);
   const [checkingBank, setCheckingBank] = useState(false);
+
+  let channel = null;
+  let isCancelled = false;
 
   useEffect(() => {
     // Nếu navigate từ trang đặt hàng kèm tab, áp dụng ngay
@@ -86,7 +92,7 @@ export default function DonHang() {
     if (fromMount) setLoading(true); // Chỉ hiện spinner lần đầu
     let cleanupFunc = null;
     try {
-      const res = await api.get('/api/khach-hang/don-hang/data');
+      const res = await api.get('/api/khach-hang/don-hang/data-moi');
       setOrders(res.data.data || []);
       
       // Realtime setup ONLY on initial load
@@ -104,32 +110,39 @@ export default function DonHang() {
   };
 
   const setupRealtime = async (userId) => {
-     const { default: echo, updateEchoToken } = await import('../../utils/echo');
-     updateEchoToken();
-     
-     const channelName = `khach-hang.${userId}`;
-     const channel = echo.private(channelName);
-     
-     // ClientLayout đã xử lý toast toàn cục - ở đây chỉ cần update UI
-     const h1 = () => { setActiveTab('1'); setTimeout(() => loadOrders(false), 500); };
-     const h2 = () => { setActiveTab('2'); setTimeout(() => loadOrders(false), 500); };
-     const h3 = () => { setActiveTab('3'); setTimeout(() => loadOrders(false), 500); };
-     const h4 = () => { setActiveTab('4'); setTimeout(() => loadOrders(false), 500); };
-     const h5 = () => { setActiveTab('5'); setTimeout(() => loadOrders(false), 500); };
-     channel.listen('.don-hang.da-nhan', h1);
-     channel.listen('.don-hang.dang-lam', h2);
-     channel.listen('.don-hang.da-xong', h3);
-     channel.listen('.don-hang.hoan-thanh', h4);
-     channel.listen('.don-hang.da-huy', h5);
+    try {
+      const { getEchoInstance } = await import('../../utils/echo');
+      if (isCancelled) return;
+      const khToken = localStorage.getItem('khach_hang_login') || '';
+      const echo = getEchoInstance('khach_hang', khToken);
+      if (!echo) return;
+      const channelName = `khach-hang.${userId}`;
+      const channel = echo.private(channelName);
 
-     // KHÔNG echo.leave() - chỉ stopListening để giữ channel cho ClientLayout/NotificationBell
-     return () => {
-       try { channel.stopListening('.don-hang.da-nhan', h1); } catch {}
-       try { channel.stopListening('.don-hang.dang-lam', h2); } catch {}
-       try { channel.stopListening('.don-hang.da-xong', h3); } catch {}
-       try { channel.stopListening('.don-hang.hoan-thanh', h4); } catch {}
-       try { channel.stopListening('.don-hang.da-huy', h5); } catch {}
-     };
+      const h1 = () => { setActiveTab('1'); setTimeout(() => loadOrders(false), 500); };
+      const h2 = () => { setActiveTab('2'); setTimeout(() => loadOrders(false), 500); };
+      const h3 = () => { setActiveTab('3'); setTimeout(() => loadOrders(false), 500); };
+      const h4 = () => { setActiveTab('4'); setTimeout(() => loadOrders(false), 500); };
+      const h5 = () => { setActiveTab('5'); setTimeout(() => loadOrders(false), 500); };
+      const h6 = () => { setActiveTab('0'); setTimeout(() => loadOrders(false), 500); };
+      channel.listen('.don-hang.da-nhan', h1);
+      channel.listen('.don-hang.dang-lam', h2);
+      channel.listen('.don-hang.da-xong', h3);
+      channel.listen('.don-hang.hoan-thanh', h4);
+      channel.listen('.don-hang.da-huy', h5);
+      channel.listen('.don-hang.da-thanh-toan', h6);
+
+      return () => {
+        try { channel.stopListening('.don-hang.da-nhan', h1); } catch (e) { console.error(e); }
+        try { channel.stopListening('.don-hang.dang-lam', h2); } catch (e) { console.error(e); }
+        try { channel.stopListening('.don-hang.da-xong', h3); } catch (e) { console.error(e); }
+        try { channel.stopListening('.don-hang.hoan-thanh', h4); } catch (e) { console.error(e); }
+        try { channel.stopListening('.don-hang.da-huy', h5); } catch (e) { console.error(e); }
+        try { channel.stopListening('.don-hang.da-thanh-toan', h6); } catch (e) { console.error(e); }
+      };
+    } catch (err) {
+      console.error('[KhachHang/DonHang] Echo setup error:', err);
+    }
   };
 
   const filtered = orders.filter(o => {
@@ -155,8 +168,8 @@ export default function DonHang() {
     setMapUnlocked(false);
     if (trackPollRef.current) clearInterval(trackPollRef.current);
     try {
-      const res = await api.post('/api/khach-hang/don-hang/data-chi-tiet', order);
-      if (res.data.status) { setOrderDetail(res.data.don_hang); setOrderItems(res.data.chi_tiet_mon_an || []); }
+      const res = await api.post('/api/khach-hang/don-hang/chi-tiet-single', order);
+      if (res.data.status) { setOrderDetail(res.data.data); setOrderItems(res.data.chi_tiet || []); }
     } catch { toast.error('Không thể tải chi tiết!'); }
     finally { setDetailLoading(false); }
   };
@@ -165,10 +178,15 @@ export default function DonHang() {
     setSelectedOrder(order);
     setDetailLoading(true);
     setModal('payment');
+    setQrImage(null);
+    setQrLoading(true);
     try {
-      const res = await api.post('/api/khach-hang/don-hang/data-chi-tiet', order);
-      if (res.data.status) { setOrderDetail(res.data.don_hang); }
-    } catch { } finally { setDetailLoading(false); }
+      const res = await api.post('/api/khach-hang/don-hang/chi-tiet-single', order);
+      if (res.data.status) { setOrderDetail(res.data.data); }
+      // Fetch QR image via backend proxy
+      const qrRes = await api.get(`/api/transaction/viet-qr-image?amount=${order.tong_tien}&addInfo=DZ${order.id}`);
+      if (qrRes.data.status && qrRes.data.qr_image) { setQrImage(qrRes.data.qr_image); }
+    } catch (e) { console.error(e); } finally { setDetailLoading(false); setQrLoading(false); }
   };
 
   const openRating = (order) => {
@@ -581,13 +599,13 @@ export default function DonHang() {
                       try {
                         const r = await api.post('/api/khach-hang/don-hang/theo-doi-don-hang', { id: orderDetail.id });
                         if (r.data.status) setTrackingData(r.data.order);
-                      } catch {} finally { setTrackingLoading(false); }
+                      } catch (e) { console.error(e); } finally { setTrackingLoading(false); }
                       if (trackPollRef.current) clearInterval(trackPollRef.current);
                       trackPollRef.current = setInterval(async () => {
                         try {
                           const r = await api.post('/api/khach-hang/don-hang/theo-doi-don-hang', { id: orderDetail.id });
                           if (r.data.status) setTrackingData(r.data.order);
-                        } catch {}
+                        } catch (e) { console.error(e); }
                       }, 10000);
                     } else {
                       if (trackPollRef.current) { clearInterval(trackPollRef.current); trackPollRef.current = null; }
@@ -609,10 +627,14 @@ export default function DonHang() {
                   <div className="flex-1 flex items-center justify-center"><div className="w-10 h-10 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin" /></div>
                 ) : trackingData ? (() => {
                   const sl = trackingData.shipper_lat; const sln = trackingData.shipper_lng;
-                  const ql = trackingData.restaurant_lat || trackingData.quan_lat; const qln = trackingData.restaurant_lng || trackingData.quan_lng;
-                  const mapSrc = sl && sln
-                    ? `https://www.google.com/maps/embed/v1/directions?key=AIzaSyD-9tSrke72PouQMnMX-a7eZSW0jkFMBWY&origin=${sl},${sln}&destination=${ql},${qln}&mode=driving`
-                    : ql ? `https://maps.google.com/maps?q=${ql},${qln}&t=m&z=16&output=embed` : null;
+                  const kl = trackingData.customer_lat; const kln = trackingData.customer_lng;
+                  const hasShipper = sl && sln;
+                  const hasKhach = kl && kln;
+                  const mapCenter = hasShipper ? [parseFloat(sln), parseFloat(sl)] : hasKhach ? [parseFloat(kln), parseFloat(kl)] : null;
+                  const mapMarkers = [];
+                  if (hasShipper) mapMarkers.push({ lng: parseFloat(sln), lat: parseFloat(sl), color: '#3b82f6', label: 'Shipper' });
+                  if (hasKhach) mapMarkers.push({ lng: parseFloat(kln), lat: parseFloat(kl), color: '#10b981', label: 'Bạn ở đây' });
+                  const mapRoute = hasShipper && hasKhach ? { origin: [parseFloat(sln), parseFloat(sl)], destination: [parseFloat(kln), parseFloat(kl)] } : null;
                   return (
                     <div className="flex-1 flex flex-col">
                       <div className="flex items-center gap-3 p-3 bg-blue-50 border-b border-blue-100 text-sm flex-shrink-0">
@@ -620,7 +642,7 @@ export default function DonHang() {
                         <div>
                           <span className="font-bold text-blue-800">Shipper: {trackingData.ten_shipper || trackingData.shipper_name || 'Đang cập nhật'}</span>
                           <div className="text-xs text-blue-600 mt-0.5">
-                            {sl ? <><i className="fa-solid fa-location-dot mr-1" />Vị trí cập nhật mỗi 10 giây</> : 'Chưa có tọa độ shipper, đang hiển thị vị trí quán'}
+                            {sl ? <><i className="fa-solid fa-location-dot mr-1" />Vị trí cập nhật mỗi 10 giây</> : 'Chưa có tọa độ shipper, đang hiển thị vị trí giao hàng'}
                           </div>
                         </div>
                         <div className="ml-auto flex items-center gap-1 text-xs bg-green-100 text-green-700 px-2 py-1 rounded-lg font-bold">
@@ -629,7 +651,7 @@ export default function DonHang() {
                       </div>
                       {!mapUnlocked ? (
                         <div className="flex-1 relative flex items-center justify-center bg-gray-100">
-                          <div className="absolute inset-0 bg-gray-200" style={{ backgroundImage: 'url(https://maps.googleapis.com/maps/api/staticmap?center=16.0471,108.2068&zoom=13&size=800x600&key=)' }} />
+                          <div className="absolute inset-0 bg-gray-200" />
                           <div className="relative z-10 text-center bg-white/95 p-6 rounded-2xl shadow-xl max-w-xs">
                             <i className="fa-solid fa-map-location-dot text-4xl text-purple-500 mb-3 block" />
                             <h4 className="font-bold text-gray-800 mb-2">Theo Dõi Shipper Real-time</h4>
@@ -640,8 +662,10 @@ export default function DonHang() {
                             </button>
                           </div>
                         </div>
-                      ) : mapSrc ? (
-                        <iframe src={mapSrc} className="flex-1 w-full" style={{ border: 0 }} allowFullScreen loading="lazy" />
+                      ) : mapCenter ? (
+                        <div className="flex-1 w-full">
+                          <OpenMapView center={mapCenter} zoom={14} markers={mapMarkers} route={mapRoute} />
+                        </div>
                       ) : (
                         <div className="flex-1 flex items-center justify-center text-gray-400">
                           <div className="text-center"><i className="fa-solid fa-map text-5xl text-gray-200 mb-3 block" /><p>Chưa có dữ liệu vị trí</p></div>
@@ -798,7 +822,15 @@ export default function DonHang() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="text-center p-4 bg-gray-50 rounded-2xl">
-                  <img src="https://img.vietqr.io/image/MB-0394425076-qr_only.png" alt="QR" className="w-44 mx-auto mb-3" />
+                  {qrLoading ? (
+                    <div className="w-44 h-44 mx-auto mb-3 flex items-center justify-center">
+                      <div className="w-10 h-10 border-3 border-purple-200 border-t-purple-500 rounded-full animate-spin" />
+                    </div>
+                  ) : qrImage ? (
+                    <img src={qrImage} alt="QR" className="w-44 mx-auto mb-3" />
+                  ) : (
+                    <div className="w-44 h-44 mx-auto mb-3 flex items-center justify-center bg-gray-100 rounded-xl text-gray-400 text-xs">Không tải được QR</div>
+                  )}
                   <div className="text-sm text-gray-600 font-semibold">Mã: #{selectedOrder.ma_don_hang}</div>
                   <div className="text-xl font-bold text-red-500 mt-1">{formatVND(selectedOrder.tong_tien)}</div>
                 </div>

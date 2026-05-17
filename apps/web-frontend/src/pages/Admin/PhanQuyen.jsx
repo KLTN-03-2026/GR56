@@ -41,11 +41,9 @@ export default function AdminPhanQuyen() {
   const [editForm, setEditForm] = useState({});
   const [delForm, setDelForm] = useState({});
 
-  useEffect(()=>{ loadData(); loadChucNang(); loadPhanQuyen(); },[]);
-
   const loadData = async () => { try{const r=await adm('/api/admin/chuc-vu/data');setListCV(r.data.data||[]);}catch{} };
   const loadChucNang = async () => { try{const r=await adm('/api/admin/chuc-nang/data');setListCN(r.data.data||[]);}catch{} };
-  const loadPhanQuyen = async (roleId = null) => { 
+  const loadPhanQuyen = async (roleId = null) => {
     try{
       const r=await adm('/api/admin/phan-quyen/chi-tiet-data');
       if(r.data.status) {
@@ -53,6 +51,8 @@ export default function AdminPhanQuyen() {
       }
     }catch{}
   };
+
+  useEffect(()=>{ loadData(); loadChucNang(); loadPhanQuyen(); },[]);
 
   const currentPQ = listPQ.filter(x => selectedRole && x.id_chuc_vu === selectedRole.id);
 

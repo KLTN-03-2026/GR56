@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../../utils/api';
 import toast from 'react-hot-toast';
@@ -9,6 +9,11 @@ export default function QuanAnDangNhap() {
   const [form, setForm] = useState({ email: '', password: '' });
   const [loading, setLoading] = useState(false);
   const [showPass, setShowPass] = useState(false);
+
+  useEffect(() => {
+    document.title = "FOODBEE-QUÁN ĂN";
+    return () => { document.title = "FOODBEE"; };
+  }, []);
 
   const handleLogin = async (e) => {
     e?.preventDefault();

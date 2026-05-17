@@ -54,7 +54,7 @@ export default function LichSuXu() {
     try {
       const res = await api.get('/api/khach-hang/data-login');
       if (res.data.status) setUser(res.data.data);
-    } catch {}
+    } catch (e) { console.error(e); }
   };
 
   const loadLichSuXu = async () => {

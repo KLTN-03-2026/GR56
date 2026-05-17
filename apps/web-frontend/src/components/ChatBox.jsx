@@ -53,7 +53,7 @@ export default function ChatBox({ orderId, currentUserType, onClose, otherPartyN
         try {
             const { default: echo, updateEchoToken } = await import('../utils/echo');
             updateEchoToken();
-            
+
             const channelName = `chat.${orderId}`;
             echo.private(channelName)
                 .listen('.tin-nhan.moi', (data) => {
@@ -73,7 +73,7 @@ export default function ChatBox({ orderId, currentUserType, onClose, otherPartyN
         try {
             const { default: echo } = await import('../utils/echo');
             echo.leave(`chat.${orderId}`);
-        } catch {}
+        } catch (e) { console.error(e); }
     };
 
     const handleSendMessage = async (e) => {

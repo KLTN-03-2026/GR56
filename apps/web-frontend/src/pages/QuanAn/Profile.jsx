@@ -27,7 +27,7 @@ export default function QuanAnProfile() {
     try {
       const r = await qA('/api/quan-an/data-login');
       if (r.data.status) setUser(r.data.data);
-    } catch {}
+    } catch (e) { console.error(e); }
     finally { setLoading(false); }
   };
 

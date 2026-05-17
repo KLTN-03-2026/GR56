@@ -92,29 +92,13 @@ export default function ShipperThongKe() {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      {/* Top bar */}
-      <div className="text-white px-4 py-5" style={{ background: 'linear-gradient(135deg, #0f2027, #2c5364)' }}>
-        <div className="max-w-5xl mx-auto flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-3 mb-1">
-              <i className="fa-solid fa-chart-column text-2xl text-green-400" />
-              <h1 className="text-xl font-extrabold">Thống Kê Thu Nhập</h1>
-            </div>
-            <p className="text-white/50 text-sm">Báo cáo chi tiết các chuyến giao hàng</p>
-          </div>
-          <div className="flex gap-2">
-            <Link to="/shipper/profile" className="w-10 h-10 flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 border border-white/20">
-              <i className="fa-solid fa-user" />
-            </Link>
-            <Link to="/shipper/don-hang" className="w-10 h-10 flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 border border-white/20">
-              <i className="fa-solid fa-house" />
-            </Link>
-          </div>
-        </div>
+    <div className="p-6">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-gray-900"><i className="fa-solid fa-chart-column mr-3 text-green-500" />Thống Kê Thu Nhập</h1>
+        <p className="text-gray-500 text-sm mt-1">Báo cáo chi tiết các chuyến giao hàng</p>
       </div>
 
-      <div className="max-w-5xl mx-auto w-full p-4 flex-1">
+      <div className="mx-auto w-full">
 
         {/* Banner */}
         <div className="bg-gradient-to-r from-green-500 to-emerald-600 rounded-3xl p-5 text-white shadow-lg mb-5 relative overflow-hidden">

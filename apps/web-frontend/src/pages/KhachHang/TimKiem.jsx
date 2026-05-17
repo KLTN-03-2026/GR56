@@ -20,7 +20,7 @@ export default function TimKiem() {
       const res = await api.post('/api/khach-hang/mon-an/tim-kiem', { noi_dung_tim: thong_tin });
       setListMonAn(res.data.mon_an || []);
       setListQuanAn(res.data.quan_an || []);
-    } catch {}
+    } catch (e) { console.error(e); }
     finally { setLoading(false); }
   };
 

@@ -66,6 +66,7 @@ function TabMonAn() {
   const [listQA, setListQA] = useState([]);
   const [listDM, setListDM] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [filterQA, setFilterQA] = useState('');
   const [showCreate, setShowCreate] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [showDel, setShowDel] = useState(false);
@@ -75,7 +76,24 @@ function TabMonAn() {
   const [delForm, setDelForm] = useState({});
 
   useEffect(()=>{ loadData(); },[]);
-  const loadData = async () => { setLoading(true); try{const r=await adm('/api/admin/mon-an/data');setList(r.data.data||[]);setListQA(r.data.quan_an||[]);setListDM(r.data.danh_muc||[]);}catch{}finally{setLoading(false);} };
+
+  const loadData = async (idQuanAn = '') => {
+    setLoading(true);
+    try {
+      const r = await adm('/api/admin/mon-an/data');
+      setListQA(r.data.quan_an || []);
+      setListDM(r.data.danh_muc || []);
+      const allData = r.data.data || [];
+      if (idQuanAn) {
+        setList(allData.filter(m => String(m.id_quan_an) === String(idQuanAn)));
+      } else {
+        setList(allData);
+      }
+    } catch {}
+    finally { setLoading(false); }
+  };
+
+  useEffect(()=>{ loadData(filterQA); },[filterQA]);
   const handleCreate = async () => { try{const r=await adm('/api/admin/mon-an/create','post',createForm);if(r.data.status){toast.success(r.data.message);setShowCreate(false);setCreateForm({...EMPTY});loadData();}else toast.error(r.data.message);}catch(e){Object.values(e?.response?.data?.errors||{}).forEach(v=>toast.error(v[0]));} };
   const handleEdit = async () => { try{const r=await adm('/api/admin/mon-an/update','post',editForm);if(r.data.status){toast.success(r.data.message);setShowEdit(false);loadData();}else toast.error(r.data.message);}catch(e){Object.values(e?.response?.data?.errors||{}).forEach(v=>toast.error(v[0]));} };
   const handleDel = async () => { try{const r=await adm('/api/admin/mon-an/delete','post',delForm);if(r.data.status){toast.success(r.data.message);setShowDel(false);loadData();}else toast.error(r.data.message);}catch{} };
@@ -103,21 +121,26 @@ function TabMonAn() {
           <p className="text-gray-600">Xóa: <b className="text-red-500">{delForm.ten_mon_an}</b>?</p></div>
       </Modal>
 
-      <div className="flex justify-end mb-4 gap-3">
-        <ExcelButton disabled={list.length === 0} onClick={() => exportToExcel(
-          list.map((m, i) => ({ ...m, __stt: i + 1 })),
-          [
-            { label: 'STT',          key: '__stt',         width: 6 },
-            { label: 'Tên món ăn',   key: 'ten_mon_an',    width: 25 },
-            { label: 'Giá bán',      key: 'gia_ban',       width: 14, format: v => Number(v).toLocaleString('vi-VN') },
-            { label: 'Khuyến mãi',   key: 'gia_khuyen_mai',width: 14, format: v => v > 0 ? Number(v).toLocaleString('vi-VN') : '—' },
-            { label: 'Quán ăn',      key: 'ten_quan_an',   width: 25 },
-            { label: 'Danh mục',     key: 'ten_danh_muc',  width: 20 },
-            { label: 'Tình trạng',   key: 'tinh_trang',    width: 14, format: v => v == 1 ? 'Hiển thị' : 'Tạm tắt' },
-          ],
-          'MonAn', 'Món Ăn'
-        )} />
-        <button onClick={()=>setShowCreate(true)} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-red-500 text-white text-sm font-bold hover:bg-red-600"><i className="fa-solid fa-plus"/>Thêm Món Ăn</button>
+      <div className="flex flex-wrap gap-3 mb-4 items-center justify-between">
+        <select value={filterQA} onChange={e=>setFilterQA(e.target.value)} className="px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-red-400 min-w-48">
+          <option value="">-- Tất cả quán ăn --</option>{listQA.map(q=><option key={q.id} value={q.id}>{q.ten_quan_an}</option>)}
+        </select>
+        <div className="flex gap-3">
+          <ExcelButton disabled={list.length === 0} onClick={() => exportToExcel(
+            list.map((m, i) => ({ ...m, __stt: i + 1 })),
+            [
+              { label: 'STT',          key: '__stt',         width: 6 },
+              { label: 'Tên món ăn',   key: 'ten_mon_an',    width: 25 },
+              { label: 'Giá bán',      key: 'gia_ban',       width: 14, format: v => Number(v).toLocaleString('vi-VN') },
+              { label: 'Khuyến mãi',   key: 'gia_khuyen_mai',width: 14, format: v => v > 0 ? Number(v).toLocaleString('vi-VN') : '—' },
+              { label: 'Quán ăn',      key: 'ten_quan_an',   width: 25 },
+              { label: 'Danh mục',     key: 'ten_danh_muc',  width: 20 },
+              { label: 'Tình trạng',   key: 'tinh_trang',    width: 14, format: v => v == 1 ? 'Hiển thị' : 'Tạm tắt' },
+            ],
+            'MonAn', 'Món Ăn'
+          )} />
+          <button onClick={()=>setShowCreate(true)} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-red-500 text-white text-sm font-bold hover:bg-red-600"><i className="fa-solid fa-plus"/>Thêm Món Ăn</button>
+        </div>
       </div>
 
       <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">

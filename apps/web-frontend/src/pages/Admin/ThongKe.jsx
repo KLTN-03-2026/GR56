@@ -97,8 +97,6 @@ function TabDashboard() {
   const donutRef = useRef(null);
   const charts = useRef({});
 
-  useEffect(() => { load(); return () => destroyAll(); }, []);
-
   const load = async () => {
     setLoading(true);
     try {
@@ -107,12 +105,24 @@ function TabDashboard() {
         setData(r.data.data);
         setTimeout(() => draw(r.data.data), 120);
       }
-    } catch { }
+    } catch (e) { console.error(e); }
     finally { setLoading(false); }
   };
 
+  useEffect(() => {
+    load();
+    const handleUpdate = (e) => {
+      if (e.loai === 'dashboard_update') load();
+    };
+    if (window.adminEventBus) window.adminEventBus.on('admin_alert', handleUpdate);
+    return () => {
+      destroyAll();
+      if (window.adminEventBus) window.adminEventBus.off('admin_alert', handleUpdate);
+    };
+  }, []);
+
   const destroyAll = () => {
-    Object.values(charts.current).forEach(c => { try { c.destroy(); } catch { } });
+    Object.values(charts.current).forEach(c => { try { c.destroy(); } catch (e) { console.error(e); } });
     charts.current = {};
   };
 
@@ -297,11 +307,20 @@ function TabKhachHang() {
       const r = await adm('post', '/api/admin/thong-ke/thong-ke-tien-khach-hang', { day_begin: from, day_end: to });
       setData(r.data);
       setTimeout(() => drawBar(r.data), 100);
-    } catch { }
+    } catch (e) { console.error(e); }
     finally { setLoading(false); }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    const handleUpdate = (e) => {
+      if (e.loai === 'dashboard_update') load();
+    };
+    if (window.adminEventBus) window.adminEventBus.on('admin_alert', handleUpdate);
+    return () => {
+      if (window.adminEventBus) window.adminEventBus.off('admin_alert', handleUpdate);
+    };
+  }, []);
 
   const drawBar = (d) => {
     if (barChart.current) { barChart.current.destroy(); barChart.current = null; }
@@ -404,11 +423,20 @@ function TabQuanAn() {
       const r = await adm('post', '/api/admin/thong-ke/thong-ke-tien-quan-an', { day_begin: from, day_end: to });
       setData(r.data);
       setTimeout(() => drawBar(r.data), 100);
-    } catch { }
+    } catch (e) { console.error(e); }
     finally { setLoading(false); }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    const handleUpdate = (e) => {
+      if (e.loai === 'dashboard_update') load();
+    };
+    if (window.adminEventBus) window.adminEventBus.on('admin_alert', handleUpdate);
+    return () => {
+      if (window.adminEventBus) window.adminEventBus.off('admin_alert', handleUpdate);
+    };
+  }, []);
 
   const drawBar = (d) => {
     if (barChart.current) { barChart.current.destroy(); barChart.current = null; }
@@ -514,13 +542,23 @@ function TabHuyDon() {
         setData(r.data.data);
         setTimeout(() => draw(r.data.data), 120);
       }
-    } catch {} finally { setLoading(false); }
+    } catch (e) { console.error(e); } finally { setLoading(false); }
   };
 
-  useEffect(() => { load(); return () => { Object.values(charts.current).forEach(c => { try { c.destroy(); } catch {} }); }; }, []);
+  useEffect(() => {
+    load();
+    const handleUpdate = (e) => {
+      if (e.loai === 'dashboard_update') load();
+    };
+    if (window.adminEventBus) window.adminEventBus.on('admin_alert', handleUpdate);
+    return () => {
+      Object.values(charts.current).forEach(c => { try { c.destroy(); } catch (e) { console.error(e); } });
+      if (window.adminEventBus) window.adminEventBus.off('admin_alert', handleUpdate);
+    };
+  }, []);
 
   const draw = (d) => {
-    Object.values(charts.current).forEach(c => { try { c.destroy(); } catch {} });
+    Object.values(charts.current).forEach(c => { try { c.destroy(); } catch (e) { console.error(e); } });
     charts.current = {};
 
     if (lineRef.current && d.xu_huong) {

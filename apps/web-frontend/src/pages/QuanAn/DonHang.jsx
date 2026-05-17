@@ -40,7 +40,7 @@ export default function DonHang() {
       const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIG2m98OSdTgwOUKfk8LZjHAY4kdfyzHksBSR3x/DdkEAKFF606euoVRQKRp/g8r5sIQUrgc7y2Yk2CBtpvfDknU4MDlCn5PC2YxwGOJHX8sx5LAUkd8fw3ZBAC');
       audio.volume = 0.3;
       audio.play().catch(() => {});
-    } catch {}
+    } catch (e) { console.error(e); }
   };
 
   useEffect(() => {
@@ -102,16 +102,19 @@ export default function DonHang() {
     try {
       const res = await quanAnApi('/api/quan-an/don-hang/data');
       setOrders(res.data.data || []);
-    } catch {}
+    } catch (e) { console.error(e); }
   };
 
   const setupRealtime = async (userId) => {
-    const { default: echo, updateEchoToken } = await import('../../utils/echo');
-    updateEchoToken();
-    
+    const { getEchoInstance } = await import('../../utils/echo');
+    const quanAnToken = localStorage.getItem('quan_an_login') || '';
+    const echo = getEchoInstance('quan_an', quanAnToken);
+    if (!echo) return () => {};
+
     const channelName = `quan-an.${userId}`;
     const channel = echo.private(channelName);
-    
+
+    // Định nghĩa handlers trước
     const h1 = (data) => {
        const dh = data.don_hang || data || {};
        const eventKey = `moi-${dh.id}`;
@@ -142,6 +145,30 @@ export default function DonHang() {
     };
     const h3 = (data) => {
        const dh = data.don_hang || data || {};
+       const eventKey = `dang-lam-${dh.id}`;
+       if (handledEventsRef.current.has(eventKey)) return;
+       handledEventsRef.current.add(eventKey);
+       toast.success(`🍳 Quán đã nhận đơn: #${dh.ma_don_hang}`, { id: `toast-dl-${dh.id}`, duration: 8000 });
+       playNotificationSound();
+       setOrders(current => {
+          const exists = current.find(o => o.id === dh.id);
+          if (exists) return current.map(o => o.id === dh.id ? { ...o, ...dh, tinh_trang: 2 } : o);
+          return current;
+       });
+       setTimeout(refreshOrders, 1500);
+    };
+    const h4 = (data) => {
+       const dh = data.don_hang || data || {};
+       const eventKey = `da-xong-${dh.id}`;
+       if (handledEventsRef.current.has(eventKey)) return;
+       handledEventsRef.current.add(eventKey);
+       toast.success(`✅ Quán đã xong đơn: #${dh.ma_don_hang || ''}`, { id: `toast-dx-${dh.id}`, duration: 8000 });
+       playNotificationSound();
+       setOrders(current => current.map(o => o.id === dh.id ? { ...o, ...dh, tinh_trang: 3 } : o));
+       setTimeout(refreshOrders, 1500);
+    };
+    const h5 = (data) => {
+       const dh = data.don_hang || data || {};
        const eventKey = `hoan-thanh-${dh.id}`;
        if (handledEventsRef.current.has(eventKey)) return;
        handledEventsRef.current.add(eventKey);
@@ -150,14 +177,7 @@ export default function DonHang() {
        setOrders(current => current.map(o => o.id === dh.id ? { ...o, ...dh, tinh_trang: 4 } : o));
        setTimeout(refreshOrders, 1500);
     };
-
-    channel.listen('.don-hang.moi', h1);
-    channel.listen('.don-hang.da-nhan', h2);
-    channel.listen('.don-hang.hoan-thanh', h3);
-
-    // 4. Đơn đã bị hủy (admin duyệt hủy)
-    // QuanAnLayout đã show toast - ở đây chỉ cần cập nhật data
-    const h4 = (data) => {
+    const h6 = (data) => {
        const dh = data.don_hang || data || {};
        const eventKey = `da-huy-${dh.id}`;
        if (handledEventsRef.current.has(eventKey)) return;
@@ -165,14 +185,22 @@ export default function DonHang() {
        setOrders(current => current.map(o => o.id === dh.id ? { ...o, ...dh, tinh_trang: 5 } : o));
        setTimeout(refreshOrders, 1500);
     };
-    channel.listen('.don-hang.da-huy', h4);
 
-    // KHÔNG echo.leave() - chỉ stopListening để giữ channel cho NotificationBell
+    // Đăng ký listeners SAU khi định nghĩa handlers (tránh hoisting issue)
+    channel.listen('.don-hang.moi', h1);
+    channel.listen('.don-hang.da-nhan', h2); // ← FIX: thêm listener bị thiếu trước đó
+    channel.listen('.don-hang.dang-lam', h3);
+    channel.listen('.don-hang.da-xong', h4);
+    channel.listen('.don-hang.hoan-thanh', h5);
+    channel.listen('.don-hang.da-huy', h6);
+
     return () => {
-      try { channel.stopListening('.don-hang.moi', h1); } catch {}
-      try { channel.stopListening('.don-hang.da-nhan', h2); } catch {}
-      try { channel.stopListening('.don-hang.hoan-thanh', h3); } catch {}
-      try { channel.stopListening('.don-hang.da-huy', h4); } catch {}
+      try { channel.stopListening('.don-hang.moi', h1); } catch (e) { console.error(e); }
+      try { channel.stopListening('.don-hang.da-nhan', h2); } catch (e) { console.error(e); }
+      try { channel.stopListening('.don-hang.dang-lam', h3); } catch (e) { console.error(e); }
+      try { channel.stopListening('.don-hang.da-xong', h4); } catch (e) { console.error(e); }
+      try { channel.stopListening('.don-hang.hoan-thanh', h5); } catch (e) { console.error(e); }
+      try { channel.stopListening('.don-hang.da-huy', h6); } catch (e) { console.error(e); }
     };
   };
 

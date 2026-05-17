@@ -2,6 +2,9 @@ import { useState, useEffect } from 'react';
 import api from '../../utils/api';
 import toast from 'react-hot-toast';
 import { exportToExcel, ExcelButton } from '../../utils/exportExcel';
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 const adm = (url, method='get', data=null) => {
   const cfg = { headers: { Authorization: `Bearer ${localStorage.getItem('nhan_vien_login')}` } };
@@ -26,6 +29,39 @@ function Modal({ open, onClose, title, headerCls='bg-cyan-600', children, footer
   );
 }
 
+// Sub-component cho 1 dòng kéo thả
+function SortableRow({ d, changeStatus, setShowEdit, setEditForm, setShowDel, setDelForm }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: d.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    ...(isDragging ? { opacity: 0.9, backgroundColor: '#f0fdfa', zIndex: 999, display: 'table-row', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' } : {})
+  };
+
+  return (
+    <tr ref={setNodeRef} style={style} className={`hover:bg-gray-50 transition-colors bg-white`}>
+      <td className="px-2 py-3 text-center cursor-grab active:cursor-grabbing text-gray-300 hover:text-cyan-500 transition-colors" {...attributes} {...listeners}>
+        <i className="fa-solid fa-grip-vertical text-lg" />
+      </td>
+      <td className="px-4 py-3 text-center font-bold text-cyan-700">{d.thu_tu}</td>
+      <td className="px-4 py-3 font-semibold text-gray-800">{d.ten_menu}</td>
+      <td className="px-4 py-3 text-gray-500 text-xs"><code className="bg-gray-100 px-1.5 py-0.5 rounded">{d.link}</code></td>
+      <td className="px-4 py-3 text-center text-xl text-gray-400"><i className={d.icon}/></td>
+      <td className="px-4 py-3 text-center">
+        <button onClick={()=>changeStatus(d)} className={`px-3 py-1 rounded-lg text-xs font-bold w-24 transition-colors ${d.tinh_trang==1?'bg-green-100 text-green-700 hover:bg-green-200':'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+          {d.tinh_trang==1?'Hiển thị':'Tạm tắt'}</button>
+      </td>
+      <td className="px-4 py-3 text-center">
+        <div className="flex gap-1 justify-center">
+          <button onClick={()=>{setEditForm({...d});setShowEdit(true);}} className="px-2.5 py-1.5 rounded-lg bg-cyan-100 text-cyan-700 text-xs hover:bg-cyan-200"><i className="fa-solid fa-pen"/></button>
+          <button onClick={()=>{setDelForm(d);setShowDel(true);}} className="px-2.5 py-1.5 rounded-lg bg-red-100 text-red-600 text-xs hover:bg-red-200"><i className="fa-solid fa-trash"/></button>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
 export default function AdminClientMenu() {
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -38,6 +74,11 @@ export default function AdminClientMenu() {
   const [editForm, setEditForm] = useState({});
   const [delForm, setDelForm] = useState({});
 
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
   useEffect(()=>{ fetchList(); },[]);
   const fetchList = async () => { setLoading(true); try{const r=await adm('/api/admin/client-menu/data');setList(r.data.data||[]);}catch{}finally{setLoading(false);} };
 
@@ -46,12 +87,36 @@ export default function AdminClientMenu() {
   const handleDel = async () => { try{const r=await adm('/api/admin/client-menu/delete','post',delForm);if(r.data.status){toast.success(r.data.message);setShowDel(false);fetchList();}else toast.error(r.data.message);}catch{} };
   const changeStatus = async (v) => { try{const r=await adm('/api/admin/client-menu/change-status','post',v);if(r.data.status){toast.success(r.data.message);fetchList();}}catch{} };
 
+  const handleDragEnd = async (event) => {
+    const { active, over } = event;
+    if (active.id !== over?.id) {
+      const oldIndex = list.findIndex(i => i.id === active.id);
+      const newIndex = list.findIndex(i => i.id === over.id);
+      
+      const newList = arrayMove(list, oldIndex, newIndex);
+      // Tạm thời cập nhật state để mượt giao diện
+      setList(newList);
+
+      // Gọi API update thứ tự
+      const payload = { menus: newList.map((item) => ({ id: item.id })) };
+      try {
+        const r = await adm('/api/admin/client-menu/update-order', 'post', payload);
+        if (r.data.status) {
+          toast.success(r.data.message);
+          fetchList(); // fetch lại để cập nhật chính xác số thứ tự
+        }
+      } catch (error) {
+        toast.error("Lỗi khi cập nhật vị trí!");
+        fetchList(); // Reset lại list cũ nếu lỗi
+      }
+    }
+  };
+
   const MenuForm = ({ form, onChange }) => (
     <div className="space-y-3">
       <div><label className={LABEL}>Tên Menu</label><input value={form.ten_menu||''} onChange={e=>onChange({...form,ten_menu:e.target.value})} className={INPUT}/></div>
       <div><label className={LABEL}>Link</label><input value={form.link||''} onChange={e=>onChange({...form,link:e.target.value})} className={INPUT} placeholder="/khach-hang/..."/></div>
       <div><label className={LABEL}>Icon Class</label><input value={form.icon||''} onChange={e=>onChange({...form,icon:e.target.value})} className={INPUT} placeholder="fa-solid fa-home"/></div>
-      <div><label className={LABEL}>Thứ Tự</label><input type="number" value={form.thu_tu||0} onChange={e=>onChange({...form,thu_tu:e.target.value})} className={INPUT}/></div>
       <div><label className={LABEL}>Tình Trạng</label><select value={form.tinh_trang??'1'} onChange={e=>onChange({...form,tinh_trang:e.target.value})} className={INPUT}><option value="1">Hiển Thị</option><option value="0">Tắt</option></select></div>
     </div>
   );
@@ -73,7 +138,10 @@ export default function AdminClientMenu() {
       </Modal>
 
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900"><i className="fa-solid fa-list-ul mr-3 text-cyan-500"/>Quản Lý Client Menu</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900"><i className="fa-solid fa-list-ul mr-3 text-cyan-500"/>Quản Lý Client Menu</h1>
+          <p className="text-sm text-gray-500 mt-1"><i className="fa-solid fa-circle-info mr-2"/>Kéo thả biểu tượng <b>⋮⋮</b> để sắp xếp thứ tự hiển thị ngoài ứng dụng khách</p>
+        </div>
         <div className="flex gap-3">
           <ExcelButton disabled={list.length === 0} onClick={() => exportToExcel(
             list,
@@ -92,38 +160,43 @@ export default function AdminClientMenu() {
       <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
         {loading ? <div className="flex items-center justify-center py-16"><div className="w-8 h-8 border-4 border-cyan-100 border-t-cyan-500 rounded-full animate-spin"/></div>
         : list.length===0 ? <div className="text-center py-16 text-gray-400">Không có menu nào</div>
-        : <div className="overflow-x-auto"><table className="w-full text-sm">
-            <thead><tr className="bg-cyan-50 text-gray-600 font-semibold text-xs uppercase">
-              <th className="px-4 py-3 text-center">Thứ tự</th>
-              <th className="px-4 py-3 text-left">Tên Menu</th>
-              <th className="px-4 py-3 text-left">Link</th>
-              <th className="px-4 py-3 text-center">Icon</th>
-              <th className="px-4 py-3 text-center">Trạng thái</th>
-              <th className="px-4 py-3 text-center">Thao tác</th>
-            </tr></thead>
-            <tbody className="divide-y divide-gray-100">
-              {list.map((d,i)=>(
-                <tr key={i} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-4 py-3 text-center font-bold text-gray-700">{d.thu_tu}</td>
-                  <td className="px-4 py-3 font-semibold text-gray-800">{d.ten_menu}</td>
-                  <td className="px-4 py-3 text-gray-500 text-xs"><code className="bg-gray-100 px-1.5 py-0.5 rounded">{d.link}</code></td>
-                  <td className="px-4 py-3 text-center text-xl text-gray-400"><i className={d.icon}/></td>
-                  <td className="px-4 py-3 text-center">
-                    <button onClick={()=>changeStatus(d)} className={`px-3 py-1 rounded-lg text-xs font-bold w-24 transition-colors ${d.tinh_trang==1?'bg-green-100 text-green-700 hover:bg-green-200':'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-                      {d.tinh_trang==1?'Hiển thị':'Tạm tắt'}</button>
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <div className="flex gap-1 justify-center">
-                      <button onClick={()=>{setEditForm({...d});setShowEdit(true);}} className="px-2.5 py-1.5 rounded-lg bg-cyan-100 text-cyan-700 text-xs hover:bg-cyan-200"><i className="fa-solid fa-pen"/></button>
-                      <button onClick={()=>{setDelForm(d);setShowDel(true);}} className="px-2.5 py-1.5 rounded-lg bg-red-100 text-red-600 text-xs hover:bg-red-200"><i className="fa-solid fa-trash"/></button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table></div>
+        : <div className="overflow-x-auto">
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <table className="w-full text-sm table-fixed min-w-[700px]">
+                <colgroup>
+                  <col className="w-12"/>
+                  <col className="w-20"/>
+                  <col className="w-auto"/>
+                  <col className="w-auto"/>
+                  <col className="w-20"/>
+                  <col className="w-32"/>
+                  <col className="w-24"/>
+                </colgroup>
+                <thead><tr className="bg-cyan-50 text-gray-600 font-semibold text-xs uppercase">
+                  <th className="px-2 py-3"></th>
+                  <th className="px-4 py-3 text-center">Thứ tự</th>
+                  <th className="px-4 py-3 text-left">Tên Menu</th>
+                  <th className="px-4 py-3 text-left">Link</th>
+                  <th className="px-4 py-3 text-center">Icon</th>
+                  <th className="px-4 py-3 text-center">Trạng thái</th>
+                  <th className="px-4 py-3 text-center">Thao tác</th>
+                </tr></thead>
+                <tbody className="divide-y divide-gray-100">
+                  <SortableContext items={list.map(l => l.id)} strategy={verticalListSortingStrategy}>
+                    {list.map((d)=>(
+                      <SortableRow 
+                        key={d.id} d={d} 
+                        changeStatus={changeStatus} setShowEdit={setShowEdit} setEditForm={setEditForm} setShowDel={setShowDel} setDelForm={setDelForm} 
+                      />
+                    ))}
+                  </SortableContext>
+                </tbody>
+              </table>
+            </DndContext>
+          </div>
         }
       </div>
     </div>
   );
 }
+

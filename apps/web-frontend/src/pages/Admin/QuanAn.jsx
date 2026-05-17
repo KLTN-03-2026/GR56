@@ -69,12 +69,12 @@ export default function AdminQuanAn() {
   const fetchList = async () => {
     setLoading(true);
     try { const r = await adm('/api/admin/quan-an/data'); setList(r.data.data || []); }
-    catch {} finally { setLoading(false); }
+    catch (e) {} finally { setLoading(false); }
   };
 
   const doSearch = useCallback(debounce(async (kw) => {
     if (!kw.trim()) { fetchList(); return; }
-    try { const r = await adm('/api/admin/quan-an/tim-kiem','post',{noi_dung_tim:kw}); setList(r.data.data||[]); } catch {}
+    try { const r = await adm('/api/admin/quan-an/tim-kiem','post',{noi_dung_tim:kw}); setList(r.data.data||[]); } catch (e) { console.error(e); }
   }, 400), []);
 
   const handleSearch = e => { setSearch(e.target.value); doSearch(e.target.value); };
@@ -89,7 +89,7 @@ export default function AdminQuanAn() {
   };
   const handleDel = async () => {
     try { const r = await adm('/api/admin/quan-an/delete','post',delForm); if(r.data.status){toast.success(r.data.message);setShowDel(false);fetchList();}else toast.error(r.data.message); }
-    catch {}
+    catch (e) {}
   };
   const changeStatus = async (q) => { try { const r = await adm('/api/admin/quan-an/change-status','post',q); if(r.data.status){toast.success(r.data.message);fetchList();}else toast.error(r.data.message); }catch{} };
   const changeActive = async (q) => { try { const r = await adm('/api/admin/quan-an/change-active','post',q); if(r.data.status){toast.success(r.data.message);fetchList();}else toast.error(r.data.message); }catch{} };

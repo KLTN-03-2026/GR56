@@ -20,7 +20,13 @@ export default function QuanAnQuenMatKhau() {
 
   const otp = otpDigits.join('');
 
-  useEffect(() => () => clearInterval(timerRef.current), []);
+  useEffect(() => {
+    document.title = "FOODBEE-QUÁN ĂN";
+    return () => { 
+      clearInterval(timerRef.current);
+      document.title = "FOODBEE"; 
+    };
+  }, []);
 
   const startCooldown = () => {
     setCooldown(60);

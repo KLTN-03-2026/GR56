@@ -48,7 +48,7 @@ export default function ViTien() {
         setFormBank(prev => ({ ...prev, id_chu: id }));
         loadAll(id);
       }
-    } catch {}
+    } catch (e) { console.error(e); }
   };
 
   const loadAll = (id) => {
@@ -65,7 +65,7 @@ export default function ViTien() {
         setWallet(res.data.data?.vi || {});
         setGiaoDich(res.data.data?.giao_dich || []);
       }
-    } catch {}
+    } catch (e) { console.error(e); }
     finally { setLoadingGd(false); }
   };
 
@@ -74,7 +74,7 @@ export default function ViTien() {
       const res = await api.get('/api/wallet/lich-su-rut', { params: { loai_vi: 'quan_an', id_chu_vi: id } });
       setLichSuRut(res.data?.data || []);
       if (res.data?.vi) setWallet(res.data.vi);
-    } catch {}
+    } catch (e) { console.error(e); }
   };
 
   const loadBankAccounts = async (id) => {
@@ -84,7 +84,7 @@ export default function ViTien() {
       setBankAccounts(banks);
       const macDinh = banks.find(b => b.is_default);
       if (macDinh) setFormRut(prev => ({ ...prev, id_bank_account: macDinh.id }));
-    } catch {}
+    } catch (e) { console.error(e); }
   };
 
   const handleRutTien = async () => {
@@ -132,7 +132,7 @@ export default function ViTien() {
         toast.success(res.data.message);
         loadBankAccounts(idQuanAn);
       }
-    } catch {}
+    } catch (e) { console.error(e); }
   };
 
   const formatStatus = (st) => {

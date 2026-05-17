@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 
 // ─── Toast Store (singleton) ─────────────────────────────────────────────────
@@ -191,8 +191,7 @@ export default function RealtimeToastContainer() {
   const [toasts, setToasts] = useState([]);
 
   useEffect(() => {
-    const unsub = rtToast.subscribe(setToasts);
-    setToasts([..._toasts]);
+    const unsub = rtToast.subscribe((freshToasts) => setToasts(freshToasts));
     return unsub;
   }, []);
 

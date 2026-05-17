@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import api from '../../utils/api';
 import toast from 'react-hot-toast';
 
@@ -162,7 +162,7 @@ export default function AdminDanhGia() {
     try {
       const r = await adm('/api/admin/danh-gia/filter-data');
       if (r.data.status) setQuanAns(r.data.quan_ans || []);
-    } catch {}
+    } catch (e) { console.error(e); }
   };
 
   const fetchList = async () => {

@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import api from '../../utils/api';
 import toast from 'react-hot-toast';
+import OpenMapView from '../../components/OpenMapView';
+import { ndaGeocodeForward, ndaGeocodeReverse } from '../../config/map';
 
 const qA = (url, method = 'get', data = null) => {
   const token = localStorage.getItem('quan_an_login');
@@ -60,15 +62,12 @@ export default function QuanAnConfig() {
     if (!config.dia_chi) return toast.error('Vui lòng nhập địa chỉ để tìm kiếm!');
     toast.loading('Đang tìm tọa độ...', { id: 'searchMap' });
     try {
-      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(config.dia_chi)}`);
+      const res = await fetch(ndaGeocodeForward(config.dia_chi));
       const data = await res.json();
-      if (data && data.length > 0) {
+      if (data && data.features && data.features.length > 0) {
+        const [lon, lat] = data.features[0].geometry.coordinates;
         toast.success('Đã tìm thấy vị trí!', { id: 'searchMap' });
-        setConfig({
-          ...config,
-          toa_do_x: data[0].lat,
-          toa_do_y: data[0].lon
-        });
+        setConfig({ ...config, toa_do_x: lat, toa_do_y: lon });
       } else {
         toast.error('Không tìm thấy tọa độ cho địa chỉ này!', { id: 'searchMap' });
       }
@@ -84,12 +83,11 @@ export default function QuanAnConfig() {
       async (pos) => {
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
-        // Lookup reverse
         try {
-          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&accept-language=vi`);
+          const res = await fetch(ndaGeocodeReverse(lat, lng));
           const data = await res.json();
           let dc = config.dia_chi;
-          if (data && data.display_name) dc = data.display_name;
+          if (data && data.features && data.features.length > 0) dc = data.features[0].properties.label || data.features[0].properties.name;
           setConfig({ ...config, toa_do_x: lat, toa_do_y: lng, dia_chi: dc });
           toast.success('Đã định vị thành công!', { id: 'geoMap' });
         } catch {
@@ -104,9 +102,6 @@ export default function QuanAnConfig() {
   if (loading) {
     return <div className="p-6 text-center text-gray-500"><i className="fa-solid fa-spinner fa-spin text-4xl mb-4 text-orange-400 block"></i> Đang tải dữ liệu cấu hình...</div>;
   }
-
-  // Google Maps embed URL
-  const mapUrl = `https://maps.google.com/maps?q=${config.toa_do_x},${config.toa_do_y}&t=m&z=17&output=embed&iwloc=near`;
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
@@ -181,16 +176,13 @@ export default function QuanAnConfig() {
                <h3 className="font-bold text-sm"><i className="fa-solid fa-satellite mr-2"></i>Bản Đồ Quan Sát Vị Trí</h3>
                <span className="bg-green-500/20 text-green-400 px-2 py-0.5 text-xs font-bold rounded border border-green-500/30 tracking-wider">LIVE</span>
             </div>
-            {config.toa_do_x ? (
-              <iframe 
-                width="100%" 
-                height="100%" 
-                style={{ border: 0, borderBottomLeftRadius: '24px', borderBottomRightRadius: '24px', flex: 1 }}
-                loading="lazy" 
-                allowFullScreen 
-                referrerPolicy="no-referrer-when-downgrade" 
-                src={mapUrl}>
-              </iframe>
+            {config.toa_do_x && config.toa_do_y && parseFloat(config.toa_do_x) !== 0 ? (
+              <OpenMapView
+                center={[parseFloat(config.toa_do_y), parseFloat(config.toa_do_x)]}
+                zoom={17}
+                markers={[{ lng: parseFloat(config.toa_do_y), lat: parseFloat(config.toa_do_x), color: '#f97316', label: 'Quán ăn' }]}
+                style={{ borderBottomLeftRadius: '24px', borderBottomRightRadius: '24px', flex: 1 }}
+              />
             ) : (
               <div className="w-full flex-1 bg-gray-50 border-r border-b border-l border-gray-200 rounded-b-[24px] flex flex-col items-center justify-center text-gray-400">
                  <i className="fa-solid fa-map-location-dot text-6xl text-gray-300 mb-4"></i>

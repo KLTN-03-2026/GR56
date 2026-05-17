@@ -8,12 +8,13 @@ import logoFood from '../assets/logoFood.png';
 import NotificationBell from '../components/NotificationBell';
 
 export default function QuanAnLayout() {
+  const token = localStorage.getItem('quan_an_login');
+
   const [quanAn, setQuanAn] = useState({});
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
 
-  const token = localStorage.getItem('quan_an_login');
   if (!token) return <Navigate to="/quan-an/dang-nhap" replace />;
 
   useEffect(() => {
@@ -22,27 +23,37 @@ export default function QuanAnLayout() {
       .catch(err => { if (err?.response?.status === 401) { localStorage.removeItem('quan_an_login'); navigate('/quan-an/dang-nhap'); } });
   }, []);
 
+  useEffect(() => {
+    document.title = "FOODBEE-QUÁN ĂN";
+    return () => { document.title = "FOODBEE"; };
+  }, []);
+
   // ─── Global real-time: new order notification from ANY page ───────────────
   useEffect(() => {
     if (!token || !quanAn.id) return;
     let channel = null;
     let onNewOrder = null;
     let onOrderCancelled = null;
+    let onShipperAcceptedHandler = null;
+    let onCookingHandler = null;
+    let onReadyPickupHandler = null;
+    let onDeliveredHandler = null;
     let isCancelled = false;
     // Dedup: chặn fire duplicate events (React StrictMode double-invoke)
     const firedKeys = new Set();
 
     const setup = async () => {
       try {
-        const { default: echo, updateEchoToken } = await import('../utils/echo');
+        const { getEchoInstance } = await import('../utils/echo');
         if (isCancelled) return;
-        updateEchoToken();
+        const echoToken = token; // token từ localStorage.getItem('quan_an_login')
+        const echo = getEchoInstance('quan_an', echoToken);
+        if (!echo) return;
         channel = echo.private(`quan-an.${quanAn.id}`);
 
-        // Đơn hàng mới (chỉ hiện toast nếu không đang ở trang đơn hàng)
+        // Đơn hàng mới
         onNewOrder = (data) => {
           if (isCancelled) return;
-          if (window.location.pathname.startsWith('/quan-an/don-hang')) return;
           const dh = data.don_hang || data || {};
           rtToast.show({
             type: 'order',
@@ -52,7 +63,10 @@ export default function QuanAnLayout() {
             duration: 8000,
             onClick: () => navigate('/quan-an/don-hang')
           });
-          navigate('/quan-an/don-hang');
+          
+          if (!window.location.pathname.startsWith('/quan-an/don-hang')) {
+            navigate('/quan-an/don-hang');
+          }
         };
         channel.listen('.don-hang.moi', onNewOrder);
 
@@ -74,17 +88,89 @@ export default function QuanAnLayout() {
           });
         };
         channel.listen('.don-hang.da-huy', onOrderCancelled);
-      } catch { }
+
+        // Shipper đã nhận đơn — tinh_trang = 1
+        onShipperAcceptedHandler = (data) => {
+          if (isCancelled) return;
+          if (window.location.pathname.startsWith('/quan-an/don-hang')) return;
+          const dh = data.don_hang || data || {};
+          rtToast.show({
+            type: 'order',
+            title: '🚚 Shipper đã nhận đơn!',
+            message: `Shipper đã nhận đơn #${dh.ma_don_hang || ''}.`,
+            orderCode: dh.ma_don_hang,
+            duration: 6000,
+          });
+        };
+        channel.listen('.don-hang.da-nhan', onShipperAcceptedHandler);
+
+        // Quán đang chế biến — tinh_trang = 2
+        onCookingHandler = (data) => {
+          if (isCancelled) return;
+          if (window.location.pathname.startsWith('/quan-an/don-hang')) return;
+          const dh = data.don_hang || data || {};
+          rtToast.show({
+            type: 'order',
+            title: '🍳 Quán đang chế biến!',
+            message: `Đơn #${dh.ma_don_hang || ''} đang được chuẩn bị.`,
+            orderCode: dh.ma_don_hang,
+            duration: 6000,
+          });
+        };
+        channel.listen('.don-hang.dang-lam', onCookingHandler);
+
+        // Quán chuẩn bị xong — tinh_trang = 3
+        onReadyPickupHandler = (data) => {
+          if (isCancelled) return;
+          if (window.location.pathname.startsWith('/quan-an/don-hang')) return;
+          const dh = data.don_hang || data || {};
+          rtToast.show({
+            type: 'order',
+            title: '✅ Đơn đang được giao!',
+            message: `Đơn #${dh.ma_don_hang || ''} đang trên đường giao đến khách.`,
+            orderCode: dh.ma_don_hang,
+            duration: 6000,
+          });
+        };
+        channel.listen('.don-hang.da-xong', onReadyPickupHandler);
+
+        // Giao hàng thành công — tinh_trang = 4
+        onDeliveredHandler = (data) => {
+          if (isCancelled) return;
+          if (window.location.pathname.startsWith('/quan-an/don-hang')) return;
+          const dh = data.don_hang || data || {};
+          rtToast.show({
+            type: 'success',
+            title: '🎉 Giao hàng thành công!',
+            message: `Đơn #${dh.ma_don_hang || ''} đã được giao.`,
+            orderCode: dh.ma_don_hang,
+            duration: 6000,
+          });
+        };
+        channel.listen('.don-hang.hoan-thanh', onDeliveredHandler);
+      } catch (e) { console.error(e); }
     };
 
     setup();
     return () => {
       isCancelled = true;
       if (channel && onNewOrder) {
-        try { channel.stopListening('.don-hang.moi', onNewOrder); } catch { }
+        try { channel.stopListening('.don-hang.moi', onNewOrder); } catch (e) { console.error(e); }
       }
       if (channel && onOrderCancelled) {
-        try { channel.stopListening('.don-hang.da-huy', onOrderCancelled); } catch { }
+        try { channel.stopListening('.don-hang.da-huy', onOrderCancelled); } catch (e) { console.error(e); }
+      }
+      if (channel && onShipperAcceptedHandler) {
+        try { channel.stopListening('.don-hang.da-nhan', onShipperAcceptedHandler); } catch (e) { }
+      }
+      if (channel && onCookingHandler) {
+        try { channel.stopListening('.don-hang.dang-lam', onCookingHandler); } catch (e) { }
+      }
+      if (channel && onReadyPickupHandler) {
+        try { channel.stopListening('.don-hang.da-xong', onReadyPickupHandler); } catch (e) { }
+      }
+      if (channel && onDeliveredHandler) {
+        try { channel.stopListening('.don-hang.hoan-thanh', onDeliveredHandler); } catch (e) { }
       }
     };
   }, [quanAn.id]); // Chỉ re-run khi quanAn.id thay đổi, KHÔNG phụ thuộc location.pathname

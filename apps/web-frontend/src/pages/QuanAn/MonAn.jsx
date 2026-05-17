@@ -233,18 +233,18 @@ export default function QuanAnMonAn() {
   const totalTop = Math.ceil(toppingList.length / itemsPerPage);
   const currentTop = toppingList.slice((pageTop - 1) * itemsPerPage, pageTop * itemsPerPage);
 
-  useEffect(() => { fetchMonAn(); fetchDanhMuc(); }, []);
-  useEffect(() => { if (tab === 'topping') fetchTopping(); }, [tab]);
-
   const fetchMonAn = async () => {
-    try { const r = await qA('/api/quan-an/mon-an/data'); setMonAnList(r.data.data || []); } catch {}
+    try { const r = await qA('/api/quan-an/mon-an/data'); setMonAnList(r.data.data || []); } catch (e) { console.error(e); }
   };
   const fetchDanhMuc = async () => {
-    try { const r = await qA('/api/quan-an/danh-muc/data'); setDanhMucList(r.data.data || []); } catch {}
+    try { const r = await qA('/api/quan-an/danh-muc/data'); setDanhMucList(r.data.data || []); } catch (e) { console.error(e); }
   };
   const fetchTopping = async () => {
-    try { const r = await qA('/api/quan-an/toppings/data'); setToppingList(r.data.data || []); } catch {}
+    try { const r = await qA('/api/quan-an/toppings/data'); setToppingList(r.data.data || []); } catch (e) { console.error(e); }
   };
+
+  useEffect(() => { fetchMonAn(); fetchDanhMuc(); }, []);
+  useEffect(() => { if (tab === 'topping') fetchTopping(); }, [tab]);
 
   // Mon an handlers
   const handleAdd = async () => {
@@ -261,7 +261,7 @@ export default function QuanAnMonAn() {
   };
   const handleChange = async (item) => {
     try { const r = await qA('/api/quan-an/mon-an/change', 'post', item); if (r.data.status) { toast.success(r.data.message); fetchMonAn(); } else toast.error(r.data.message); }
-    catch {}
+    catch (e) {}
   };
 
   // Topping handlers
@@ -275,11 +275,11 @@ export default function QuanAnMonAn() {
   };
   const handleDelTop = async () => {
     try { const r = await qA('/api/quan-an/toppings/delete', 'post', delTopForm); toast.success(r.data.message); setShowDelTop(false); fetchTopping(); }
-    catch {}
+    catch (e) {}
   };
   const handleChangeTop = async (item) => {
     try { const r = await qA('/api/quan-an/toppings/change-status', 'post', item); if (r.data.status) { toast.success(r.data.message); fetchTopping(); } else toast.error(r.data.message); }
-    catch {}
+    catch (e) {}
   };
 
   const fmt = n => n ? new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(n) : '0đ';
