@@ -1,12 +1,17 @@
 import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Platform } from "react-native";
 // import { Alert } from "react-native";
 // import { notify } from "./notification";
 
 // const API_URL = "http://127.0.0.1:8000/api";
 // const API_URL = "http://192.168.1.196:8000/api";
 const API_URL = "https://be.foodbee.io.vn/api";
-export const API_CHATBOT_URL = "http://192.168.1.8:5000";
+
+const LOCAL_IP = "192.168.1.15"; // Thay đổi IP Wi-Fi tại đây nếu bạn đổi mạng
+export const API_CHATBOT_URL = Platform.OS === 'android' 
+  ? "http://10.0.2.2:5000" 
+  : `http://${LOCAL_IP}:5000`;
 
 // var is_auth_alert_shown = false;
 

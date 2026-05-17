@@ -3,7 +3,6 @@ import notifee, {
   AndroidStyle,
   AuthorizationStatus,
 } from "@notifee/react-native";
-import Toast from "react-native-toast-message";
 import { DeviceEventEmitter } from "react-native";
 
 // ─── Channel IDs ────────────────────────────────────────
@@ -81,20 +80,12 @@ function getBadgeLabel(type: NotifType): string {
 
 // ─── Gửi thông báo ra màn hình ngoài ───────────────────
 export async function sendLocalNotification(payload: NotifPayload) {
+  console.log("[LocalNotif] Sending notification:", payload);
   const { title, description, type, imageUrl } = payload;
   const channelId = getChannelByType(type);
   const badge = getBadgeLabel(type);
 
-  // Show Toast notification in real-time
-  Toast.show({
-    type: type === "system" ? "info" : "success",
-    text1: title,
-    text2: description,
-    position: "top",
-    visibilityTime: 4000,
-    autoHide: true,
-  });
-
+  // Không dùng Toast.show() — chỉ dùng notifee system banner
   // Emit event to update Notification screen in real-time
   DeviceEventEmitter.emit("NEW_NOTIFICATION");
 
@@ -130,7 +121,7 @@ export async function sendLocalNotification(payload: NotifPayload) {
       foregroundPresentationOptions: {
         badge: true,
         sound: true,
-        banner: true,
+        banner: true,  // Hiện banner iOS dù app đang mở (user muốn cái này)
         list: true,
       },
     },

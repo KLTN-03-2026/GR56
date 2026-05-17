@@ -194,7 +194,10 @@ const AddToCartModal = memo<AddToCartModalProps>(
                         onPress={() => handleToppingToggle(topping.id)}
                         disabled={loading}
                       >
-                        <View style={styles.toppingCheckbox}>
+                        <View style={[
+                          styles.toppingCheckbox,
+                          (selectedToppingIds || []).includes(topping.id) && styles.toppingCheckboxActive
+                        ]}>
                           {(selectedToppingIds || []).includes(topping.id) && (
                             <Ionicons name="checkmark" size={16} color="#FFF" />
                           )}
@@ -282,33 +285,25 @@ const AddToCartModal = memo<AddToCartModalProps>(
 
             {/* Footer */}
             <View style={styles.modalFooter}>
-              <TouchableOpacity
-                style={[styles.orderButton, loading && styles.opacityDisabled]}
-                onPress={onOrder}
-                disabled={loading}
-              >
-                <Ionicons name="flash" size={18} color="white" />
-                <Text style={styles.orderButtonText}>Đặt hàng ngay</Text>
-              </TouchableOpacity>
-
               <View style={styles.footerRow}>
-                <TouchableOpacity
-                  style={styles.cancelButton}
-                  onPress={onCancel}
-                  disabled={loading}
-                >
-                  <Text style={styles.cancelButtonText}>Hủy</Text>
-                </TouchableOpacity>
-
                 <TouchableOpacity
                   style={[styles.addCartButton, loading && styles.opacityDisabled]}
                   onPress={onConfirm}
                   disabled={loading}
                 >
-                  <Ionicons name="bag-add-outline" size={16} color={"#EE4D2D"} />
+                  <Ionicons name="bag-add-outline" size={20} color={COLORS.PRIMARY} />
                   <Text style={styles.addCartButtonText}>
                     {loading ? "Đang thêm..." : "Thêm vào giỏ"}
                   </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.orderButton, loading && styles.opacityDisabled]}
+                  onPress={onOrder}
+                  disabled={loading}
+                >
+                  <Ionicons name="flash" size={18} color="white" />
+                  <Text style={styles.orderButtonText}>Đặt hàng ngay</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -461,57 +456,32 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 8,
   },
-  cancelButton: {
-    flex: 0.7,
-    paddingVertical: 13,
-    borderRadius: 10,
-    backgroundColor: "#F1F5F9",
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-  },
-  cancelButtonText: {
-    textAlign: "center",
-    fontSize: 14,
-    fontWeight: "800",
-    color: "#475569",
-    letterSpacing: 0.2,
-  },
-  confirmButton: {
-    flex: 1,
-    paddingVertical: 13,
-    borderRadius: 10,
-    backgroundColor: COLORS.PRIMARY,
-    elevation: 2,
-    shadowColor: COLORS.PRIMARY,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3,
-  },
   addCartButton: {
-    flex: 1.3,
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 6,
-    paddingVertical: 13,
+    paddingVertical: 14,
     borderRadius: 10,
     backgroundColor: "#FFF1EE",
     borderWidth: 1.5,
     borderColor: COLORS.PRIMARY,
   },
   addCartButtonText: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: "800",
     color: COLORS.PRIMARY,
     letterSpacing: 0.2,
   },
   orderButton: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 6,
-    paddingVertical: 15,
-    borderRadius: 12,
+    paddingVertical: 14,
+    borderRadius: 10,
     backgroundColor: COLORS.PRIMARY,
     elevation: 3,
     shadowColor: COLORS.PRIMARY,
@@ -520,7 +490,7 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
   },
   orderButtonText: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: "800",
     color: "white",
     letterSpacing: 0.2,

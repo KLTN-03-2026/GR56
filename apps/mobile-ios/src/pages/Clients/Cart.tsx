@@ -17,6 +17,7 @@ import {
 // @ts-ignore
 import Ionicons from "react-native-vector-icons/Ionicons";
 import apiClient from "../../genaral/api";
+import { notify } from "../../utils/localNotification";
 import { getImageUrl } from "../../utils/imageHelper";
 import ToastMessage from "../../components/ToastMessage";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -268,7 +269,7 @@ const ProductDetailModal = memo<ProductDetailModalProps>(
                 <View style={s.detailSection}>
                   <Text style={s.detailSectionTitle}>Topping</Text>
                   <View style={s.detailToppingsList}>
-                    {parsedNotes.toppings.map((topping, index) => (
+                    {parsedNotes.toppings?.map((topping, index) => (
                       <View key={index} style={s.detailToppingItem}>
                         <Ionicons name="checkmark-circle" size={16} color={COLORS.PRIMARY} />
                         <Text style={s.detailToppingName}>{topping}</Text>
@@ -766,6 +767,7 @@ const Cart = ({ navigation }: any) => {
 
   const placeOrder = useCallback(
     async (method: "1" | "2") => {
+      Alert.alert("DEBUG placeOrder", `method: ${method}, selectedIds: ${selectedIds.size}, addressId: ${selectedAddressId}`);
       if (selectedIds.size === 0) {
         showToast("Vui lòng chọn ít nhất một sản phẩm", "error");
         return;
@@ -793,22 +795,45 @@ const Cart = ({ navigation }: any) => {
 
         const res = await apiClient.get(url);
 
+        Alert.alert("DEBUG", `status: ${res.data?.status}, method: ${method}`);
         if (res.data?.status) {
-          showToast(res.data.message || "Đặt hàng thành công!", "success");
-          setCartItems([]);
-          setShowCheckoutModal(false);
-          setSelectedIds(new Set());
-          setVoucher({
-            code: "",
-            applied: false,
-            info: null,
-            discount: 0,
-            applying: false,
-          });
-          setUseXuPoints(false);
-          
+          const { ma_don_hang, tong_tien } = res.data;
+          console.log("[Cart] Order success!", ma_don_hang, tong_tien);
+
           if (method === "1") {
+            showToast(res.data.message || "Đặt hàng thành công!", "success");
+            console.log("[Cart] Calling notify.order...");
+            notify.order(
+              "Đặt hàng thành công!",
+              `Mã đơn: ${ma_don_hang} - Tổng: ${new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(tong_tien)}`
+            );
+            console.log("[Cart] notify.order called");
+            setCartItems([]);
+            setShowCheckoutModal(false);
+            setSelectedIds(new Set());
+            setVoucher({
+              code: "",
+              applied: false,
+              info: null,
+              discount: 0,
+              applying: false,
+            });
+            setUseXuPoints(false);
             navigation.navigate("MainTabs", { screen: "Orders" });
+          } else {
+            showToast(res.data.message || "Đang chuyển đến thanh toán...", "info");
+            setCartItems([]);
+            setShowCheckoutModal(false);
+            setSelectedIds(new Set());
+            setVoucher({
+              code: "",
+              applied: false,
+              info: null,
+              discount: 0,
+              applying: false,
+            });
+            setUseXuPoints(false);
+            navigation.navigate("PayOSPayment", { id_don_hang: res.data.id_don_hang });
           }
         } else {
           showToast("Hệ thống bị lỗi, vui lòng thử lại!", "error");
@@ -1031,7 +1056,7 @@ const Cart = ({ navigation }: any) => {
                 </View>
                 {addresses.length > 0 ? (
                   <View style={s.addressSelect}>
-                    {addresses.map((addr) => (
+                    {addresses?.map((addr) => (
                       <TouchableOpacity
                         key={addr.id}
                         style={[s.addressOption, selectedAddressId === addr.id && s.addressOptionActive]}
@@ -1120,7 +1145,7 @@ const Cart = ({ navigation }: any) => {
                 <View style={s.suggestedVouchersContainer}>
                   <Text style={s.modalSectionTitle}>💡 Gợi ý cho bạn</Text>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.suggestedVouchersList}>
-                    {suggestedVouchers.map((sv, index) => {
+                    {suggestedVouchers?.map((sv, index) => {
                       const discountText =
                         sv.loai_giam === 1
                           ? `${sv.so_giam_gia}%`

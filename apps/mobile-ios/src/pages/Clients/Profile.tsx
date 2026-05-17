@@ -43,6 +43,7 @@ const Profile = ({ navigation, route }: any) => {
     const [isBothRole, setIsBothRole] = useState(false);
     const [loadingSwitch, setLoadingSwitch] = useState(false);
     const [orderCounts, setOrderCounts] = useState<Record<number, number>>({ 0: 0, 12: 0, 3: 0, 4: 0 });
+    const [cartCount, setCartCount] = useState(0);
 
     // Đổi mật khẩu
     const [showChangePwModal, setShowChangePwModal] = useState(false);
@@ -101,6 +102,7 @@ const Profile = ({ navigation, route }: any) => {
                 setShowAddBankModal(false);
                 setNewBank({ ten_ngan_hang: "", so_tai_khoan: "", chu_tai_khoan: "", chi_nhanh: "" });
                 loadBanks();
+                setTimeout(() => setShowBankModal(true), 400);
             } else {
                 Alert.alert("Thất bại", res.data?.message || "Thêm thất bại!");
             }
@@ -204,19 +206,37 @@ const Profile = ({ navigation, route }: any) => {
     // ── Hàm fetch số lượng đơn hàng ───────────────────────
     const fetchOrderCounts = async () => {
         try {
-            const orderRes = await apiClient.get("/khach-hang/don-hang/data");
+            const orderRes = await apiClient.get("/khach-hang/don-hang/data-moi");
             const list: any[] = Array.isArray(orderRes.data?.data) ? orderRes.data.data : [];
             const tt = (o: any) => Number(o.tinh_trang);
             setOrderCounts({
-                0:  list.filter((o) => tt(o) === 0).length,
-                1:  list.filter((o: any) => Number(o.tinh_trang) === 1).length,
-                2:  list.filter((o: any) => Number(o.tinh_trang) === 2).length,
-                3:  list.filter((o) => tt(o) === 3).length,
-                4:  list.filter((o) => tt(o) === 4 && !Number(o.da_danh_gia)).length,
+                0: list.filter((o) => tt(o) === 0).length,
+                1: list.filter((o: any) => Number(o.tinh_trang) === 1).length,
+                2: list.filter((o: any) => Number(o.tinh_trang) === 2).length,
+                3: list.filter((o) => tt(o) === 3).length,
+                4: list.filter((o) => tt(o) === 4 && !Number(o.da_danh_gia)).length,
             });
             console.log("✅ Order counts updated");
         } catch (error) {
             console.log("❌ Error fetching order counts:", error);
+        }
+    };
+
+    const fetchCartCount = async () => {
+        try {
+            const savedId = await AsyncStorage.getItem("last_restaurant_id");
+            if (savedId) {
+                const res = await apiClient.get(`/khach-hang/don-dat-hang/${savedId}`);
+                if (res.data?.status) {
+                    const items = res.data.gio_hang || [];
+                    const count = items.reduce((sum: number, item: any) => sum + (item.so_luong || 0), 0);
+                    setCartCount(count);
+                }
+            } else {
+                setCartCount(0);
+            }
+        } catch (error) {
+            console.log("❌ Error fetching cart count:", error);
         }
     };
 
@@ -227,6 +247,7 @@ const Profile = ({ navigation, route }: any) => {
             await loadUserFromStorage();
             await fetchProfileAndCoins();
             await fetchOrderCounts();
+            await fetchCartCount();
             await loadBanks();
         };
         initializeData();
@@ -250,6 +271,7 @@ const Profile = ({ navigation, route }: any) => {
                 await loadUserFromStorage();
                 await fetchProfileAndCoins();
                 await fetchOrderCounts();
+                await fetchCartCount();
                 await loadBanks();
                 console.log("✅ All data refreshed successfully");
             };
@@ -258,18 +280,20 @@ const Profile = ({ navigation, route }: any) => {
     );
 
     const orderOptions = [
-        { id: 0,  title: "Chờ xác nhận", icon: "wallet-outline",  tab: "Đã nhận" },
-        { id: 12, title: "Chờ lấy hàng", icon: "cube-outline",    tab: "Đã nhận" },
-        { id: 3,  title: "Đang giao",    icon: "car-outline",      tab: "Đang giao" },
-        { id: 4,  title: "Đánh giá",     icon: "star-outline",     tab: "Đã giao" },
+        { id: 0, title: "Chờ xác nhận", icon: "wallet-outline", tab: "Đã nhận" },
+        { id: 12, title: "Chờ lấy hàng", icon: "cube-outline", tab: "Đã nhận" },
+        { id: 3, title: "Đang giao", icon: "car-outline", tab: "Đang giao" },
+        { id: 4, title: "Đánh giá", icon: "star-outline", tab: "Đã giao" },
     ];
 
     const menuOptions = [
-        { id: 1, title: "Địa chỉ nhận hàng", icon: "location-outline", color: "#3B82F6", onPress: () => navigation.navigate("AddressBook") },
-        { id: 6, title: "Tài khoản ngân hàng", icon: "card-outline", color: "#F59E0B", onPress: () => { loadBanks(); setShowBankModal(true); } },
-        { id: 5, title: "Đổi mật khẩu", icon: "key-outline", color: "#EE4D2D", onPress: () => setShowChangePwModal(true) },
-        { id: 3, title: "Cập nhật ứng dụng", icon: "cloud-download-outline", color: "#10B981", onPress: () => navigation.navigate("AppUpdate") },
-        { id: 4, title: "Trung tâm trợ giúp", icon: "help-circle-outline", color: "#8B5CF6", onPress: () => navigation.navigate("HelpCenter") },
+        { id: 1, title: "Địa chỉ nhận hàng",    icon: "location-outline",       color: "#3B82F6", onPress: () => navigation.navigate("AddressBook") },
+        { id: 7, title: "Lịch sử giao dịch",    icon: "receipt-outline",         color: "#6366F1", onPress: () => navigation.navigate("LichSuGiaoDich") },
+        { id: 8, title: "Lịch sử FoodBee Xu",   icon: "logo-bitcoin",            color: "#D97706", onPress: () => navigation.navigate("LichSuXu") },
+        { id: 6, title: "Tài khoản ngân hàng",  icon: "card-outline",            color: "#F59E0B", onPress: () => { loadBanks(); setShowBankModal(true); } },
+        { id: 5, title: "Đổi mật khẩu",         icon: "key-outline",             color: "#EE4D2D", onPress: () => setShowChangePwModal(true) },
+        { id: 3, title: "Cập nhật ứng dụng",    icon: "cloud-download-outline",  color: "#10B981", onPress: () => navigation.navigate("AppUpdate") },
+        { id: 4, title: "Trung tâm trợ giúp",   icon: "help-circle-outline",     color: "#8B5CF6", onPress: () => navigation.navigate("HelpCenter") },
     ];
 
     const handleLogout = async () => {
@@ -326,11 +350,11 @@ const Profile = ({ navigation, route }: any) => {
                     const token = response.data.token;
                     if (token) await AsyncStorage.setItem('token', token);
                     await AsyncStorage.setItem('userRole', 'shipper');
-                    
+
                     let newUserData = response.data.shipper;
                     if (!newUserData) newUserData = { hoten: "Tài xế", email };
                     await AsyncStorage.setItem('userData', JSON.stringify(newUserData));
-                    
+
                     navigation.replace("ShipperTabs");
                 } else {
                     Alert.alert("Thông báo", "Không thể chuyển đổi vai trò lúc này.");
@@ -349,7 +373,7 @@ const Profile = ({ navigation, route }: any) => {
 
     const handleChatWithShipper = async () => {
         try {
-            const res = await apiClient.get('/khach-hang/don-hang/data');
+            const res = await apiClient.get('/khach-hang/don-hang/data-moi');
             if (res.data?.data) {
                 const active = res.data.data.find((o: any) => o.tinh_trang === 3 && o.id_shipper);
                 if (active) {
@@ -404,9 +428,11 @@ const Profile = ({ navigation, route }: any) => {
                                 </TouchableOpacity>
                                 <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.navigate("Cart")}>
                                     <Ionicons name="cart-outline" size={24} color="#FFF" />
-                                    <View style={styles.cartBadge}>
-                                        <Text style={styles.cartBadgeText}>2</Text>
-                                    </View>
+                                    {cartCount > 0 && (
+                                        <View style={styles.cartBadge}>
+                                            <Text style={styles.cartBadgeText}>{cartCount > 99 ? "99+" : cartCount}</Text>
+                                        </View>
+                                    )}
                                 </TouchableOpacity>
                             </View>
                         </View>
@@ -740,8 +766,11 @@ const Profile = ({ navigation, route }: any) => {
                             <TouchableOpacity
                                 style={styles.addBankBtn}
                                 onPress={() => {
-                                    setNewBank({ ten_ngan_hang: "", so_tai_khoan: "", chu_tai_khoan: "", chi_nhanh: "" });
-                                    setShowAddBankModal(true);
+                                    setShowBankModal(false);
+                                    setTimeout(() => {
+                                        setNewBank({ ten_ngan_hang: "", so_tai_khoan: "", chu_tai_khoan: "", chi_nhanh: "" });
+                                        setShowAddBankModal(true);
+                                    }, 400);
                                 }}
                             >
                                 <Ionicons name="add-circle-outline" size={20} color="#FFF" />
@@ -756,7 +785,10 @@ const Profile = ({ navigation, route }: any) => {
                     visible={showAddBankModal}
                     transparent
                     animationType="slide"
-                    onRequestClose={() => setShowAddBankModal(false)}
+                    onRequestClose={() => {
+                        setShowAddBankModal(false);
+                        setTimeout(() => setShowBankModal(true), 400);
+                    }}
                 >
                     <KeyboardAvoidingView
                         behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -771,7 +803,10 @@ const Profile = ({ navigation, route }: any) => {
                                         Dùng để nhận hoàn tiền tự động
                                     </Text>
                                 </View>
-                                <TouchableOpacity onPress={() => setShowAddBankModal(false)}>
+                                <TouchableOpacity onPress={() => {
+                                    setShowAddBankModal(false);
+                                    setTimeout(() => setShowBankModal(true), 400);
+                                }}>
                                     <Ionicons name="close" size={24} color="#64748B" />
                                 </TouchableOpacity>
                             </View>

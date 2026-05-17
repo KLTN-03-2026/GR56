@@ -4,6 +4,7 @@ import {
   FlatList, StatusBar, Platform, ActivityIndicator, Modal, Dimensions, Animated,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { useFocusEffect } from "@react-navigation/native";
 // @ts-ignore
 import Ionicons from "react-native-vector-icons/Ionicons";
 import apiClient from "../../genaral/api";
@@ -749,6 +750,7 @@ const RestaurantDetail = ({ navigation, route }: RestaurantDetailProps) => {
       if (response.data?.status) {
         showToast(response.data.message || "Đã thêm vào giỏ hàng ✓", "success");
         setShowAddToCartModal(false);
+        fetchGlobalCartCount();
 
         setCartItems((prev) => {
           const existingIndex = prev.findIndex(

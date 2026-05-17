@@ -14,28 +14,28 @@ const OnLoading = ({ navigation }: any) => {
         toValue: 80,
         duration: 2000,
         easing: Easing.in(Easing.ease),
-        useNativeDriver: true,
+        useNativeDriver: false,
       }),
       // Nảy nhẹ lần 1
       Animated.timing(fallAnim, {
         toValue: 70,
         duration: 200,
         easing: Easing.out(Easing.ease),
-        useNativeDriver: true,
+        useNativeDriver: false,
       }),
       // Nảy nhẹ lần 2
       Animated.timing(fallAnim, {
         toValue: 75,
         duration: 150,
         easing: Easing.out(Easing.ease),
-        useNativeDriver: true,
+        useNativeDriver: false,
       }),
       // Nảy nhẹ lần 3
       Animated.timing(fallAnim, {
         toValue: 72,
         duration: 100,
         easing: Easing.out(Easing.ease),
-        useNativeDriver: true,
+        useNativeDriver: false,
       }),
       // Dừng lại
       Animated.delay(1500),

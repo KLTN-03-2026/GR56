@@ -23,7 +23,7 @@ import {
 } from "react-native-responsive-screen";
 import apiClient from "../../genaral/api";
 import { getImageUrl } from "../../utils/imageHelper";
-import { createEcho } from "../../config/echo";
+import { connectEcho } from "../../config/echo";
 import {
   createNotificationChannels,
   requestNotificationPermission,
@@ -366,7 +366,7 @@ const ChatWithCustomer = ({ navigation, route }: any) => {
   useEffect(() => {
     if (!id_don_hang) return;
     let echoInstance: any = null;
-    createEcho().then((echo) => {
+    connectEcho().then((echo) => {
       echoInstance = echo;
       echo.private(`chat.${id_don_hang}`)
         .listen(".tin-nhan.moi", () => {

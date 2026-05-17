@@ -1,0 +1,20 @@
+
+> MyApp@0.0.1 start
+> react-native start --reset-cache
+
+
+Welcome to React Native v0.85
+Starting dev server on http://localhost:8081
+
+error listen EADDRINUSE: address already in use :::8081.
+Error: listen EADDRINUSE: address already in use :::8081
+    at Server.setupListenHandle [as _listen2] (node:net:2008:16)
+    at listenInCluster (node:net:2065:12)
+    at Server.listen (node:net:2170:7)
+    at /Users/vannhan/KLTN/IOS/node_modules/metro/src/index.flow.js:455:14
+    at new Promise (<anonymous>)
+    at earlyPortCheck (/Users/vannhan/KLTN/IOS/node_modules/metro/src/index.flow.js:451:11)
+    at Object.runServer (/Users/vannhan/KLTN/IOS/node_modules/metro/src/index.flow.js:201:9)
+    at Object.runServer [as func] (/Users/vannhan/KLTN/IOS/node_modules/@react-native/community-cli-plugin/dist/commands/start/runServer.js:147:24)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async Command.handleAction (/Users/vannhan/KLTN/IOS/node_modules/@react-native-community/cli/build/index.js:139:9)

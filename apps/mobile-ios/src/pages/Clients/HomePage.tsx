@@ -437,6 +437,7 @@ const HomePage = ({ navigation }: { navigation: HomeNavigation }) => {
   const [unreadCount, setUnreadCount] = useState(0);
   const [userName, setUserName] = useState("bạn");
   const [favoriteIds, setFavoriteIds] = useState<Set<number>>(new Set());
+  const [cartCount, setCartCount] = useState(0);
   const [toast, setToast] = useState({
     visible: false,
     message: "",
@@ -612,6 +613,21 @@ const HomePage = ({ navigation }: { navigation: HomeNavigation }) => {
 
   useFocusEffect(
     useCallback(() => {
+      // Lấy số lượng giỏ hàng
+      AsyncStorage.getItem("last_restaurant_id").then(savedId => {
+        if (savedId) {
+          apiClient.get(`/khach-hang/don-dat-hang/${savedId}`).then((res) => {
+            if (res.data?.status) {
+              const items = res.data.gio_hang || [];
+              const count = items.reduce((sum: number, item: any) => sum + (item.so_luong || 0), 0);
+              setCartCount(count);
+            }
+          }).catch(() => {});
+        } else {
+          setCartCount(0);
+        }
+      });
+
       // Ưu tiên lấy số lượng chưa đọc thực tế từ server
       apiClient.get("/notifications").then((res) => {
         if (res.data?.status && res.data.unread_count !== undefined) {
@@ -636,13 +652,12 @@ const HomePage = ({ navigation }: { navigation: HomeNavigation }) => {
         try {
           await new Promise<void>((r) => setTimeout(r, 300));
           const response = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=16`,
-            { headers: { "User-Agent": "ShoppeFood-App" } }
+            `https://mapapis.openmap.vn/v1/geocode/reverse?point.lat=${lat}&point.lon=${lng}&apikey=6TTIZbUWJmRMSpiYzQ0YY8z5v8wv43w0`
           );
           const data = await response.json();
-          if (data?.display_name) {
-            // Rút ngắn địa chỉ: lấy 2 phần đầu
-            const parts = data.display_name.split(",");
+          if (data?.features?.[0]?.properties?.label) {
+            const label = data.features[0].properties.label;
+            const parts = label.split(",");
             setLocation(parts.slice(0, 2).join(",").trim());
             return;
           }
@@ -757,8 +772,16 @@ const HomePage = ({ navigation }: { navigation: HomeNavigation }) => {
 
                 {/* Actions */}
                 <View style={s.headerActions}>
+                  <TouchableOpacity style={s.hBtn} onPress={() => navigation.navigate("RestaurantMap")}>
+                    <Ionicons name="map-outline" size={22} color={COLORS.WHITE} />
+                  </TouchableOpacity>
                   <TouchableOpacity style={s.hBtn} onPress={() => navigation.navigate("Cart")}>
                     <Ionicons name="cart-outline" size={22} color={COLORS.WHITE} />
+                    {cartCount > 0 && (
+                      <View style={s.badge}>
+                        <Text style={s.badgeTxt}>{cartCount > 99 ? "99+" : cartCount}</Text>
+                      </View>
+                    )}
                   </TouchableOpacity>
                   <TouchableOpacity style={s.hBtn} onPress={() => navigation.navigate("Notification")}>
                     <Ionicons name="notifications-outline" size={22} color={COLORS.WHITE} />
@@ -938,23 +961,6 @@ const HomePage = ({ navigation }: { navigation: HomeNavigation }) => {
             </View>
           </View>
 
-          {/* ══════════ QUICK SERVICE SHORTCUTS ══════════ */}
-          <View style={s.shortcutRow}>
-            {[
-              { icon: "bicycle-outline", label: "Giao hàng", color: "#EFF6FF", iconColor: "#3B82F6" },
-              { icon: "storefront-outline", label: "Quán ăn", color: "#FFF7ED", iconColor: COLORS.ORANGE },
-              { icon: "leaf-outline", label: "Healthy", color: "#F0FDF4", iconColor: "#22C55E" },
-              { icon: "cafe-outline", label: "Đồ uống", color: "#FDF4FF", iconColor: "#A855F7" },
-            ].map((item, i) => (
-              <TouchableOpacity key={i} style={s.shortcutItem} activeOpacity={0.75}
-                onPress={() => navigation.navigate("AllRestaurantsSale")}>
-                <View style={[s.shortcutIcon, { backgroundColor: item.color }]}>
-                  <Ionicons name={item.icon as any} size={22} color={item.iconColor} />
-                </View>
-                <Text style={s.shortcutLabel}>{item.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
 
           {/* ══════════ DISHES ON SALE ══════════ */}
           {dishes.length > 0 && (
