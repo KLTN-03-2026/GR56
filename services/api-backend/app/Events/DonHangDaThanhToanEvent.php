@@ -28,14 +28,16 @@ class DonHangDaThanhToanEvent implements ShouldBroadcastNow
 
     /**
      * Get the channels the event should broadcast on.
-     * Broadcast đến tất cả Shipper
+     * Broadcast đến: Quán ăn (biết có đơn mới) và Khách hàng (biết đã thanh toán).
+     * KHÔNG gửi all-shippers vì FindShipperJob sẽ dispatch ưu tiên sau webhook.
      *
      * @return array<int, \Illuminate\Broadcasting\Channel>
      */
     public function broadcastOn(): array
     {
         return [
-            new PrivateChannel('all-shippers'),
+            new PrivateChannel('quan-an.' . $this->donHang->id_quan_an),
+            new PrivateChannel('khach-hang.' . $this->donHang->id_khach_hang),
         ];
     }
 
@@ -53,10 +55,12 @@ class DonHangDaThanhToanEvent implements ShouldBroadcastNow
     public function broadcastWith(): array
     {
         return [
-            'id' => $this->donHang->id,
-            'ma_don_hang' => $this->donHang->ma_don_hang,
-            'tong_tien' => $this->donHang->tong_tien,
-            'message' => "Đơn hàng {$this->donHang->ma_don_hang} đã được khách thanh toán online thành công!",
+            'id'            => $this->donHang->id,
+            'ma_don_hang'   => $this->donHang->ma_don_hang,
+            'tong_tien'     => $this->donHang->tong_tien,
+            'phi_ship'      => $this->donHang->phi_ship,
+            'tinh_trang'    => $this->donHang->tinh_trang,
+            'message'       => "Đơn hàng {$this->donHang->ma_don_hang} đã được khách thanh toán online thành công!",
         ];
     }
 }

@@ -34,10 +34,16 @@ class DonHangHoanThanhEvent implements ShouldBroadcastNow
      */
     public function broadcastOn(): array
     {
-        return [
+        $channels = [
             new PrivateChannel('khach-hang.' . $this->donHang->id_khach_hang),
             new PrivateChannel('quan-an.' . $this->donHang->id_quan_an),
         ];
+
+        if ($this->donHang->id_shipper) {
+            $channels[] = new PrivateChannel('shipper.' . $this->donHang->id_shipper);
+        }
+
+        return $channels;
     }
 
     /**
@@ -54,11 +60,13 @@ class DonHangHoanThanhEvent implements ShouldBroadcastNow
     public function broadcastWith(): array
     {
         return [
-            'id' => $this->donHang->id,
-            'ma_don_hang' => $this->donHang->ma_don_hang,
-            'tinh_trang' => $this->donHang->tinh_trang,
-            'is_thanh_toan' => $this->donHang->is_thanh_toan,
-            'updated_at' => $this->donHang->updated_at,
+            'don_hang' => [
+                'id' => $this->donHang->id,
+                'ma_don_hang' => $this->donHang->ma_don_hang,
+                'tinh_trang' => $this->donHang->tinh_trang,
+                'is_thanh_toan' => $this->donHang->is_thanh_toan,
+                'updated_at' => $this->donHang->updated_at,
+            ],
             'message' => 'Đơn hàng đã được giao thành công!',
         ];
     }

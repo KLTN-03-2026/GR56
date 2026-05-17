@@ -27,6 +27,26 @@ class KhachHang extends Authenticatable
         'is_block',
     ];
 
+    protected $appends = ['tong_chi_tieu', 'hang_thanh_vien'];
+
+    public function getTongChiTieuAttribute()
+    {
+        if (array_key_exists('tong_chi_tieu', $this->attributes)) {
+            return $this->attributes['tong_chi_tieu'];
+        }
+        return $this->donHangs()->where('tinh_trang', 4)->sum('tong_tien');
+    }
+
+    public function getHangThanhVienAttribute()
+    {
+        $tong = $this->tong_chi_tieu;
+        if ($tong > 50000000) return 'Kim cương';
+        if ($tong >= 10000000) return 'Vàng';
+        if ($tong >= 5000000) return 'Bạc';
+        if ($tong >= 1000000) return 'Đồng';
+        return 'Thành viên';
+    }
+
     public function donHangs()
     {
         return $this->hasMany(DonHang::class, 'id_khach_hang');
@@ -35,6 +55,21 @@ class KhachHang extends Authenticatable
     public function reports()
     {
         return $this->morphMany(Report::class, 'reporter');
+    }
+
+    public function chatbotSessions()
+    {
+        return $this->hasMany(ChatbotSession::class, 'id_khach_hang');
+    }
+
+    public function customerProfile()
+    {
+        return $this->hasOne(CustomerProfile::class, 'id_khach_hang');
+    }
+
+    public function chatbotAnalytics()
+    {
+        return $this->hasMany(ChatbotAnalytic::class, 'id_khach_hang');
     }
 
     /**

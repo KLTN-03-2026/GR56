@@ -31,8 +31,8 @@ class QuanAnSeeder extends Seeder
                 'gio_dong_cua' => '23:00:00',
                 'dia_chi' => '240 Trần Phú, Quận Hải Châu, Đà Nẵng',
                 'id_quan_huyen' => 74,
-                'toa_do_x' => 108.2251365,  // longitude
-                'toa_do_y' => 16.0565052,   // latitude
+                'toa_do_x' => 16.0565052,   // latitude
+                'toa_do_y' => 108.2251365,  // longitude
                 'hinh_anh' => 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTWfJUWKecfedJtsuTOPzmzy51L7szK8FDYfw&s',
                 'so_dien_thoai' => '0905123456',
                 'tong_tien' => 0,

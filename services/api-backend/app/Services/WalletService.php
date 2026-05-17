@@ -45,7 +45,7 @@ class WalletService
         DB::beginTransaction();
         try {
             $chiet_khau_pct      = floatval(\App\Models\CauHinh::getVal('chiet_khau_phan_tram', self::CHIET_KHAU_DEFAULT));
-            $chiet_khau_ship_pct = self::CHIET_KHAU_PHI_SHIP;
+            $chiet_khau_ship_pct = floatval(\App\Models\CauHinh::getVal('chiet_khau_shipper_phan_tram', self::CHIET_KHAU_PHI_SHIP));
             $tien_hang           = floatval($don_hang->tien_hang);
             $phi_ship            = floatval($don_hang->phi_ship);
 
@@ -107,7 +107,7 @@ class WalletService
         $tien_hang           = floatval($don_hang->tien_hang);
         $phi_ship            = floatval($don_hang->phi_ship);
         $chiet_khau_pct      = floatval(\App\Models\CauHinh::getVal('chiet_khau_phan_tram', self::CHIET_KHAU_DEFAULT));
-        $chiet_khau_ship_pct = self::CHIET_KHAU_PHI_SHIP;
+        $chiet_khau_ship_pct = floatval(\App\Models\CauHinh::getVal('chiet_khau_shipper_phan_tram', self::CHIET_KHAU_PHI_SHIP));
 
         // Tính toán phân bổ
         $tien_chiet_khau_hang = round($tien_hang * $chiet_khau_pct / 100, 2);

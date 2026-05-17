@@ -38,16 +38,41 @@ use App\Http\Controllers\ReportController;
 use App\Http\Controllers\KhachHangBankAccountController;
 use App\Http\Controllers\DanhGiaController;
 use App\Http\Controllers\YeuThichController;
+use App\Http\Controllers\ChatbotSessionController;
+use App\Http\Controllers\ChatbotProfileController;
+use App\Http\Controllers\ChatbotAnalyticsController;
 
 /*
 |--------------------------------------------------------------------------
 | 1. PUBLIC ROUTES (Không cần đăng nhập)
 |--------------------------------------------------------------------------
 */
+// ── Chatbot Session Management (PUBLIC) ────────────────────────────────
+Route::post('/chatbot/session/start', [ChatbotSessionController::class, 'start']);
+Route::post('/chatbot/session/{sessionId}/message', [ChatbotSessionController::class, 'addMessage']);
+Route::get('/chatbot/session/{sessionId}', [ChatbotSessionController::class, 'getSession']);
+Route::post('/chatbot/session/{sessionId}/close', [ChatbotSessionController::class, 'closeSession']);
+
+// ── Chatbot Profile (PUBLIC — cả anonymous lẫn logged-in) ──────────────
+Route::get('/chatbot/profile/{idKhachHang}', [ChatbotProfileController::class, 'getProfile']);
+Route::post('/chatbot/profile/{idKhachHang}/update', [ChatbotProfileController::class, 'updateProfile']);
+Route::get('/chatbot/recommend/{idKhachHang}', [ChatbotProfileController::class, 'recommend']);
+Route::get('/chatbot/reorder/{idKhachHang}', [ChatbotProfileController::class, 'reorder']);
+Route::post('/chatbot/profile/{idKhachHang}/after-order', [ChatbotProfileController::class, 'afterOrder']);
+
 // ── Chatbot Routes (PUBLIC) ────────────────────────────────────────────
 Route::post('/chatbot/tim-kiem-mon-an', [ChatbotController::class, 'timKiemMonAn']);
 Route::post('/chatbot/goi-y-ca-nhan',   [ChatbotController::class, 'goiYCaNhan']);
 Route::get('/chatbot/mon-an-ban-chay',  [ChatbotController::class, 'monAnBanChay']);
+Route::get('/chatbot/yeu-thich',              [YeuThichController::class, 'getYeuThichChatbot']);
+Route::post('/chatbot/yeu-thich/toggle',      [YeuThichController::class, 'toggleYeuThichChatbot']);
+
+// ── AI Chat Agent Proxy (PUBLIC) ───────────────────────────────────────
+Route::post('/chat',                         [ChatbotController::class, 'proxyChat']);
+Route::post('/chatbot/dat-hang',             [ChatbotController::class, 'datHangTuChatbot']);
+Route::post('/chatbot/dat-hang-voucher',     [ChatbotController::class, 'datHangVoiVoucher']);
+Route::post('/chatbot/validate-voucher',     [ChatbotController::class, 'validateVoucherChatbot']);
+Route::post('/chatbot/danh-gia',            [DanhGiaController::class, 'guiDanhGiaChatbot']);
 
 
 // ── PayOS Routes (PUBLIC — Webhook & Thông tin) ─────────────────────────────
@@ -80,6 +105,7 @@ Route::post('/khach-hang/quen-mat-khau', [KhachHangController::class, 'quenMatKh
 Route::get('/khach-hang/tinh-thanh/data', [KhachHangController::class, 'getDataTinhThanh']);
 Route::post('/khach-hang/quan-huyen/data', [KhachHangController::class, 'getDataQuanHuyen']);
 Route::get('/khach-hang/quan-an/data-open', [QuanAnController::class, 'getDataOpen']);
+Route::get('/khach-hang/quan-an/map', [QuanAnController::class, 'getMapData']);
 Route::get('/khach-hang/quan-an/danh-gia/{id_quan_an}', [QuanAnController::class, 'getDanhGia']);
 Route::get('/khach-hang/quan-an/thong-ke-danh-gia/{id_quan_an}', [QuanAnController::class, 'getThongKeDanhGia']);
 Route::get('/khach-hang/data-mon-an', [KhachHangController::class, 'getMonAn']);
@@ -179,6 +205,7 @@ Route::group(['prefix' => '/admin', 'middleware' => 'nhanVienMiddle'], function 
     Route::post('/mon-an/update', [MonAnController::class, 'update']);
     Route::post('/mon-an/delete', [MonAnController::class, 'destroy']);
     Route::post('/mon-an/change-status', [MonAnController::class, 'changeStatus']);
+    Route::post('/mon-an/tim-kiem', [MonAnController::class, 'search']);
 
     // Địa Lý
     Route::get('/tinh-thanh/data', [TinhThanhController::class, 'getData']);
@@ -200,6 +227,7 @@ Route::group(['prefix' => '/admin', 'middleware' => 'nhanVienMiddle'], function 
     Route::get('/don-hang/thong-tin-day-du', [DonHangController::class, 'getDonHangAdmin']);
     Route::post('/don-hang/chi-tiet-day-du', [DonHangController::class, 'getChiTietDonHangAdmin']);
     Route::post('/don-hang/theo-doi', [DonHangController::class, 'theoDoiDonHangAdmin']);
+    Route::get('/don-hang/chatbot', [DonHangController::class, 'getDonHangChatbot']);
 
 
     Route::post('/thong-ke/thong-ke-tien-khach-hang', [ThongKeAdminController::class, 'thongKeTienKhachHang']);
@@ -266,6 +294,13 @@ Route::group(['prefix' => '/admin', 'middleware' => 'nhanVienMiddle'], function 
     Route::get('/thong-bao-he-thong/data', [App\Http\Controllers\ThongBaoHeThongController::class, 'index']);
     Route::post('/thong-bao-he-thong/store', [App\Http\Controllers\ThongBaoHeThongController::class, 'store']);
     Route::delete('/thong-bao-he-thong/{id}', [App\Http\Controllers\ThongBaoHeThongController::class, 'destroy']);
+
+    // ── Chatbot AI Analytics (Admin) ──────────────────────────────────
+    Route::get('/ai-trending', [ChatbotAnalyticsController::class, 'trendingDishes']);
+    Route::get('/ai-trending/live', [ChatbotAnalyticsController::class, 'liveTrending']);
+    Route::get('/chatbot-analytics', [ChatbotAnalyticsController::class, 'chatbotAnalytics']);
+    Route::get('/customer-insights/{idKhachHang}', [ChatbotAnalyticsController::class, 'customerInsights']);
+    Route::post('/chatbot-analytics/{id}/converted', [ChatbotAnalyticsController::class, 'markConverted']);
 });
 
 
@@ -342,6 +377,7 @@ Route::group(['prefix' => '/shipper', 'middleware' => 'shipperMiddle'], function
     Route::get('/data-login', [ShipperController::class, 'dataSP']);
     Route::post('/update-profile', [ShipperController::class, 'updateSP']);
     Route::post('/update-password', [ShipperController::class, 'updatePassword']);
+    Route::post('/toggle-status', [ShipperController::class, 'toggleStatus']);
 
     // Đơn hàng Shipper (Style cũ)
     Route::get('/don-hang/data-nhan', [ShipperController::class, 'dataDonHangNhan']);
@@ -350,6 +386,7 @@ Route::group(['prefix' => '/shipper', 'middleware' => 'shipperMiddle'], function
     Route::post('/hoan-thanh-don', [ShipperController::class, 'hoanThanhDonHang']);
     Route::post('/cap-nhat-vi-tri-don-gian', [ShipperController::class, 'capNhatViTri']);
     Route::post('/cap-nhat-vi-tri', [DonHangController::class, 'capNhatViTriShipper']);
+    Route::get('/don-hang/chatbot', [DonHangController::class, 'getDonHangChatbot']);
 
     // Đơn hàng Shipper (Style mới)
     Route::get('/don-hang/data', [DonHangController::class, 'getDonHangShipper']);
@@ -357,7 +394,14 @@ Route::group(['prefix' => '/shipper', 'middleware' => 'shipperMiddle'], function
     Route::post('/don-hang/nhan-don', [DonHangController::class, 'nhanDonDonHangShipper']);
     Route::post('/don-hang/hoan-thanh', [DonHangController::class, 'hoanThanhDonHangShipper']);
     Route::post('/don-hang/chi-tiet-mon-an', [DonHangController::class, 'chiTietDonHangQuanAn']);
+    Route::post('/don-hang/theo-doi', [DonHangController::class, 'theoDoiDonHangShipper']);
+    Route::post('/don-hang/tu-choi', [DonHangController::class, 'tuChoiDonHangShipper']);
+    Route::post('/don-hang/cascade-next', [DonHangController::class, 'cascadeNextShipper']);
     Route::post('/don-hang/thong-ke', [ThongkeController::class, 'dataThongKeShipper']);
+
+    // Hàm mới cho chatbot: dùng LEFT JOIN để đơn không có dia_chi hợp lệ vẫn hiển thị
+    Route::get('/don-hang/cho-nhan', [DonHangController::class, 'getDonHangShipperChoNhan']);
+    Route::get('/don-hang/dang-giao-chi-tiet', [DonHangController::class, 'getDonHangShipperDangGiaoChiTiet']);
 
     Route::get('/wallet/qr-nop-tien', [TransactionController::class, 'qrNopTien']);
 
@@ -413,6 +457,9 @@ Route::group(['prefix' => '/khach-hang', 'middleware' => 'khachHangMiddle'], fun
     Route::get('/voucher/public', [VoucherController::class, 'voucherPublic']);
     Route::get('/don-hang/data', [DonHangController::class, 'getDonHangKhachHang']);
     Route::post('/don-hang/data-chi-tiet', [DonHangController::class, 'getChiTietDonHangKhachHang']);
+    // Hàm mới: dùng LEFT JOIN để đơn chatbot vẫn hiển thị
+    Route::get('/don-hang/data-moi', [DonHangController::class, 'getDonHangKhachHangChiTiet']);
+    Route::post('/don-hang/chi-tiet-single', [DonHangController::class, 'getChiTietDonHangKhachHangMoi']);
     Route::post('/don-hang/reorder', [DonHangController::class, 'reorder']);
     Route::post('/don-hang/theo-doi-don-hang', [DonHangController::class, 'theoDoiDonHangKhachHang']);
     Route::get('/lich-su-giao-dich', [DonHangController::class, 'getLichSuGiaoDich']);
@@ -471,26 +518,151 @@ Route::get('/transaction/sync', [TransactionController::class, 'syncTransactions
 Route::group(['middleware' => 'khachHangMiddle'], function () {
     Route::post('/payos/tao-link/{id_don_hang}', [PayOSController::class, 'taoLinkThanhToan']); // Tạo link thanh toán PayOS
     Route::get('/payos/thong-tin/{orderCode}', [PayOSController::class, 'thongTinLink']);     // Thông tin link
+    Route::get('/payos/qr-image', [PayOSController::class, 'qrImage']);                          // Lấy QR base64 từ URL
     Route::post('/payos/xac-nhan-s2s', [PayOSController::class, 'xacNhanS2S']);       // Xác nhận giao dịch S2S thủ công
     Route::post('/payos/huy-link/{orderCode}', [PayOSController::class, 'huyLink']);          // Huỷ link
+    Route::get('/transaction/viet-qr-image', [TransactionController::class, 'vietQrImage']); // Proxy VietQR → base64
 });
 
 
 Route::post('/broadcasting/auth', function (Request $request) {
-    if (!Auth::guard('sanctum')->check())
+    // Thử tất cả guard để xác định user (Shipper, KhachHang, QuanAn, ...)
+    $user = null;
+    foreach (['sanctum'] as $guard) {
+        $candidate = Auth::guard($guard)->user();
+        if ($candidate) {
+            $user = $candidate;
+            break;
+        }
+    }
+
+    if (!$user) {
+        Log::warning('[BroadcastAuth] Unauthorized - no user found from token', [
+            'token_prefix' => substr($request->bearerToken() ?? '', 0, 10),
+        ]);
         return response()->json(['message' => 'Unauthorized'], 401);
-    $user = Auth::guard('sanctum')->user();
+    }
+
+    Log::info('[BroadcastAuth] Auth request', [
+        'user_id'   => $user->id,
+        'user_type' => class_basename($user),
+        'channel'   => $request->input('channel_name'),
+        'socket_id' => $request->input('socket_id'),
+    ]);
+
     $request->setUserResolver(fn() => $user);
+
     try {
-        return Broadcast::auth($request);
+        $response = Broadcast::auth($request);
+        Log::info('[BroadcastAuth] Auth SUCCESS for channel: ' . $request->input('channel_name'));
+        return $response;
     } catch (\Exception $e) {
+        Log::error('[BroadcastAuth] Auth FAILED: ' . $e->getMessage(), [
+            'channel' => $request->input('channel_name'),
+            'user_id' => $user->id,
+        ]);
         return response()->json(['message' => 'Forbidden', 'error' => $e->getMessage()], 403);
     }
-})->middleware(['auth:sanctum']);
+});
+
 
 // Legacy/Test Routes
 Route::get('/transaction', [TestController::class, 'GetTransaction']);
 Route::get('/text/{input}', [TestController::class, 'convert']);
+
+// Proxy geocode qua BE (vì API key restrict theo IP VPS)
+Route::get('/map/geocode/forward', function (\Illuminate\Http\Request $request) {
+    $text = $request->query('text');
+    if (!$text) return response()->json(['error' => 'Missing text'], 400);
+    $apiKey = '6TTIZbUWJmRMSpiYzQ0YY8z5v8wv43w0';
+    $url = "https://mapapis.openmap.vn/v1/geocode/forward?text=" . urlencode($text) . "&apikey={$apiKey}";
+    try {
+        $res = (new \GuzzleHttp\Client(['timeout' => 5]))->get($url);
+        return response($res->getBody()->getContents(), 200)->header('Content-Type', 'application/json');
+    } catch (\Exception $e) {
+        return response()->json(['error' => $e->getMessage()], 500);
+    }
+});
+Route::get('/map/geocode/reverse', function (\Illuminate\Http\Request $request) {
+    $lat = $request->query('lat');
+    $lng = $request->query('lng');
+    if (!$lat || !$lng) return response()->json(['error' => 'Missing lat/lng'], 400);
+    $apiKey = '6TTIZbUWJmRMSpiYzQ0YY8z5v8wv43w0';
+    $url = "https://mapapis.openmap.vn/v1/geocode/reverse?point.lat={$lat}&point.lon={$lng}&apikey={$apiKey}";
+    try {
+        $res = (new \GuzzleHttp\Client(['timeout' => 5]))->get($url);
+        return response($res->getBody()->getContents(), 200)->header('Content-Type', 'application/json');
+    } catch (\Exception $e) {
+        return response()->json(['error' => $e->getMessage()], 500);
+    }
+});
+Route::get('/map/direction', function (\Illuminate\Http\Request $request) {
+    $origin = $request->query('origin');
+    $destination = $request->query('destination');
+    if (!$origin || !$destination) return response()->json(['error' => 'Missing origin/destination'], 400);
+
+    // origin/destination format: "lat,lng" → OSRM needs "lng,lat"
+    $originParts = explode(',', $origin);
+    $destParts = explode(',', $destination);
+    if (count($originParts) < 2 || count($destParts) < 2) {
+        return response()->json(['error' => 'Invalid coordinates'], 400);
+    }
+    $osrmOrigin = trim($originParts[1]) . ',' . trim($originParts[0]);
+    $osrmDest = trim($destParts[1]) . ',' . trim($destParts[0]);
+
+    $url = "https://router.project-osrm.org/route/v1/driving/{$osrmOrigin};{$osrmDest}?overview=full&geometries=geojson&steps=true&alternatives=3";
+    try {
+        $res = (new \GuzzleHttp\Client(['timeout' => 10]))->get($url);
+        $osrm = json_decode($res->getBody()->getContents(), true);
+
+        if (($osrm['code'] ?? '') !== 'Ok' || empty($osrm['routes'])) {
+            return response()->json(['routes' => []], 200);
+        }
+
+        // Pick shortest route
+        $route = $osrm['routes'][0];
+        foreach ($osrm['routes'] as $candidate) {
+            if (($candidate['distance'] ?? PHP_INT_MAX) < ($route['distance'] ?? PHP_INT_MAX)) {
+                $route = $candidate;
+            }
+        }
+        $leg = $route['legs'][0] ?? null;
+
+        // Transform to format FE expects (compatible with OpenMap direction response)
+        $steps = [];
+        if ($leg && !empty($leg['steps'])) {
+            foreach ($leg['steps'] as $step) {
+                $steps[] = [
+                    'html_instructions' => $step['name'] ? "Đi trên {$step['name']}" : ($step['maneuver']['type'] ?? 'Đi thẳng'),
+                    'maneuver' => $step['maneuver']['modifier'] ?? $step['maneuver']['type'] ?? '',
+                    'distance' => ['value' => $step['distance'] ?? 0],
+                    'duration' => ['value' => $step['duration'] ?? 0],
+                    'polyline' => null,
+                    'start_location' => [
+                        'lat' => $step['maneuver']['location'][1] ?? 0,
+                        'lng' => $step['maneuver']['location'][0] ?? 0,
+                    ],
+                ];
+            }
+        }
+
+        $result = [
+            'routes' => [[
+                'overview_polyline' => null,
+                'geometry' => $route['geometry'],
+                'legs' => [[
+                    'distance' => ['value' => $route['distance'] ?? 0],
+                    'duration' => ['value' => $route['duration'] ?? 0],
+                    'steps' => $steps,
+                ]],
+            ]],
+        ];
+
+        return response()->json($result, 200);
+    } catch (\Exception $e) {
+        return response()->json(['error' => $e->getMessage()], 500);
+    }
+});
 
 // return response()->json(['message' => 'Forbidden', 'error' => $e->getMessage()], 403);
 //     }
