@@ -23,9 +23,6 @@
 </div>
 
 <div align="center">
-  <a href="https://foodbee.io.vn/">
-    <img src="apps/web-frontend/src/assets/logoFood.png" alt="FoodBee Banner" width="650"/>
-  </a>
   <p><i>"Giải pháp công nghệ kết nối Khách hàng - Quán ăn - Shipper trên đa nền tảng"</i></p>
 </div>
 
@@ -68,10 +65,26 @@
 
 <br/>
 
-### 🌐 Giao diện Khách hàng (Desktop)
+### 🌐 Giao diện Khách hàng (Website)
 *Trải nghiệm đặt món mượt mà với đầy đủ tính năng tìm kiếm, lọc và thanh toán.*
+
 <p align="center">
-  <img src="apps/web-frontend/src/assets/web-home.png" alt="Trang chủ Web" width="80%" style="border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.2);"/>
+  <img src="static/img/w1.jpg" alt="Website - Màn hình 1" width="100%" style="border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.2); margin: 5px;"/>
+  <img src="static/img/w2.jpg" alt="Website - Màn hình 2" width="100%" style="border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.2); margin: 5px;"/>
+</p>
+
+<p align="center">
+  <img src="static/img/w3.jpg" alt="Website - Màn hình 3" width="100%" style="border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.2); margin: 5px;"/>
+</p>
+
+<br/>
+
+### 📱 Giao diện Ứng dụng Di động (Mobile App)
+*Ứng dụng di động dành cho Khách hàng và Shipper với giao diện tối ưu, thao tác nhanh chóng.*
+<p align="center">
+  <img src="static/img/m1.jpg" alt="Mobile App - Màn hình 1" width="32%" style="border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.2); margin: 5px;"/>
+  <img src="static/img/m2.jpg" alt="Mobile App - Màn hình 2" width="32%" style="border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.2); margin: 5px;"/>
+  <img src="static/img/m3.jpg" alt="Mobile App - Màn hình 3" width="32%" style="border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.2); margin: 5px;"/>
 </p>
 
 ---
@@ -167,5 +180,27 @@ Cách sử dụng:
 Mọi thắc mắc và hỗ trợ kỹ thuật, vui lòng liên hệ:
 - **Nguyễn Văn Nhân**: [vannhan130504@gmail.com](mailto:vannhan130504@gmail.com)
 
+---
+
+## 📲 Tải Ứng Dụng
+
+<p align="center">
+  <div style="display: flex; justify-content: center; gap: 20px; flex-wrap: wrap;">
+    <div style="text-align: center;">
+      <img src="static/qrapp/qrandroid.png" alt="QR Code Download Android" width="200" style="border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.2);"/>
+      <br/>
+      <a href="https://foodbee.io.vn/">
+        <img src="https://img.shields.io/badge/Download-Android-000000?style=for-the-badge&logo=android&logoColor=white" alt="android App"/>
+      </a>
+    </div>
+    <div style="text-align: center;">
+      <img src="static/qrapp/qrandroid.png" alt="QR Code Download Ios" width="200" style="border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.2);"/>
+      <br/>
+      <a href="https://foodbee.io.vn/">
+        <img src="https://img.shields.io/badge/Download-iOS-000000?style=for-the-badge&logo=apple&logoColor=white" alt="iOS App"/>
+      </a>
+    </div>
+  </div>
+</p>
 ---
 © 2026 FOODBEE – Nền tảng giao đồ ăn thế hệ mới.
