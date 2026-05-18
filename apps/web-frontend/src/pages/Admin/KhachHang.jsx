@@ -13,6 +13,22 @@ const INPUT = 'w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focu
 const LABEL = 'block text-sm font-semibold text-gray-700 mb-1.5';
 const EMPTY_CREATE = { ho_va_ten: '', email: '', so_dien_thoai: '', ngay_sinh: '', password: '', is_active: '1', is_block: '0' };
 
+// Convert bất kỳ format ngày về YYYY-MM-DD để dùng với <input type="date">
+const toDateInput = (val) => {
+  if (!val) return '';
+  // Nếu đã là YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(val)) return val;
+  // Nếu là DD/MM/YYYY
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(val)) {
+    const [d, m, y] = val.split('/');
+    return `${y}-${m}-${d}`;
+  }
+  // Thử parse tổng quát
+  const d = new Date(val);
+  if (!isNaN(d)) return d.toISOString().slice(0, 10);
+  return '';
+};
+
 function Modal({ open, onClose, title, headerCls = 'bg-blue-600', children, footer }) {
   if (!open) return null;
   return (
@@ -29,19 +45,23 @@ function Modal({ open, onClose, title, headerCls = 'bg-blue-600', children, foot
   );
 }
 
-const KhFormFields = ({ form, onChange, includePassword = false }) => (
+const KhFormFields = ({ form, onChange, includePassword = false }) => {
+  // Ngày sinh không được là hôm nay hoặc tương lai — max = hôm qua
+  const maxDate = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  return (
   <>
     <div><label className={LABEL}>Họ và tên</label><input value={form.ho_va_ten || ''} onChange={e => onChange({ ...form, ho_va_ten: e.target.value })} className={INPUT} /></div>
     <div><label className={LABEL}>Email</label><input type="email" value={form.email || ''} onChange={e => onChange({ ...form, email: e.target.value })} className={INPUT} /></div>
     <div><label className={LABEL}>Số điện thoại</label><input value={form.so_dien_thoai || ''} onChange={e => onChange({ ...form, so_dien_thoai: e.target.value })} className={INPUT} /></div>
-    <div><label className={LABEL}>Ngày sinh</label><input type="date" value={form.ngay_sinh || ''} onChange={e => onChange({ ...form, ngay_sinh: e.target.value })} className={INPUT} /></div>
+    <div><label className={LABEL}>Ngày sinh</label><input type="date" max={maxDate} value={toDateInput(form.ngay_sinh) || ''} onChange={e => onChange({ ...form, ngay_sinh: e.target.value })} className={INPUT} /></div>
     {includePassword && <div><label className={LABEL}>Mật khẩu</label><input type="password" value={form.password || ''} onChange={e => onChange({ ...form, password: e.target.value })} className={INPUT} /></div>}
     <div className="grid grid-cols-2 gap-3">
       <div><label className={LABEL}>Tình trạng</label><select value={form.is_block ?? '0'} onChange={e => onChange({ ...form, is_block: e.target.value })} className={INPUT}><option value="0">Hoạt động</option><option value="1">Tạm tắt</option></select></div>
       <div><label className={LABEL}>Kích hoạt</label><select value={form.is_active ?? '1'} onChange={e => onChange({ ...form, is_active: e.target.value })} className={INPUT}><option value="1">Đã kích hoạt</option><option value="0">Chưa kích hoạt</option></select></div>
     </div>
   </>
-);
+  );
+};
 
 export default function AdminKhachHang() {
   const [list, setList] = useState([]);

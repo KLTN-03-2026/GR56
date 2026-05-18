@@ -998,35 +998,81 @@ function TabLichSuNapTienShipper() {
 
 // ====================== MAIN ======================
 export default function AdminRutTien() {
-  const [tab, setTab] = useState('withdraw');
+  const [tab, setTab] = useState(null);
+  const [admin, setAdmin] = useState(null);
+
+  useEffect(() => {
+    adm('/api/admin/profile').then(r => {
+      if (r.data.status) {
+        const u = r.data.data;
+        setAdmin(u);
+        // Chọn tab đầu tiên mà user có quyền
+        const tabs = [
+          { key: 'withdraw',     perm: 84 },
+          { key: 'topup',        perm: 83 },
+          { key: 'history_topup', perm: 83 },
+          { key: 'payos',        perm: 81 },
+          { key: 'refund',       perm: 82 },
+        ];
+        const ids = u.phan_quyen_ids || [];
+        const isMaster = Number(u.is_master) === 1;
+        const first = tabs.find(t => isMaster || ids.includes(t.perm));
+        if (first) setTab(first.key);
+      }
+    }).catch(() => {});
+  }, []);
+
+  const can = (perm) => {
+    if (!admin) return false;
+    if (Number(admin.is_master) === 1) return true;
+    return (admin.phan_quyen_ids || []).includes(perm);
+  };
+
+  if (!admin) return (
+    <div className="min-h-[60vh] flex items-center justify-center">
+      <div className="w-10 h-10 rounded-full border-4 border-green-100 border-t-green-600 animate-spin" />
+    </div>
+  );
+
+  if (!tab) return (
+    <div className="min-h-[60vh] flex items-center justify-center p-6">
+      <div className="bg-white border border-red-100 rounded-2xl shadow-sm p-8 text-center max-w-md">
+        <i className="fa-solid fa-lock text-4xl text-red-400 mb-4" />
+        <h2 className="text-xl font-bold text-gray-800 mb-2">Không có quyền truy cập</h2>
+        <p className="text-sm text-gray-500">Tài khoản của bạn chưa được cấp quyền xem chức năng này.</p>
+      </div>
+    </div>
+  );
+
   return (
     <div className="p-6">
       <div className="mb-2">
         <h1 className="text-2xl font-bold text-gray-900"><i className="fa-solid fa-wallet mr-3 text-green-500"/>Quản Lý Giao Dịch Tài Chính</h1>
       </div>
       <div className="flex gap-2 mb-2 flex-wrap">
-        <button onClick={()=>setTab('withdraw')} className={`px-5 py-2 rounded-xl text-sm font-bold transition-all ${tab==='withdraw'?'bg-green-600 text-white shadow-md':'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'}`}>
+        {can(84) && <button onClick={()=>setTab('withdraw')} className={`px-5 py-2 rounded-xl text-sm font-bold transition-all ${tab==='withdraw'?'bg-green-600 text-white shadow-md':'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'}`}>
           <i className="fa-solid fa-money-bill-transfer mr-2"/>Yêu cầu rút tiền
-        </button>
-        <button onClick={()=>setTab('topup')} className={`px-5 py-2 rounded-xl text-sm font-bold transition-all ${tab==='topup'?'bg-indigo-600 text-white shadow-md':'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'}`}>
+        </button>}
+        {can(83) && <button onClick={()=>setTab('topup')} className={`px-5 py-2 rounded-xl text-sm font-bold transition-all ${tab==='topup'?'bg-indigo-600 text-white shadow-md':'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'}`}>
           <i className="fa-solid fa-coins mr-2"/>Công Nợ Shipper (Thu Hộ)
-        </button>
-        <button onClick={()=>setTab('history_topup')} className={`px-5 py-2 rounded-xl text-sm font-bold transition-all ${tab==='history_topup'?'bg-blue-600 text-white shadow-md':'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'}`}>
+        </button>}
+        {can(83) && <button onClick={()=>setTab('history_topup')} className={`px-5 py-2 rounded-xl text-sm font-bold transition-all ${tab==='history_topup'?'bg-blue-600 text-white shadow-md':'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'}`}>
           <i className="fa-solid fa-clock-rotate-left mr-2"/>Lịch Sử Nạp Tiền
-        </button>
-        <button onClick={()=>setTab('payos')} className={`px-5 py-2 rounded-xl text-sm font-bold transition-all ${tab==='payos'?'bg-purple-600 text-white shadow-md':'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'}`}>
+        </button>}
+        {can(81) && <button onClick={()=>setTab('payos')} className={`px-5 py-2 rounded-xl text-sm font-bold transition-all ${tab==='payos'?'bg-purple-600 text-white shadow-md':'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'}`}>
           <i className="fa-solid fa-bolt mr-2"/>PayOS Lệnh Chi
-        </button>
-        <button onClick={()=>setTab('refund')} className={`px-5 py-2 rounded-xl text-sm font-bold transition-all ${tab==='refund'?'bg-rose-600 text-white shadow-md':'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'}`}>
+        </button>}
+        {can(82) && <button onClick={()=>setTab('refund')} className={`px-5 py-2 rounded-xl text-sm font-bold transition-all ${tab==='refund'?'bg-rose-600 text-white shadow-md':'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'}`}>
           <i className="fa-solid fa-rotate-left mr-2"/>Hoàn Tiền PayOS
-        </button>
+        </button>}
       </div>
 
-      {tab==='withdraw' ? <TabRutTien/>
-      : tab==='topup' ? <TabNopTienShipper/>
-      : tab==='history_topup' ? <TabLichSuNapTienShipper/>
-      : tab==='payos' ? <TabPayOSPayout/>
-      : <TabHoanTienPayOS/>}
+      {tab==='withdraw' && can(84) ? <TabRutTien/>
+      : tab==='topup' && can(83) ? <TabNopTienShipper/>
+      : tab==='history_topup' && can(83) ? <TabLichSuNapTienShipper/>
+      : tab==='payos' && can(81) ? <TabPayOSPayout/>
+      : tab==='refund' && can(82) ? <TabHoanTienPayOS/>
+      : null}
     </div>
   );
 }

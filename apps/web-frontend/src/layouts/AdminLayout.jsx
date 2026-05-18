@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link, NavLink, useNavigate, Outlet } from 'react-router-dom';
+import { Link, NavLink, useLocation, useNavigate, Outlet } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
 import logoFood from '../assets/logoFood.png';
@@ -64,15 +64,23 @@ function AdminAlertPanel({ alerts, onClear, onClearAll, onNavigate }) {
 
 export default function AdminLayout() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [sideOpen, setSideOpen] = useState(true);
   const [admin, setAdmin] = useState({});
+  const [checkingAuth, setCheckingAuth] = useState(true);
   const [alerts, setAlerts] = useState([]);
   const [showAlerts, setShowAlerts] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem('nhan_vien_login');
     if (!token) { navigate('/admin/dang-nhap'); return; }
-    adm('/api/admin/profile').then(r => { if (r.data.status) setAdmin(r.data.data); }).catch(() => {});
+    adm('/api/admin/profile')
+      .then(r => {
+        if (r.data.status) setAdmin(r.data.data);
+        else navigate('/admin/dang-nhap');
+      })
+      .catch(() => navigate('/admin/dang-nhap'))
+      .finally(() => setCheckingAuth(false));
   }, []);
 
   useEffect(() => {
@@ -166,26 +174,55 @@ export default function AdminLayout() {
   };
 // hihihi
   const NAV = [
-    { to: '/admin/dashboard', icon: 'fa-gauge-high', label: 'Dashboard' },
-    { to: '/admin/khach-hang', icon: 'fa-users', label: 'Khách Hàng' },
-    { to: '/admin/quan-an', icon: 'fa-store', label: 'Quán Ăn' },
-    { to: '/admin/shipper', icon: 'fa-motorcycle', label: 'Shipper' },
-    { to: '/admin/don-hang', icon: 'fa-bag-shopping', label: 'Đơn Đặt' },
-    { to: '/admin/thong-tin-don-hang', icon: 'fa-file-invoice-dollar', label: 'TT Đơn Hàng' },
-    { to: '/admin/mon-an', icon: 'fa-bowl-food', label: 'Món Ăn' },
-    { to: '/admin/danh-muc', icon: 'fa-tags', label: 'Danh Mục' },
-    { to: '/admin/client-menu', icon: 'fa-list', label: 'Menu Giao Diện' },
-    { to: '/admin/voucher', icon: 'fa-ticket', label: 'Voucher' },
-    { to: '/admin/rut-tien', icon: 'fa-money-bill-transfer', label: 'Ví Tài Chính' },
-    { to: '/admin/nhan-vien', icon: 'fa-user-tie', label: 'Nhân Viên' },
-    { to: '/admin/phan-quyen', icon: 'fa-shield-halved', label: 'Phân Quyền' },
-    { to: '/admin/thong-ke', icon: 'fa-chart-line', label: 'Thống Kê' },
-    { to: '/admin/cau-hinh-he-thong', icon: 'fa-gears', label: 'Cấu Hình Nền Tảng' },
-    { to: '/admin/reports', icon: 'fa-flag', label: 'Báo Cáo / Khiếu Nại' },
-    { to: '/admin/danh-gia', icon: 'fa-star', label: 'Đánh Giá' },
-    { to: '/admin/thong-bao', icon: 'fa-bullhorn', label: 'Gui Thong Bao' },
-    { to: '/admin/chatbot-analytics', icon: 'fa-robot', label: 'AI Chatbot' },
+    { to: '/admin/dashboard', icon: 'fa-gauge-high', label: 'Dashboard', permissions: [58] },
+    { to: '/admin/khach-hang', icon: 'fa-users', label: 'Khách Hàng', permissions: [12] },
+    { to: '/admin/quan-an', icon: 'fa-store', label: 'Quán Ăn', permissions: [28] },
+    { to: '/admin/shipper', icon: 'fa-motorcycle', label: 'Shipper', permissions: [6] },
+    { to: '/admin/don-hang', icon: 'fa-bag-shopping', label: 'Đơn Đặt', permissions: [59] },
+    { to: '/admin/thong-tin-don-hang', icon: 'fa-file-invoice-dollar', label: 'TT Đơn Hàng', permissions: [60] },
+    { to: '/admin/mon-an', icon: 'fa-bowl-food', label: 'Món Ăn', permissions: [64, 76] },
+    { to: '/admin/danh-muc', icon: 'fa-tags', label: 'Danh Mục', permissions: [22, 99] },
+    { to: '/admin/client-menu', icon: 'fa-list', label: 'Menu Giao Diện', permissions: [70] },
+    { to: '/admin/voucher', icon: 'fa-ticket', label: 'Voucher', permissions: [17] },
+    { to: '/admin/rut-tien', icon: 'fa-money-bill-transfer', label: 'Ví Tài Chính', permissions: [81, 82, 83, 84] },
+    { to: '/admin/nhan-vien', icon: 'fa-user-tie', label: 'Nhân Viên', permissions: [1] },
+    { to: '/admin/phan-quyen', icon: 'fa-shield-halved', label: 'Phân Quyền', permissions: [34, 40, 41] },
+    { to: '/admin/thong-ke', icon: 'fa-chart-line', label: 'Thống Kê', permissions: [43, 58, 96, 97] },
+    { to: '/admin/cau-hinh-he-thong', icon: 'fa-gears', label: 'Cấu Hình Nền Tảng', permissions: [46] },
+    { to: '/admin/reports', icon: 'fa-flag', label: 'Báo Cáo / Khiếu Nại', permissions: [85] },
+    { to: '/admin/danh-gia', icon: 'fa-star', label: 'Đánh Giá', permissions: [88] },
+    { to: '/admin/thong-bao', icon: 'fa-bullhorn', label: 'Gửi Thông Báo', permissions: [91] },
+    { to: '/admin/chatbot-analytics', icon: 'fa-robot', label: 'AI Chatbot', permissions: [94] },
   ];
+
+  const ROUTE_PERMISSIONS = [
+    ...NAV,
+    { to: '/admin', permissions: [58] },
+    { to: '/admin/profile' },
+    { to: '/admin/thong-ke-khach-hang', permissions: [96] },
+    { to: '/admin/thong-ke-quan-an', permissions: [97] },
+  ];
+
+  const hasPermission = (item) => {
+    if (item?.masterOnly && Number(admin.is_master) !== 1) return false;
+    if (!item?.permissions?.length || Number(admin.is_master) === 1) return true;
+    const ids = admin.phan_quyen_ids || [];
+    return item.requireAll
+      ? item.permissions.every(id => ids.includes(id))
+      : item.permissions.some(id => ids.includes(id));
+  };
+
+  const visibleNav = NAV.filter(hasPermission);
+  const activeGuard = ROUTE_PERMISSIONS.find(item => item.to === location.pathname);
+  const blockedByPermission = !checkingAuth && activeGuard && !hasPermission(activeGuard);
+
+  if (checkingAuth) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="w-12 h-12 rounded-full border-4 border-purple-100 border-t-purple-600 animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen bg-gray-100">
@@ -224,7 +261,7 @@ export default function AdminLayout() {
 
         {/* Nav */}
         <nav className="flex-1 py-3 px-2 space-y-0.5 overflow-y-auto">
-          {NAV.map((item) => (
+          {visibleNav.map((item) => (
             <NavLink key={item.to} to={item.to}
               className={({ isActive }) =>
                 `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${isActive
@@ -295,7 +332,17 @@ export default function AdminLayout() {
           </div>
         </header>
         <main className="flex-1 overflow-y-auto bg-gray-50">
-          <Outlet />
+          {blockedByPermission ? (
+            <div className="min-h-full flex items-center justify-center p-6">
+              <div className="bg-white border border-red-100 rounded-2xl shadow-sm p-8 text-center max-w-md">
+                <i className="fa-solid fa-lock text-4xl text-red-400 mb-4" />
+                <h2 className="text-xl font-bold text-gray-800 mb-2">Không có quyền truy cập</h2>
+                <p className="text-sm text-gray-500">Tài khoản của bạn chưa được cấp quyền xem chức năng này.</p>
+              </div>
+            </div>
+          ) : (
+            <Outlet />
+          )}
         </main>
       </div>
 

@@ -139,14 +139,19 @@ function TabDashboard() {
         data: {
           labels: d.doanh_thu_theo_ngay.list_ngay,
           datasets: [{
-            label: 'Doanh thu', data: d.doanh_thu_theo_ngay.list_tong_tien_hang,
+            label: 'Tổng thu nhập', data: d.doanh_thu_theo_ngay.list_tong_thu_nhap,
             backgroundColor: 'rgba(233,69,96,.1)', borderColor: '#e94560',
             borderWidth: 2.5, tension: 0.42, pointRadius: 3, fill: true,
             pointBackgroundColor: '#e94560', pointBorderColor: '#fff', pointBorderWidth: 2,
+          }, {
+            label: 'Tiền lời admin', data: d.doanh_thu_theo_ngay.list_tong_tien_hang,
+            backgroundColor: 'rgba(16,185,129,.08)', borderColor: '#10b981',
+            borderWidth: 2.5, tension: 0.42, pointRadius: 3, fill: true,
+            pointBackgroundColor: '#10b981', pointBorderColor: '#fff', pointBorderWidth: 2,
           }],
         },
         options: {
-          ...opts('Doanh thu', c => `Doanh thu: ${formatVND(c.raw)}`),
+          ...opts('Đối soát', c => `${c.dataset.label}: ${formatVND(c.raw)}`),
           scales: {
             y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,.04)' }, ticks: { callback: v => formatVND(v), font: { size: 10 } } },
             x: { grid: { display: false }, ticks: { font: { size: 10 } } },
@@ -161,12 +166,15 @@ function TabDashboard() {
         data: {
           labels: d.doanh_thu_theo_thang.map(x => x.ten_thang),
           datasets: [{
-            label: 'Doanh thu', data: d.doanh_thu_theo_thang.map(x => x.doanh_thu),
+            label: 'Tổng thu nhập', data: d.doanh_thu_theo_thang.map(x => x.tong_thu_nhap),
             backgroundColor: 'rgba(16,185,129,.75)', borderColor: '#10b981', borderWidth: 1.5, borderRadius: 6,
+          }, {
+            label: 'Tiền lời admin', data: d.doanh_thu_theo_thang.map(x => x.doanh_thu),
+            backgroundColor: 'rgba(59,130,246,.65)', borderColor: '#3b82f6', borderWidth: 1.5, borderRadius: 6,
           }],
         },
         options: {
-          ...opts('Doanh thu', c => `Doanh thu: ${formatVND(c.raw)}`),
+          ...opts('Đối soát', c => `${c.dataset.label}: ${formatVND(c.raw)}`),
           scales: {
             y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,.04)' }, ticks: { callback: v => formatVND(v), font: { size: 10 } } },
             x: { grid: { display: false }, ticks: { font: { size: 10 } } },
@@ -209,22 +217,28 @@ function TabDashboard() {
     <div className="space-y-5">
       {/* KPI row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card label="Tổng doanh thu" value={tq.tong_doanh_thu} icon="fa-sack-dollar" color="green" isVND />
-        <Card label="Tiền lời hệ thống" value={tq.tong_tien_loi} icon="fa-piggy-bank" color="blue" isVND />
-        <Card label="Đơn hàng hoàn tất" value={tq.tong_don_hang} icon="fa-bag-shopping" color="orange" />
-        <Card label="Tỷ lệ hoàn thành" value={`${tq.completion_rate || 0}%`} icon="fa-circle-check" color="purple" />
+        <Card label="Tổng thu nhập" value={tq.tong_thu_nhap} icon="fa-sack-dollar" color="green" isVND />
+        <Card label="Đối tác thực nhận" value={tq.tong_doi_tac_nhan} icon="fa-hand-holding-dollar" color="blue" isVND />
+        <Card label="Sàn giữ lại" value={tq.tong_doanh_thu} icon="fa-piggy-bank" color="purple" isVND />
+        <Card label="Đơn hoàn tất" value={tq.tong_don_hang_thanh_cong} icon="fa-bag-shopping" color="orange" />
       </div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card label="Doanh thu hôm nay" value={tq.doanh_thu_hom_nay} icon="fa-calendar-day" color="red" isVND />
-        <Card label="Doanh thu tuần này" value={tq.doanh_thu_tuan_nay} icon="fa-calendar-week" color="blue" isVND />
-        <Card label="Doanh thu tháng này" value={tq.doanh_thu_thang_nay} icon="fa-calendar" color="green" isVND />
-        <Card label="Giá trị đơn TB" value={tq.avg_order_value} icon="fa-receipt" color="orange" isVND />
+        <Card label="Thu nhập hôm nay" value={tq.tong_thu_nhap_hom_nay} icon="fa-calendar-day" color="red" isVND />
+        <Card label="Sàn giữ tuần này" value={tq.doanh_thu_tuan_nay} icon="fa-calendar-week" color="blue" isVND />
+        <Card label="Sàn giữ tháng này" value={tq.doanh_thu_thang_nay} icon="fa-calendar" color="green" isVND />
+        <Card label="Thu nhập TB / đơn" value={tq.avg_thu_nhap_order} icon="fa-receipt" color="orange" isVND />
+      </div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card label="Tiền hàng" value={tq.tong_tien_hang} icon="fa-store" color="green" isVND />
+        <Card label="Phí ship" value={tq.tong_phi_ship} icon="fa-motorcycle" color="blue" isVND />
+        <Card label="Chiết khấu quán" value={tq.tong_chiet_khau_quan_an} icon="fa-percent" color="purple" isVND />
+        <Card label="Chiết khấu ship" value={tq.tong_chiet_khau_shipper} icon="fa-percent" color="red" isVND />
       </div>
 
       {/* Charts */}
       <div className="grid lg:grid-cols-3 gap-5">
         <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-          <h3 className="font-bold text-gray-800 text-sm mb-4 flex items-center gap-2"><i className="fa-solid fa-chart-line text-red-400" />Doanh thu 30 ngày gần nhất</h3>
+          <h3 className="font-bold text-gray-800 text-sm mb-4 flex items-center gap-2"><i className="fa-solid fa-chart-line text-red-400" />Tổng thu nhập & tiền sàn giữ 30 ngày gần nhất</h3>
           <div className="h-64"><canvas ref={dailyRef} /></div>
         </div>
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
@@ -234,7 +248,7 @@ function TabDashboard() {
       </div>
 
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-        <h3 className="font-bold text-gray-800 text-sm mb-4 flex items-center gap-2"><i className="fa-solid fa-chart-column text-green-500" />Doanh thu theo tháng ({new Date().getFullYear()})</h3>
+        <h3 className="font-bold text-gray-800 text-sm mb-4 flex items-center gap-2"><i className="fa-solid fa-chart-column text-green-500" />Đối soát theo tháng ({new Date().getFullYear()})</h3>
         <div className="h-64"><canvas ref={monthRef} /></div>
       </div>
 
@@ -242,7 +256,7 @@ function TabDashboard() {
       <div className="grid lg:grid-cols-2 gap-5">
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
           <h3 className="font-bold text-gray-800 text-sm mb-1 flex items-center gap-2"><i className="fa-solid fa-trophy text-yellow-400" />Top 10 Quán Ăn</h3>
-          <p className="text-xs text-gray-400 mb-4">Xếp hạng theo tổng doanh thu</p>
+          <p className="text-xs text-gray-400 mb-4">Tổng tiền hàng, quán thực nhận và chiết khấu sàn</p>
           {!data.top_quan_an?.length
             ? <p className="text-center py-8 text-gray-300">Không có dữ liệu</p>
             : data.top_quan_an.map((q, i) => (
@@ -251,11 +265,11 @@ function TabDashboard() {
                 <img src={q.hinh_anh || 'https://placehold.co/40'} alt="" className="w-10 h-10 rounded-xl object-cover flex-shrink-0" onError={e => e.target.src='https://placehold.co/40'} />
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold text-gray-800 text-sm truncate">{q.ten_quan_an}</div>
-                  <div className="text-xs text-gray-400">{fNum(q.tong_don_hang)} đơn</div>
+                  <div className="text-xs text-gray-400">{fNum(q.tong_don_hang)} đơn · Thu {formatVND(q.tong_thu_nhap)}</div>
                 </div>
                 <div className="text-right flex-shrink-0">
-                  <div className="font-bold text-sm text-green-600">{formatVND(q.tong_doanh_thu)}</div>
-                  <div className="text-xs text-gray-400">TB: {formatVND(q.doanh_thu_trung_binh)}</div>
+                  <div className="font-bold text-sm text-green-600">Sàn: {formatVND(q.tong_doanh_thu)}</div>
+                  <div className="text-xs text-gray-400">Quán nhận: {formatVND(q.tien_quan_an_nhan)}</div>
                 </div>
               </div>
             ))
@@ -330,7 +344,7 @@ function TabKhachHang() {
       data: {
         labels: d.list_ten,
         datasets: [{
-          label: 'Tổng tiêu', data: d.list_tien,
+          label: 'Tiền lời admin', data: d.list_tien,
           backgroundColor: 'rgba(99,102,241,.7)', borderColor: '#6366f1', borderWidth: 1.5, borderRadius: 6,
         }],
       },
@@ -351,7 +365,7 @@ function TabKhachHang() {
     <div className="space-y-5">
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
         <div className="flex flex-wrap items-center justify-between gap-4 mb-5">
-          <h3 className="font-bold text-gray-800 flex items-center gap-2"><i className="fa-solid fa-users text-blue-400" />Thống kê chi tiêu theo khách hàng</h3>
+          <h3 className="font-bold text-gray-800 flex items-center gap-2"><i className="fa-solid fa-users text-blue-400" />Thống kê tiền lời admin theo khách hàng</h3>
           <div className="flex gap-3 items-center">
             <ExcelButton disabled={!data?.data?.length} onClick={() => exportToExcel(
               data.data.map((kh, i) => ({ ...kh, __stt: i + 1 })),
@@ -359,8 +373,8 @@ function TabKhachHang() {
                 { label: 'STT',          key: '__stt',         width: 6 },
                 { label: 'Khách hàng',   key: 'ho_va_ten',     width: 25 },
                 { label: 'Tổng đơn',     key: 'tong_don_hang', width: 12 },
-                { label: 'Tổng tiêu',    key: 'tong_tien_tieu',width: 16, format: v => Number(v).toLocaleString('vi-VN') },
-                { label: 'Đơn cao nhất', key: 'don_hang_max',  width: 16, format: v => Number(v).toLocaleString('vi-VN') },
+                { label: 'Tiền lời admin', key: 'tong_tien_tieu',width: 16, format: v => Number(v).toLocaleString('vi-VN') },
+                { label: 'Lời cao nhất', key: 'don_hang_max',  width: 16, format: v => Number(v).toLocaleString('vi-VN') },
               ],
               `ThongKeKH_${from}_${to}`, 'Khách Hàng'
             )} />
@@ -378,8 +392,8 @@ function TabKhachHang() {
                     <th className="px-4 py-3 text-left font-semibold">STT</th>
                     <th className="px-4 py-3 text-left font-semibold">Khách hàng</th>
                     <th className="px-4 py-3 text-right font-semibold">Tổng đơn</th>
-                    <th className="px-4 py-3 text-right font-semibold">Tổng tiêu</th>
-                    <th className="px-4 py-3 text-right font-semibold">Đơn cao nhất</th>
+                    <th className="px-4 py-3 text-right font-semibold">Tiền lời admin</th>
+                    <th className="px-4 py-3 text-right font-semibold">Lời cao nhất</th>
                   </tr></thead>
                   <tbody className="divide-y divide-gray-50">
                     {data.data.map((kh, i) => (
@@ -446,7 +460,7 @@ function TabQuanAn() {
       data: {
         labels: d.list_ten,
         datasets: [{
-          label: 'Doanh thu', data: d.list_tien,
+          label: 'Tổng thu nhập', data: d.list_tien,
           backgroundColor: 'rgba(16,185,129,.7)', borderColor: '#10b981', borderWidth: 1.5, borderRadius: 6,
         }],
       },
@@ -463,11 +477,18 @@ function TabQuanAn() {
 
   useEffect(() => () => { if (barChart.current) barChart.current.destroy(); }, []);
 
+  const totals = (data?.data || []).reduce((acc, qa) => ({
+    tong_thu_nhap: acc.tong_thu_nhap + Number(qa.tong_thu_nhap || 0),
+    tien_quan_an_nhan: acc.tien_quan_an_nhan + Number(qa.tien_quan_an_nhan || 0),
+    tien_chiet_khau_san: acc.tien_chiet_khau_san + Number(qa.tien_chiet_khau_san || 0),
+    tong_don_hang: acc.tong_don_hang + Number(qa.tong_don_hang || 0),
+  }), { tong_thu_nhap: 0, tien_quan_an_nhan: 0, tien_chiet_khau_san: 0, tong_don_hang: 0 });
+
   return (
     <div className="space-y-5">
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
         <div className="flex flex-wrap items-center justify-between gap-4 mb-5">
-          <h3 className="font-bold text-gray-800 flex items-center gap-2"><i className="fa-solid fa-store text-green-500" />Thống kê doanh thu theo quán ăn</h3>
+          <h3 className="font-bold text-gray-800 flex items-center gap-2"><i className="fa-solid fa-store text-green-500" />Đối soát thu nhập theo quán ăn</h3>
           <div className="flex gap-3 items-center">
             <ExcelButton color="green" disabled={!data?.data?.length} onClick={() => exportToExcel(
               data.data.map((qa, i) => ({ ...qa, __stt: i + 1 })),
@@ -476,7 +497,9 @@ function TabQuanAn() {
                 { label: 'Quán ăn',      key: 'ten_quan_an',   width: 25 },
                 { label: 'Tổng đơn hàng',key: 'tong_don_hang', width: 14 },
                 { label: 'KH phục vụ',   key: 'so_luong_khach_hang', width: 14 },
-                { label: 'Tổng doanh thu',key: 'tong_tien_ban', width: 16, format: v => Number(v).toLocaleString('vi-VN') },
+                { label: 'Tổng thu nhập',key: 'tong_thu_nhap', width: 16, format: v => Number(v).toLocaleString('vi-VN') },
+                { label: 'Chiết khấu sàn',key: 'tien_chiet_khau_san', width: 16, format: v => Number(v).toLocaleString('vi-VN') },
+                { label: 'Quán thực nhận',key: 'tien_quan_an_nhan', width: 16, format: v => Number(v).toLocaleString('vi-VN') },
               ],
               `ThongKeAdminQuanAn_${from}_${to}`, 'Quán Ăn'
             )} />
@@ -486,6 +509,12 @@ function TabQuanAn() {
 
         {loading ? <Skeleton h="h-80" /> : (
           <>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
+              <Card label="Tổng thu nhập quán" value={totals.tong_thu_nhap} icon="fa-sack-dollar" color="green" isVND />
+              <Card label="Quán thực nhận" value={totals.tien_quan_an_nhan} icon="fa-hand-holding-dollar" color="blue" isVND />
+              <Card label="Sàn chiết khấu" value={totals.tien_chiet_khau_san} icon="fa-percent" color="purple" isVND />
+              <Card label="Tổng đơn" value={totals.tong_don_hang} icon="fa-bag-shopping" color="orange" />
+            </div>
             <div className="h-80 mb-5"><canvas ref={barRef} /></div>
             {data?.data?.length > 0 && (
               <div className="overflow-x-auto rounded-xl border border-gray-100">
@@ -495,7 +524,9 @@ function TabQuanAn() {
                     <th className="px-4 py-3 text-left font-semibold">Quán ăn</th>
                     <th className="px-4 py-3 text-right font-semibold">Tổng đơn hàng</th>
                     <th className="px-4 py-3 text-right font-semibold">KH phục vụ</th>
-                    <th className="px-4 py-3 text-right font-semibold">Tổng doanh thu</th>
+                    <th className="px-4 py-3 text-right font-semibold">Tổng thu nhập</th>
+                    <th className="px-4 py-3 text-right font-semibold">Chiết khấu sàn</th>
+                    <th className="px-4 py-3 text-right font-semibold">Quán thực nhận</th>
                   </tr></thead>
                   <tbody className="divide-y divide-gray-50">
                     {data.data.map((qa, i) => (
@@ -504,7 +535,9 @@ function TabQuanAn() {
                         <td className="px-4 py-3 font-semibold text-gray-800">{qa.ten_quan_an}</td>
                         <td className="px-4 py-3 text-right text-gray-600">{fNum(qa.tong_don_hang)}</td>
                         <td className="px-4 py-3 text-right text-gray-600">{fNum(qa.so_luong_khach_hang)}</td>
-                        <td className="px-4 py-3 text-right font-bold text-green-600">{formatVND(qa.tong_tien_ban)}</td>
+                        <td className="px-4 py-3 text-right font-bold text-green-600">{formatVND(qa.tong_thu_nhap)}</td>
+                        <td className="px-4 py-3 text-right text-purple-600 font-semibold">{formatVND(qa.tien_chiet_khau_san)}</td>
+                        <td className="px-4 py-3 text-right text-blue-600 font-semibold">{formatVND(qa.tien_quan_an_nhan)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -519,7 +552,149 @@ function TabQuanAn() {
 }
 
 // ══════════════════════════════════════════
-// TAB 4 — Đơn Hủy & Xu Hướng
+// TAB 4 — Thống Kê Shipper
+// ══════════════════════════════════════════
+function TabShipper() {
+  const today = new Date().toISOString().slice(0, 10);
+  const firstDay = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10);
+
+  const [from, setFrom] = useState(firstDay);
+  const [to, setTo] = useState(today);
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const barRef = useRef(null);
+  const barChart = useRef(null);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const r = await adm('post', '/api/admin/thong-ke/thong-ke-tien-shipper', { day_begin: from, day_end: to });
+      setData(r.data);
+      setTimeout(() => drawBar(r.data), 100);
+    } catch (e) { console.error(e); }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => {
+    load();
+    const handleUpdate = (e) => {
+      if (e.loai === 'dashboard_update') load();
+    };
+    if (window.adminEventBus) window.adminEventBus.on('admin_alert', handleUpdate);
+    return () => {
+      if (window.adminEventBus) window.adminEventBus.off('admin_alert', handleUpdate);
+    };
+  }, []);
+
+  const drawBar = (d) => {
+    if (barChart.current) { barChart.current.destroy(); barChart.current = null; }
+    if (!barRef.current || !d?.list_ten?.length) return;
+    barChart.current = new Chart(barRef.current, {
+      type: 'bar',
+      data: {
+        labels: d.list_ten,
+        datasets: [{
+          label: 'Tổng phí ship', data: d.list_tien,
+          backgroundColor: 'rgba(14,165,233,.7)', borderColor: '#0ea5e9', borderWidth: 1.5, borderRadius: 6,
+        }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+        plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => formatVND(c.raw) } } },
+        scales: {
+          x: { beginAtZero: true, ticks: { callback: v => formatVND(v), font: { size: 10 } }, grid: { color: 'rgba(0,0,0,.04)' } },
+          y: { grid: { display: false }, ticks: { font: { size: 11 } } },
+        },
+      },
+    });
+  };
+
+  useEffect(() => () => { if (barChart.current) barChart.current.destroy(); }, []);
+
+  const totals = (data?.data || []).reduce((acc, sp) => ({
+    tong_phi_ship: acc.tong_phi_ship + Number(sp.tong_phi_ship || 0),
+    tien_shipper_nhan: acc.tien_shipper_nhan + Number(sp.tien_shipper_nhan || 0),
+    tien_loi_admin: acc.tien_loi_admin + Number(sp.tien_loi_admin || 0),
+    tong_don_hang: acc.tong_don_hang + Number(sp.tong_don_hang || 0),
+  }), { tong_phi_ship: 0, tien_shipper_nhan: 0, tien_loi_admin: 0, tong_don_hang: 0 });
+
+  return (
+    <div className="space-y-5">
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-5">
+          <h3 className="font-bold text-gray-800 flex items-center gap-2"><i className="fa-solid fa-motorcycle text-sky-500" />Đối soát thu nhập theo shipper</h3>
+          <div className="flex gap-3 items-center">
+            <ExcelButton color="blue" disabled={!data?.data?.length} onClick={() => exportToExcel(
+              data.data.map((sp, i) => ({ ...sp, __stt: i + 1 })),
+              [
+                { label: 'STT', key: '__stt', width: 6 },
+                { label: 'Shipper', key: 'ho_va_ten', width: 25 },
+                { label: 'SĐT', key: 'so_dien_thoai', width: 16 },
+                { label: 'Tổng đơn hàng', key: 'tong_don_hang', width: 14 },
+                { label: 'KH phục vụ', key: 'so_luong_khach_hang', width: 14 },
+                { label: 'Quán phục vụ', key: 'so_luong_quan_an', width: 14 },
+                { label: 'Tổng phí ship', key: 'tong_phi_ship', width: 16, format: v => Number(v).toLocaleString('vi-VN') },
+                { label: 'Shipper nhận', key: 'tien_shipper_nhan', width: 16, format: v => Number(v).toLocaleString('vi-VN') },
+                { label: 'Tiền lời admin', key: 'tien_loi_admin', width: 16, format: v => Number(v).toLocaleString('vi-VN') },
+              ],
+              `ThongKeAdminShipper_${from}_${to}`, 'Shipper'
+            )} />
+            <DatePicker from={from} to={to} onFromChange={setFrom} onToChange={setTo} onApply={load} loading={loading} />
+          </div>
+        </div>
+
+        {loading ? <Skeleton h="h-80" /> : (
+          <>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
+              <Card label="Số cuốc xe" value={totals.tong_don_hang} icon="fa-route" color="orange" />
+              <Card label="Tổng phí ship" value={totals.tong_phi_ship} icon="fa-sack-dollar" color="green" isVND />
+              <Card label="Shipper thực nhận" value={totals.tien_shipper_nhan} icon="fa-hand-holding-dollar" color="blue" isVND />
+              <Card label="Tiền lời admin" value={totals.tien_loi_admin} icon="fa-percent" color="purple" isVND />
+            </div>
+            <div className="h-80 mb-5"><canvas ref={barRef} /></div>
+            {data?.data?.length > 0 && (
+              <div className="overflow-x-auto rounded-xl border border-gray-100">
+                <table className="w-full text-sm">
+                  <thead><tr className="bg-gray-50 text-gray-500 text-xs uppercase">
+                    <th className="px-4 py-3 text-left font-semibold">STT</th>
+                    <th className="px-4 py-3 text-left font-semibold">Shipper</th>
+                    <th className="px-4 py-3 text-right font-semibold">Tổng đơn</th>
+                    <th className="px-4 py-3 text-right font-semibold">KH phục vụ</th>
+                    <th className="px-4 py-3 text-right font-semibold">Quán phục vụ</th>
+                    <th className="px-4 py-3 text-right font-semibold">Tổng phí ship</th>
+                    <th className="px-4 py-3 text-right font-semibold">Shipper nhận</th>
+                    <th className="px-4 py-3 text-right font-semibold">Tiền lời admin</th>
+                  </tr></thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {data.data.map((sp, i) => (
+                      <tr key={i} className="hover:bg-sky-50/40 transition-colors">
+                        <td className="px-4 py-3 text-gray-400 text-xs">{i + 1}</td>
+                        <td className="px-4 py-3">
+                          <div className="font-semibold text-gray-800">{sp.ho_va_ten}</div>
+                          <div className="text-xs text-gray-400">{sp.so_dien_thoai}</div>
+                        </td>
+                        <td className="px-4 py-3 text-right text-gray-600">{fNum(sp.tong_don_hang)}</td>
+                        <td className="px-4 py-3 text-right text-gray-600">{fNum(sp.so_luong_khach_hang)}</td>
+                        <td className="px-4 py-3 text-right text-gray-600">{fNum(sp.so_luong_quan_an)}</td>
+                        <td className="px-4 py-3 text-right text-gray-600">{formatVND(sp.tong_phi_ship)}</td>
+                        <td className="px-4 py-3 text-right text-blue-600 font-semibold">{formatVND(sp.tien_shipper_nhan)}</td>
+                        <td className="px-4 py-3 text-right font-bold text-sky-600">{formatVND(sp.tien_loi_admin)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════
+// TAB 5 — Đơn Hủy & Xu Hướng
 // ══════════════════════════════════════════
 function TabHuyDon() {
   const today    = new Date().toISOString().slice(0, 10);
@@ -698,23 +873,48 @@ function TabHuyDon() {
 // ══════════════════════════════════════════
 // MAIN COMPONENT
 // ══════════════════════════════════════════
-const TABS = [
-  { id: 'dashboard',  label: 'Tổng Quan',  icon: 'fa-gauge-high' },
-  { id: 'khach-hang', label: 'Khách Hàng', icon: 'fa-users' },
-  { id: 'quan-an',    label: 'Quán Ăn',    icon: 'fa-store' },
-  { id: 'huy-don',    label: 'Đơn Hủy',    icon: 'fa-ban' },
+const TABS_CONFIG = [
+  { id: 'dashboard',  label: 'Tổng Quan',  icon: 'fa-gauge-high', perm: 58 },
+  { id: 'khach-hang', label: 'Khách Hàng', icon: 'fa-users',      perm: 96 },
+  { id: 'quan-an',    label: 'Quán Ăn',    icon: 'fa-store',     perm: 97 },
+  { id: 'shipper',    label: 'Shipper',    icon: 'fa-motorcycle', perm: 43 },
+  { id: 'huy-don',    label: 'Đơn Hủy',    icon: 'fa-ban',       perm: 43 },
 ];
 
 export default function AdminThongKe() {
-  const [tab, setTab] = useState('dashboard');
+  const [tab, setTab] = useState(null);
+  const [admin, setAdmin] = useState(null);
   const [pdfLoading, setPdfLoading] = useState(false);
   const contentRef = useRef(null);
+
+  useEffect(() => {
+    const cfg = { headers: { Authorization: `Bearer ${localStorage.getItem('nhan_vien_login')}` } };
+    api.get('/api/admin/profile', cfg).then(r => {
+      if (r.data.status) {
+        const u = r.data.data;
+        setAdmin(u);
+        const isMaster = Number(u.is_master) === 1;
+        const ids = u.phan_quyen_ids || [];
+        const first = TABS_CONFIG.find(t => isMaster || ids.includes(t.perm));
+        if (first) setTab(first.id);
+      }
+    }).catch(() => {});
+  }, []);
+
+  const can = (perm) => {
+    if (!admin) return false;
+    if (Number(admin.is_master) === 1) return true;
+    return (admin.phan_quyen_ids || []).includes(perm);
+  };
+
+  const allowedTabs = TABS_CONFIG.filter(t => can(t.perm));
 
   const handleExportPDF = () => {
     const TAB_NAMES = {
       'dashboard':  'BaoCao_TongQuan',
       'khach-hang': 'BaoCao_KhachHang',
       'quan-an':    'BaoCao_QuanAn',
+      'shipper':    'BaoCao_Shipper',
       'huy-don':    'BaoCao_DonHuy',
     };
     exportElementToPDF(contentRef.current, TAB_NAMES[tab] || 'BaoCao_FoodBee', {
@@ -723,6 +923,22 @@ export default function AdminThongKe() {
       onDone:  () => setPdfLoading(false),
     });
   };
+
+  if (!admin) return (
+    <div className="min-h-[60vh] flex items-center justify-center">
+      <div className="w-10 h-10 rounded-full border-4 border-red-100 border-t-red-500 animate-spin" />
+    </div>
+  );
+
+  if (!tab) return (
+    <div className="min-h-[60vh] flex items-center justify-center p-6">
+      <div className="bg-white border border-red-100 rounded-2xl shadow-sm p-8 text-center max-w-md">
+        <i className="fa-solid fa-lock text-4xl text-red-400 mb-4" />
+        <h2 className="text-xl font-bold text-gray-800 mb-2">Không có quyền truy cập</h2>
+        <p className="text-sm text-gray-500">Tài khoản chưa được cấp quyền xem Thống Kê.</p>
+      </div>
+    </div>
+  );
 
   return (
     <div className="p-6 space-y-5">
@@ -733,29 +949,25 @@ export default function AdminThongKe() {
             <i className="fa-solid fa-chart-line text-red-500" />
             Thống Kê Hệ Thống
           </h1>
-          <p className="text-gray-400 text-sm mt-1">Phân tích doanh thu và hiệu suất hoạt động</p>
+          <p className="text-gray-400 text-sm mt-1">Phân tích tiền lời admin và hiệu suất hoạt động</p>
         </div>
-        {/* Export PDF button */}
-        <PDFButton
-          onClick={handleExportPDF}
-          loading={pdfLoading}
-          label="Export PDF"
-        />
+        <PDFButton onClick={handleExportPDF} loading={pdfLoading} label="Export PDF" />
       </div>
 
-      {/* Tab bar */}
+      {/* Tab bar — chỉ hiện tab được phép */}
       <div className="flex items-center gap-2 bg-white border border-gray-100 rounded-2xl p-1.5 shadow-sm w-fit">
-        {TABS.map(t => (
+        {allowedTabs.map(t => (
           <TabBtn key={t.id} active={tab === t.id} onClick={() => setTab(t.id)} icon={t.icon} label={t.label} />
         ))}
       </div>
 
-      {/* Tab content — captured by contentRef for PDF export */}
+      {/* Tab content */}
       <div ref={contentRef}>
-        {tab === 'dashboard'  && <TabDashboard />}
-        {tab === 'khach-hang' && <TabKhachHang />}
-        {tab === 'quan-an'    && <TabQuanAn />}
-        {tab === 'huy-don'    && <TabHuyDon />}
+        {tab === 'dashboard'  && can(58) && <TabDashboard />}
+        {tab === 'khach-hang' && can(96) && <TabKhachHang />}
+        {tab === 'quan-an'    && can(97) && <TabQuanAn />}
+        {tab === 'shipper'    && can(43) && <TabShipper />}
+        {tab === 'huy-don'    && can(43) && <TabHuyDon />}
       </div>
     </div>
   );

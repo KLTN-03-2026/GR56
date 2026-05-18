@@ -8,6 +8,9 @@ const adm = (url, method='get', data=null) => {
   const cfg = { headers: { Authorization: `Bearer ${localStorage.getItem('nhan_vien_login')}` } };
   return method==='get' ? api.get(url,cfg) : api.post(url,data,cfg);
 };
+
+const getProfile = () => adm('/api/admin/profile');
+
 const INPUT = 'w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100 transition-all';
 const LABEL = 'block text-sm font-semibold text-gray-700 mb-1.5';
 
@@ -340,21 +343,53 @@ function TabTinhHuyen() {
 
 // ======== MAIN ========
 export default function AdminDanhMuc() {
-  const [tab, setTab] = useState('danh_muc');
+  const [tab, setTab] = useState(null);
+  const [admin, setAdmin] = useState(null);
+
+  useEffect(() => {
+    getProfile().then(r => {
+      if (r.data.status) {
+        const u = r.data.data;
+        setAdmin(u);
+        const isMaster = Number(u.is_master) === 1;
+        const ids = u.phan_quyen_ids || [];
+        if (isMaster || ids.includes(22)) setTab('danh_muc');
+        else if (isMaster || ids.includes(99)) setTab('tinh_huyen');
+      }
+    }).catch(() => {});
+  }, []);
+
+  const can = (perm) => {
+    if (!admin) return false;
+    if (Number(admin.is_master) === 1) return true;
+    return (admin.phan_quyen_ids || []).includes(perm);
+  };
+
+  if (!admin) return <div className="min-h-[60vh] flex items-center justify-center"><div className="w-8 h-8 border-4 border-teal-100 border-t-teal-500 rounded-full animate-spin"/></div>;
+  if (!tab) return (
+    <div className="min-h-[60vh] flex items-center justify-center p-6">
+      <div className="bg-white border border-red-100 rounded-2xl shadow-sm p-8 text-center max-w-md">
+        <i className="fa-solid fa-lock text-4xl text-red-400 mb-4" />
+        <h2 className="text-xl font-bold text-gray-800 mb-2">Không có quyền truy cập</h2>
+        <p className="text-sm text-gray-500">Tài khoản chưa được cấp quyền xem chức năng này.</p>
+      </div>
+    </div>
+  );
+
   return (
     <div className="p-6">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900"><i className="fa-solid fa-layer-group mr-3 text-teal-500"/>Quản Lý Danh Mục & Địa Lý</h1>
       </div>
       <div className="flex gap-1 mb-6 bg-gray-100 rounded-2xl p-1 w-fit">
-        <button onClick={()=>setTab('danh_muc')} className={`px-5 py-2 rounded-xl text-sm font-bold transition-all ${tab==='danh_muc'?'bg-white text-teal-700 shadow-sm':'text-gray-500 hover:text-gray-700'}`}>
+        {can(22) && <button onClick={()=>setTab('danh_muc')} className={`px-5 py-2 rounded-xl text-sm font-bold transition-all ${tab==='danh_muc'?'bg-white text-teal-700 shadow-sm':'text-gray-500 hover:text-gray-700'}`}>
           <i className="fa-solid fa-bars mr-2"/>Danh Mục Món Ăn
-        </button>
-        <button onClick={()=>setTab('tinh_huyen')} className={`px-5 py-2 rounded-xl text-sm font-bold transition-all ${tab==='tinh_huyen'?'bg-white text-teal-700 shadow-sm':'text-gray-500 hover:text-gray-700'}`}>
+        </button>}
+        {can(99) && <button onClick={()=>setTab('tinh_huyen')} className={`px-5 py-2 rounded-xl text-sm font-bold transition-all ${tab==='tinh_huyen'?'bg-white text-teal-700 shadow-sm':'text-gray-500 hover:text-gray-700'}`}>
           <i className="fa-solid fa-city mr-2"/>Tỉnh/Huyện
-        </button>
+        </button>}
       </div>
-      {tab==='danh_muc' ? <TabDanhMuc/> : <TabTinhHuyen/>}
+      {tab==='danh_muc' && can(22) ? <TabDanhMuc/> : tab==='tinh_huyen' && can(99) ? <TabTinhHuyen/> : null}
     </div>
   );
 }
