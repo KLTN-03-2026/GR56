@@ -17,6 +17,7 @@ use App\Http\Controllers\DonHangController;
 use App\Http\Controllers\KhachHangController;
 use App\Http\Controllers\MonAnController;
 use App\Http\Controllers\NhanVienController;
+use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PhanQuyenController;
 use App\Http\Controllers\QuanAnController;
 use App\Http\Controllers\QuanHuyenController;
@@ -130,179 +131,178 @@ Route::group(['prefix' => '/admin', 'middleware' => 'nhanVienMiddle'], function 
     Route::get('/dang-xuat-tat-ca', [NhanVienController::class, 'DangXuatAll']);
 
     // Quản lý Cấu hình hệ thống
-    Route::get('/cau-hinh', [\App\Http\Controllers\CauHinhController::class, 'getCauHinhAdmin']);
-    Route::post('/cau-hinh', [\App\Http\Controllers\CauHinhController::class, 'updateCauHinhAdmin']);
+    Route::get('/cau-hinh', [\App\Http\Controllers\CauHinhController::class, 'getCauHinhAdmin'])->middleware('permissionMiddle:46');
+    Route::post('/cau-hinh', [\App\Http\Controllers\CauHinhController::class, 'updateCauHinhAdmin'])->middleware('permissionMiddle:46');
 
     // Quản lý Danh Mục
-    Route::get('/danh-muc/data', [DanhMucController::class, 'getData']);
-    Route::post('/danh-muc/create', [DanhMucController::class, 'store']);
-    Route::post('/danh-muc/update', [DanhMucController::class, 'update']);
-    Route::post('/danh-muc/delete', [DanhMucController::class, 'destroy']);
-    Route::post('/danh-muc/change-status', [DanhMucController::class, 'changeStatus']);
-    Route::post('/danh-muc/tim-kiem', [DanhMucController::class, 'search']);
+    Route::get('/danh-muc/data', [DanhMucController::class, 'getData'])->middleware('permissionMiddle:22');
+    Route::post('/danh-muc/create', [DanhMucController::class, 'store'])->middleware('permissionMiddle:23');
+    Route::post('/danh-muc/update', [DanhMucController::class, 'update'])->middleware('permissionMiddle:25');
+    Route::post('/danh-muc/delete', [DanhMucController::class, 'destroy'])->middleware('permissionMiddle:24');
+    Route::post('/danh-muc/change-status', [DanhMucController::class, 'changeStatus'])->middleware('permissionMiddle:26');
+    Route::post('/danh-muc/tim-kiem', [DanhMucController::class, 'search'])->middleware('permissionMiddle:22');
 
     // Quản lý Voucher
-    Route::get('/voucher/data', [VoucherController::class, 'getData']);
-    Route::post('/voucher/create', [VoucherController::class, 'store']);
-    Route::post('/voucher/update', [VoucherController::class, 'update']);
-    Route::post('/voucher/delete', [VoucherController::class, 'destroy']);
-    Route::post('/voucher/change-status', [VoucherController::class, 'changeStatus']);
-    Route::post('/voucher/auto-generate', [VoucherController::class, 'autoGenerate']);
-    Route::post('/voucher/batch-generate', [VoucherController::class, 'batchGenerate']);
-    Route::get('/voucher/thong-ke', [VoucherController::class, 'thongKeVoucher']);
-    Route::post('/voucher/gui-email-khuyen-mai', [VoucherController::class, 'guiEmailKhuyenMai']);
+    Route::get('/voucher/data', [VoucherController::class, 'getData'])->middleware('permissionMiddle:17');
+    Route::post('/voucher/create', [VoucherController::class, 'store'])->middleware('permissionMiddle:18');
+    Route::post('/voucher/update', [VoucherController::class, 'update'])->middleware('permissionMiddle:20');
+    Route::post('/voucher/delete', [VoucherController::class, 'destroy'])->middleware('permissionMiddle:19');
+    Route::post('/voucher/change-status', [VoucherController::class, 'changeStatus'])->middleware('permissionMiddle:21');
+    Route::post('/voucher/auto-generate', [VoucherController::class, 'autoGenerate'])->middleware('permissionMiddle:18');
+    Route::post('/voucher/batch-generate', [VoucherController::class, 'batchGenerate'])->middleware('permissionMiddle:18');
+    Route::get('/voucher/thong-ke', [VoucherController::class, 'thongKeVoucher'])->middleware('permissionMiddle:42');
+    Route::post('/voucher/gui-email-khuyen-mai', [VoucherController::class, 'guiEmailKhuyenMai'])->middleware('permissionMiddle:55');
 
     // Quản lý Khách Hàng
-    Route::get('/khach-hang/data', [KhachHangController::class, 'getData']);
-    Route::post('/khach-hang/create', [KhachHangController::class, 'store']);
-    Route::post('/khach-hang/update', [KhachHangController::class, 'update']);
-    Route::post('/khach-hang/delete', [KhachHangController::class, 'destroy']);
-    Route::post('/khach-hang/change-status', [KhachHangController::class, 'changeStatus']);
-    Route::post('/khach-hang/change-active', [KhachHangController::class, 'changeActive']);
-    Route::post('/khach-hang/cap-nhat-xu', [KhachHangController::class, 'capNhatXu']);
-    Route::post('/khach-hang/tim-kiem', [KhachHangController::class, 'search']);
+    Route::get('/khach-hang/data', [KhachHangController::class, 'getData'])->middleware('permissionMiddle:12');
+    Route::post('/khach-hang/create', [KhachHangController::class, 'store'])->middleware('permissionMiddle:12');
+    Route::post('/khach-hang/update', [KhachHangController::class, 'update'])->middleware('permissionMiddle:13');
+    Route::post('/khach-hang/delete', [KhachHangController::class, 'destroy'])->middleware('permissionMiddle:15');
+    Route::post('/khach-hang/change-status', [KhachHangController::class, 'changeStatus'])->middleware('permissionMiddle:14');
+    Route::post('/khach-hang/change-active', [KhachHangController::class, 'changeActive'])->middleware('permissionMiddle:14');
+    Route::post('/khach-hang/cap-nhat-xu', [KhachHangController::class, 'capNhatXu'])->middleware('permissionMiddle:13');
+    Route::post('/khach-hang/tim-kiem', [KhachHangController::class, 'search'])->middleware('permissionMiddle:16');
 
     // Quản lý Quán Ăn
-    Route::get('/quan-an/data', [QuanAnController::class, 'getData']);
-    Route::post('/quan-an/create', [QuanAnController::class, 'store']);
-    Route::post('/quan-an/update', [QuanAnController::class, 'update']);
-    Route::post('/quan-an/delete', [QuanAnController::class, 'destroy']);
-    Route::post('/quan-an/change-status', [QuanAnController::class, 'changeStatus']);
-    Route::post('/quan-an/change-active', [QuanAnController::class, 'changeActive']);
-    Route::post('/quan-an/tim-kiem', [QuanAnController::class, 'search']);
+    Route::get('/quan-an/data', [QuanAnController::class, 'getData'])->middleware('permissionMiddle:28');
+    Route::post('/quan-an/create', [QuanAnController::class, 'store'])->middleware('permissionMiddle:29');
+    Route::post('/quan-an/update', [QuanAnController::class, 'update'])->middleware('permissionMiddle:30');
+    Route::post('/quan-an/delete', [QuanAnController::class, 'destroy'])->middleware('permissionMiddle:31');
+    Route::post('/quan-an/change-status', [QuanAnController::class, 'changeStatus'])->middleware('permissionMiddle:32');
+    Route::post('/quan-an/change-active', [QuanAnController::class, 'changeActive'])->middleware('permissionMiddle:27');
+    Route::post('/quan-an/tim-kiem', [QuanAnController::class, 'search'])->middleware('permissionMiddle:28');
 
     // Quản lý Shipper
-    Route::get('/shipper/data', [ShipperController::class, 'getData']);
-    Route::post('/shipper/create', [ShipperController::class, 'store']);
-    Route::post('/shipper/update', [ShipperController::class, 'update']);
-    Route::post('/shipper/delete', [ShipperController::class, 'destroy']);
-    Route::post('/shipper/change-status', [ShipperController::class, 'changeStatus']);
-    Route::post('/shipper/active', [ShipperController::class, 'active']);
-    Route::post('/shipper/tim-kiem', [ShipperController::class, 'search']);
+    Route::get('/shipper/data', [ShipperController::class, 'getData'])->middleware('permissionMiddle:6');
+    Route::post('/shipper/create', [ShipperController::class, 'store'])->middleware('permissionMiddle:7');
+    Route::post('/shipper/update', [ShipperController::class, 'update'])->middleware('permissionMiddle:8');
+    Route::post('/shipper/delete', [ShipperController::class, 'destroy'])->middleware('permissionMiddle:9');
+    Route::post('/shipper/change-status', [ShipperController::class, 'changeStatus'])->middleware('permissionMiddle:10');
+    Route::post('/shipper/active', [ShipperController::class, 'active'])->middleware('permissionMiddle:11');
+    Route::post('/shipper/tim-kiem', [ShipperController::class, 'search'])->middleware('permissionMiddle:6');
 
     // Quản lý Nhân Viên & Chức Vụ & Phân Quyền
-    Route::get('/nhan-vien/data', [NhanVienController::class, 'getData']);
-    Route::post('/nhan-vien/create', [NhanVienController::class, 'store']);
-    Route::post('/nhan-vien/update', [NhanVienController::class, 'update']);
-    Route::post('/nhan-vien/delete', [NhanVienController::class, 'destroy']);
-    Route::post('/nhan-vien/change-status', [NhanVienController::class, 'changeStatus']);
-    Route::post('/nhan-vien/tim-kiem', [NhanVienController::class, 'search']);
+    Route::get('/nhan-vien/data', [NhanVienController::class, 'getData'])->middleware('permissionMiddle:1');
+    Route::post('/nhan-vien/create', [NhanVienController::class, 'store'])->middleware('permissionMiddle:2');
+    Route::post('/nhan-vien/update', [NhanVienController::class, 'update'])->middleware('permissionMiddle:3');
+    Route::post('/nhan-vien/delete', [NhanVienController::class, 'destroy'])->middleware('permissionMiddle:4');
+    Route::post('/nhan-vien/change-status', [NhanVienController::class, 'changeStatus'])->middleware('permissionMiddle:5');
+    Route::post('/nhan-vien/tim-kiem', [NhanVienController::class, 'search'])->middleware('permissionMiddle:1');
 
-    Route::get('/chuc-vu/data', [ChucVuController::class, 'getData']);
-    Route::post('/chuc-vu/create', [ChucVuController::class, 'store']);
-    Route::post('/chuc-vu/update', [ChucVuController::class, 'update']);
-    Route::post('/chuc-vu/delete', [ChucVuController::class, 'destroy']);
-    Route::post('/chuc-vu/change-status', [ChucVuController::class, 'changeStatus']);
-    Route::post('/chuc-vu/search', [ChucVuController::class, 'searchChucVu']);
+    Route::get('/chuc-vu/data', [ChucVuController::class, 'getData'])->middleware('permissionMiddle:34');
+    Route::post('/chuc-vu/create', [ChucVuController::class, 'store'])->middleware('permissionMiddle:33');
+    Route::post('/chuc-vu/update', [ChucVuController::class, 'update'])->middleware('permissionMiddle:36');
+    Route::post('/chuc-vu/delete', [ChucVuController::class, 'destroy'])->middleware('permissionMiddle:37');
+    Route::post('/chuc-vu/change-status', [ChucVuController::class, 'changeStatus'])->middleware('permissionMiddle:38');
+    Route::post('/chuc-vu/search', [ChucVuController::class, 'searchChucVu'])->middleware('permissionMiddle:39');
 
-    Route::get('/chuc-nang/data', [ChucNangController::class, 'getData']);
-    Route::get('/phan-quyen/chi-tiet-data', [PhanQuyenController::class, 'getData']);
-    Route::post('/phan-quyen-chuc-vu/create', [PhanQuyenController::class, 'store']);
-    Route::post('/phan-quyen-chuc-vu/delete', [PhanQuyenController::class, 'destroy']);
+    Route::get('/chuc-nang/data', [ChucNangController::class, 'getData'])->middleware('permissionMiddle:40');
+    Route::get('/phan-quyen/chi-tiet-data', [PhanQuyenController::class, 'getData'])->middleware('permissionMiddle:41');
+    Route::post('/phan-quyen-chuc-vu/create', [PhanQuyenController::class, 'store'])->middleware('permissionMiddle:56');
+    Route::post('/phan-quyen-chuc-vu/delete', [PhanQuyenController::class, 'destroy'])->middleware('permissionMiddle:57');
 
     // Quản lý Món Ăn
-    Route::get('/mon-an/data', [MonAnController::class, 'getData']);
-    Route::post('/mon-an/create', [MonAnController::class, 'store']);
-    Route::post('/mon-an/update', [MonAnController::class, 'update']);
-    Route::post('/mon-an/delete', [MonAnController::class, 'destroy']);
-    Route::post('/mon-an/change-status', [MonAnController::class, 'changeStatus']);
-    Route::post('/mon-an/tim-kiem', [MonAnController::class, 'search']);
+    Route::get('/mon-an/data', [MonAnController::class, 'getData'])->middleware('permissionMiddle:64');
+    Route::post('/mon-an/create', [MonAnController::class, 'store'])->middleware('permissionMiddle:65');
+    Route::post('/mon-an/update', [MonAnController::class, 'update'])->middleware('permissionMiddle:66');
+    Route::post('/mon-an/delete', [MonAnController::class, 'destroy'])->middleware('permissionMiddle:67');
+    Route::post('/mon-an/change-status', [MonAnController::class, 'changeStatus'])->middleware('permissionMiddle:68');
+    Route::post('/mon-an/tim-kiem', [MonAnController::class, 'search'])->middleware('permissionMiddle:69');
 
     // Địa Lý
-    Route::get('/tinh-thanh/data', [TinhThanhController::class, 'getData']);
-    Route::post('/tinh-thanh/create', [TinhThanhController::class, 'store']);
-    Route::post('/tinh-thanh/update', [TinhThanhController::class, 'update']);
-    Route::post('/tinh-thanh/delete', [TinhThanhController::class, 'destroy']);
-    Route::post('/tinh-thanh/change-status', [TinhThanhController::class, 'changeStatus']);
+    Route::get('/tinh-thanh/data', [TinhThanhController::class, 'getData'])->middleware('permissionMiddle:99');
+    Route::post('/tinh-thanh/create', [TinhThanhController::class, 'store'])->middleware('permissionMiddle:100');
+    Route::post('/tinh-thanh/update', [TinhThanhController::class, 'update'])->middleware('permissionMiddle:101');
+    Route::post('/tinh-thanh/delete', [TinhThanhController::class, 'destroy'])->middleware('permissionMiddle:102');
+    Route::post('/tinh-thanh/change-status', [TinhThanhController::class, 'changeStatus'])->middleware('permissionMiddle:103');
 
-    Route::post('/quan-huyen/data', [QuanHuyenController::class, 'getData']);
-    Route::post('/quan-huyen/create', [QuanHuyenController::class, 'store']);
-    Route::post('/quan-huyen/update', [QuanHuyenController::class, 'update']);
-    Route::post('/quan-huyen/delete', [QuanHuyenController::class, 'destroy']);
-    Route::post('/quan-huyen/change-status', [QuanHuyenController::class, 'changeStatus']);
+    Route::post('/quan-huyen/data', [QuanHuyenController::class, 'getData'])->middleware('permissionMiddle:104');
+    Route::post('/quan-huyen/create', [QuanHuyenController::class, 'store'])->middleware('permissionMiddle:105');
+    Route::post('/quan-huyen/update', [QuanHuyenController::class, 'update'])->middleware('permissionMiddle:106');
+    Route::post('/quan-huyen/delete', [QuanHuyenController::class, 'destroy'])->middleware('permissionMiddle:107');
+    Route::post('/quan-huyen/change-status', [QuanHuyenController::class, 'changeStatus'])->middleware('permissionMiddle:108');
 
     // Đơn Hàng & Thống Kê
-    Route::get('/don-hang/data', [DonHangController::class, 'getDonHangAdmin']);
-    Route::post('/don-hang/data-chi-tiet', [DonHangController::class, 'getChiTietDonHangAdmin']);
-    Route::post('/don-hang/huy-don-hang', [DonHangController::class, 'huyDonHangAdmin']);
-    Route::get('/don-hang/thong-tin-day-du', [DonHangController::class, 'getDonHangAdmin']);
-    Route::post('/don-hang/chi-tiet-day-du', [DonHangController::class, 'getChiTietDonHangAdmin']);
-    Route::post('/don-hang/theo-doi', [DonHangController::class, 'theoDoiDonHangAdmin']);
-    Route::get('/don-hang/chatbot', [DonHangController::class, 'getDonHangChatbot']);
+    Route::get('/don-hang/data', [DonHangController::class, 'getDonHangAdmin'])->middleware('permissionMiddle:59');
+    Route::post('/don-hang/data-chi-tiet', [DonHangController::class, 'getChiTietDonHangAdmin'])->middleware('permissionMiddle:60');
+    Route::post('/don-hang/huy-don-hang', [DonHangController::class, 'huyDonHangAdmin'])->middleware('permissionMiddle:61');
+    Route::get('/don-hang/thong-tin-day-du', [DonHangController::class, 'getDonHangAdmin'])->middleware('permissionMiddle:60');
+    Route::post('/don-hang/chi-tiet-day-du', [DonHangController::class, 'getChiTietDonHangAdmin'])->middleware('permissionMiddle:60');
+    Route::post('/don-hang/theo-doi', [DonHangController::class, 'theoDoiDonHangAdmin'])->middleware('permissionMiddle:62');
+    Route::get('/don-hang/chatbot', [DonHangController::class, 'getDonHangChatbot'])->middleware('permissionMiddle:63');
 
 
-    Route::post('/thong-ke/thong-ke-tien-khach-hang', [ThongKeAdminController::class, 'thongKeTienKhachHang']);
-    Route::post('/thong-ke/thong-ke-tien-quan-an', [ThongKeAdminController::class, 'thongKeTienQuanAn']);
-    Route::post('/thong-ke/thong-ke-tien-shipper', [ThongKeAdminController::class, 'thongKeTienShipper']);
-    Route::get('/thong-ke/dashboard', [ThongKeAdminController::class, 'dashboard']);
-    Route::post('/thong-ke/huy-don', [ThongKeAdminController::class, 'thongKeHuyDon']);
+    Route::post('/thong-ke/thong-ke-tien-khach-hang', [ThongKeAdminController::class, 'thongKeTienKhachHang'])->middleware('permissionMiddle:96');
+    Route::post('/thong-ke/thong-ke-tien-quan-an', [ThongKeAdminController::class, 'thongKeTienQuanAn'])->middleware('permissionMiddle:97');
+    Route::post('/thong-ke/thong-ke-tien-shipper', [ThongKeAdminController::class, 'thongKeTienShipper'])->middleware('permissionMiddle:43');
+    Route::get('/thong-ke/dashboard', [ThongKeAdminController::class, 'dashboard'])->middleware('permissionMiddle:58');
+    Route::post('/thong-ke/huy-don', [ThongKeAdminController::class, 'thongKeHuyDon'])->middleware('permissionMiddle:43');
 
     // Client Menu Admin
-    Route::get('/client-menu/data', [ClientMenuController::class, 'getData']);
-    Route::post('/client-menu/create', [ClientMenuController::class, 'create']);
-    Route::post('/client-menu/update', [ClientMenuController::class, 'update']);
-    Route::post('/client-menu/delete', [ClientMenuController::class, 'delete']);
-    Route::post('/client-menu/change-status', [ClientMenuController::class, 'changeStatus']);
-    Route::post('/client-menu/update-order', [ClientMenuController::class, 'updateOrder']);
+    Route::get('/client-menu/data', [ClientMenuController::class, 'getData'])->middleware('permissionMiddle:70');
+    Route::post('/client-menu/create', [ClientMenuController::class, 'create'])->middleware('permissionMiddle:71');
+    Route::post('/client-menu/update', [ClientMenuController::class, 'update'])->middleware('permissionMiddle:72');
+    Route::post('/client-menu/delete', [ClientMenuController::class, 'delete'])->middleware('permissionMiddle:73');
+    Route::post('/client-menu/change-status', [ClientMenuController::class, 'changeStatus'])->middleware('permissionMiddle:74');
+    Route::post('/client-menu/update-order', [ClientMenuController::class, 'updateOrder'])->middleware('permissionMiddle:75');
 
     // Quản lý Topping (Admin)
-    Route::get('/toppings/data', [ToppingController::class, 'getDataAdmin']);
-    Route::post('/toppings/create', [ToppingController::class, 'storeAdmin']);
-    Route::post('/toppings/update', [ToppingController::class, 'updateAdmin']);
-    Route::post('/toppings/delete', [ToppingController::class, 'deleteAdmin']);
-    Route::post('/toppings/change-status', [ToppingController::class, 'changeStatusAdmin']);
+    Route::get('/toppings/data', [ToppingController::class, 'getDataAdmin'])->middleware('permissionMiddle:76');
+    Route::post('/toppings/create', [ToppingController::class, 'storeAdmin'])->middleware('permissionMiddle:77');
+    Route::post('/toppings/update', [ToppingController::class, 'updateAdmin'])->middleware('permissionMiddle:78');
+    Route::post('/toppings/delete', [ToppingController::class, 'deleteAdmin'])->middleware('permissionMiddle:79');
+    Route::post('/toppings/change-status', [ToppingController::class, 'changeStatusAdmin'])->middleware('permissionMiddle:80');
 
-    // Ví & Rút Tiền Admin — CHỈ MASTER ADMIN
-    Route::group(['middleware' => 'masterMiddle'], function () {
-        Route::get('/wallet/overview', [WalletController::class, 'adminOverview']);
-        Route::get('/wallet/don-hang-doi-soat', [WalletController::class, 'donHangDoiSoat']);
-        Route::post('/wallet/doi-soat', [WalletController::class, 'doiSoatManual']);
-        Route::get('/wallet/chi-tiet', [WalletController::class, 'chiTiet']);
-        Route::post('/wallet/nop-tien-shipper', [WalletController::class, 'adminNopTienChoShipper']);
-        Route::get('/wallet/danh-sach-shipper', [WalletController::class, 'danhSachViShipper']);
-        Route::get('/wallet/lich-su-nap-tien', [WalletController::class, 'lichSuNapTienShipper']);
+    // Ví & Rút Tiền Admin
+    Route::get('/wallet/overview', [WalletController::class, 'adminOverview'])->middleware('permissionMiddle:81');
+    Route::get('/wallet/don-hang-doi-soat', [WalletController::class, 'donHangDoiSoat'])->middleware('permissionMiddle:82');
+    Route::post('/wallet/doi-soat', [WalletController::class, 'doiSoatManual'])->middleware('permissionMiddle:82');
+    Route::get('/wallet/chi-tiet', [WalletController::class, 'chiTiet'])->middleware('permissionMiddle:81');
+    Route::post('/wallet/nop-tien-shipper', [WalletController::class, 'adminNopTienChoShipper'])->middleware('permissionMiddle:83');
+    Route::get('/wallet/danh-sach-shipper', [WalletController::class, 'danhSachViShipper'])->middleware('permissionMiddle:83');
+    Route::get('/wallet/lich-su-nap-tien', [WalletController::class, 'lichSuNapTienShipper'])->middleware('permissionMiddle:83');
 
-        Route::get('/withdraw/data', [WithdrawController::class, 'adminData']);
-        Route::post('/withdraw/approve', [WithdrawController::class, 'approve']);
-        Route::post('/withdraw/reject', [WithdrawController::class, 'reject']);
-        Route::post('/withdraw/confirm-transfer', [WithdrawController::class, 'confirmTransfer']);
-        Route::get('/transaction/lich-su', [TransactionController::class, 'lichSuGiaoDich']);
+    Route::get('/withdraw/data', [WithdrawController::class, 'adminData'])->middleware('permissionMiddle:84');
+    Route::post('/withdraw/approve', [WithdrawController::class, 'approve'])->middleware('permissionMiddle:84');
+    Route::post('/withdraw/reject', [WithdrawController::class, 'reject'])->middleware('permissionMiddle:84');
+    Route::post('/withdraw/confirm-transfer', [WithdrawController::class, 'confirmTransfer'])->middleware('permissionMiddle:84');
+    Route::get('/transaction/lich-su', [TransactionController::class, 'lichSuGiaoDich'])->middleware('permissionMiddle:81');
 
-        // ── PayOS Admin Routes — CHỈ MASTER ADMIN ───────────────────────────────
-        Route::get('/payos/kiem-tra-ket-noi', [PayOSController::class, 'kiemTraKetNoi']);
-        Route::get('/payos/lich-su', [PayOSController::class, 'lichSu']);
-        Route::get('/payos/lich-su-noi-bo', [PayOSController::class, 'lichSuNoiBo']);
-        Route::get('/payos/payout/danh-sach', [PayOSController::class, 'danhSachPayout']);
-        Route::get('/payos/payout/so-du', [PayOSController::class, 'soDuPayout']);
-        Route::get('/payos/payout/{payout_id}', [PayOSController::class, 'chiTietPayout']);
+    // ── PayOS Admin Routes ───────────────────────────────────────────────────────
+    Route::get('/payos/kiem-tra-ket-noi', [PayOSController::class, 'kiemTraKetNoi'])->middleware('permissionMiddle:81');
+    Route::get('/payos/lich-su', [PayOSController::class, 'lichSu'])->middleware('permissionMiddle:81');
+    Route::get('/payos/lich-su-noi-bo', [PayOSController::class, 'lichSuNoiBo'])->middleware('permissionMiddle:81');
+    Route::get('/payos/payout/danh-sach', [PayOSController::class, 'danhSachPayout'])->middleware('permissionMiddle:81');
+    Route::get('/payos/payout/so-du', [PayOSController::class, 'soDuPayout'])->middleware('permissionMiddle:81');
+    Route::get('/payos/payout/{payout_id}', [PayOSController::class, 'chiTietPayout'])->middleware('permissionMiddle:81');
 
-        // ── Quản lý hoàn tiền PayOS — CHỈ MASTER ADMIN ────────────────────────
-        Route::get('/refund/danh-sach', [KhachHangBankAccountController::class, 'adminRefundStatus']);
-        Route::post('/refund/hoan-tien-thu-cong', [KhachHangBankAccountController::class, 'adminManualRefund']);
-    });
+    // ── Quản lý hoàn tiền PayOS ────────────────────────────────────────────────
+    Route::get('/refund/danh-sach', [KhachHangBankAccountController::class, 'adminRefundStatus'])->middleware('permissionMiddle:82');
+    Route::post('/refund/hoan-tien-thu-cong', [KhachHangBankAccountController::class, 'adminManualRefund'])->middleware('permissionMiddle:82');
+
 
     // Quản lý Báo cáo
-    Route::get('/reports/data', [ReportController::class, 'getAdminReports']);
-    Route::post('/reports/update', [ReportController::class, 'updateAdminReport']);
-    Route::post('/reports/duyet-huy-don', [ReportController::class, 'duyetHuyDon']);
+    Route::get('/reports/data', [ReportController::class, 'getAdminReports'])->middleware('permissionMiddle:85');
+    Route::post('/reports/update', [ReportController::class, 'updateAdminReport'])->middleware('permissionMiddle:86');
+    Route::post('/reports/duyet-huy-don', [ReportController::class, 'duyetHuyDon'])->middleware('permissionMiddle:87');
 
     // Quản lý Đánh Giá (Admin)
-    Route::get('/danh-gia/data', [DanhGiaController::class, 'getAdminDanhGia']);
-    Route::get('/danh-gia/filter-data', [DanhGiaController::class, 'getFilterData']);
-    Route::post('/danh-gia/delete', [DanhGiaController::class, 'deleteDanhGia']);
-    Route::post('/danh-gia/hide', [DanhGiaController::class, 'hideDanhGia']);
+    Route::get('/danh-gia/data', [DanhGiaController::class, 'getAdminDanhGia'])->middleware('permissionMiddle:88');
+    Route::get('/danh-gia/filter-data', [DanhGiaController::class, 'getFilterData'])->middleware('permissionMiddle:88');
+    Route::post('/danh-gia/delete', [DanhGiaController::class, 'deleteDanhGia'])->middleware('permissionMiddle:89');
+    Route::post('/danh-gia/hide', [DanhGiaController::class, 'hideDanhGia'])->middleware('permissionMiddle:90');
 
     // Gửi thông báo broadcast hệ thống
-    Route::get('/thong-bao-he-thong/data', [App\Http\Controllers\ThongBaoHeThongController::class, 'index']);
-    Route::post('/thong-bao-he-thong/store', [App\Http\Controllers\ThongBaoHeThongController::class, 'store']);
-    Route::delete('/thong-bao-he-thong/{id}', [App\Http\Controllers\ThongBaoHeThongController::class, 'destroy']);
+    Route::get('/thong-bao-he-thong/data', [App\Http\Controllers\ThongBaoHeThongController::class, 'index'])->middleware('permissionMiddle:91');
+    Route::post('/thong-bao-he-thong/store', [App\Http\Controllers\ThongBaoHeThongController::class, 'store'])->middleware('permissionMiddle:92');
+    Route::delete('/thong-bao-he-thong/{id}', [App\Http\Controllers\ThongBaoHeThongController::class, 'destroy'])->middleware('permissionMiddle:93');
 
     // ── Chatbot AI Analytics (Admin) ──────────────────────────────────
-    Route::get('/ai-trending', [ChatbotAnalyticsController::class, 'trendingDishes']);
-    Route::get('/ai-trending/live', [ChatbotAnalyticsController::class, 'liveTrending']);
-    Route::get('/chatbot-analytics', [ChatbotAnalyticsController::class, 'chatbotAnalytics']);
-    Route::get('/customer-insights/{idKhachHang}', [ChatbotAnalyticsController::class, 'customerInsights']);
-    Route::post('/chatbot-analytics/{id}/converted', [ChatbotAnalyticsController::class, 'markConverted']);
+    Route::get('/ai-trending', [ChatbotAnalyticsController::class, 'trendingDishes'])->middleware('permissionMiddle:94');
+    Route::get('/ai-trending/live', [ChatbotAnalyticsController::class, 'liveTrending'])->middleware('permissionMiddle:94');
+    Route::get('/chatbot-analytics', [ChatbotAnalyticsController::class, 'chatbotAnalytics'])->middleware('permissionMiddle:94');
+    Route::get('/customer-insights/{idKhachHang}', [ChatbotAnalyticsController::class, 'customerInsights'])->middleware('permissionMiddle:94');
+    Route::post('/chatbot-analytics/{id}/converted', [ChatbotAnalyticsController::class, 'markConverted'])->middleware('permissionMiddle:95');
 });
 
 

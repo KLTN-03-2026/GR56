@@ -212,7 +212,6 @@ class ShipperController extends Controller
             'cccd'          => $request->cccd,
             'is_active'     => $request->is_active ?? 1,
             'is_open'       => $request->is_open ?? 0,
-            'is_block'      => $request->is_block ?? 0,
         ]);
 
         // Tạo địa chỉ nếu có
@@ -285,7 +284,6 @@ class ShipperController extends Controller
             'so_dien_thoai' => $request->so_dien_thoai,
             'is_active'     => $request->is_active ?? $shipper->is_active,
             'is_open'      => $request->is_open ?? $shipper->is_open,
-            'is_block'     => $request->is_block ?? $shipper->is_block,
         ]);
         return response()->json([
             'status'  => 1,

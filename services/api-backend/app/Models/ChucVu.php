@@ -12,5 +12,10 @@ class ChucVu extends Model
         'slug_chuc_vu',
         'tinh_trang',
     ];
+
+    public function nhanViens()
+    {
+        return $this->hasMany(NhanVien::class, 'id_chuc_vu', 'id');
+    }
 }
 

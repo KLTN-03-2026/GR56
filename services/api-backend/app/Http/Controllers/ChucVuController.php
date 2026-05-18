@@ -7,6 +7,7 @@ use App\Http\Requests\ChucVu\deleteChucVuRequest;
 use App\Http\Requests\ChucVu\updateChucVuRequest;
 use App\Models\ChucVu;
 use App\Models\PhanQuyen;
+use App\Support\AdminPermission;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
@@ -15,21 +16,12 @@ class ChucVuController extends Controller
 {
     public function getData()
     {
-        $id_chuc_nang = 34;
         $user = Auth::guard('sanctum')->user();
-        // Nếu là master admin thì bỏ qua kiểm tra quyền
-        if ($user->is_master != 1) {
-            $id_chuc_nang = 5;
-            $id_chuc_vu   = $user->id_chuc_vu;
-            $check        = PhanQuyen::where('id_chuc_vu', $id_chuc_vu)->where('id_chuc_nang', $id_chuc_nang)->first();
-            if (!$check) {
-                return response()->json([
-                    'status'    =>  0,
-                    'message'   =>  'Bạn không có quyền thực hiện chức năng này!'
-                ]);
-            }
+        if (!AdminPermission::can($user, 34)) {
+            return AdminPermission::deny();
         }
-        $data = ChucVu::all();
+
+        $data = ChucVu::with('nhanViens')->get();
         return response()->json([
             'status' => true,
             'data' => $data,
