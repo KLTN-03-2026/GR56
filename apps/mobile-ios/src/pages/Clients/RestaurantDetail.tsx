@@ -750,38 +750,7 @@ const RestaurantDetail = ({ navigation, route }: RestaurantDetailProps) => {
       if (response.data?.status) {
         showToast(response.data.message || "Đã thêm vào giỏ hàng ✓", "success");
         setShowAddToCartModal(false);
-        fetchGlobalCartCount();
-
-        setCartItems((prev) => {
-          const existingIndex = prev.findIndex(
-            (i) =>
-              i.id_mon_an === selectedDish.id && i.ghi_chu === finalNote
-          );
-
-          if (existingIndex >= 0 && !selectedSizeId) {
-            return prev.map((item, i) =>
-              i === existingIndex
-                ? {
-                    ...item,
-                    so_luong: item.so_luong + addQuantity,
-                    thanh_tien: item.don_gia * (item.so_luong + addQuantity),
-                  }
-                : item
-            );
-          }
-
-          const newItem: CartItem = {
-            id: response.data.id ?? Date.now(),
-            id_mon_an: selectedDish.id,
-            ten_mon_an: selectedDish.ten_mon_an,
-            so_luong: addQuantity,
-            don_gia: basePrice,
-            ghi_chu: finalNote,
-            thanh_tien: basePrice * addQuantity,
-          };
-
-          return [...prev, newItem];
-        });
+        loadRestaurantData().catch(() => {});
       } else {
         showToast(
           response.data?.message || "Lỗi khi thêm vào giỏ hàng!",
@@ -803,6 +772,7 @@ const RestaurantDetail = ({ navigation, route }: RestaurantDetailProps) => {
     dishToppings,
     selectedToppingIds,
     showToast,
+    loadRestaurantData,
   ]);
 
   const handleCancelAddToCart = useCallback(() => {
@@ -1161,19 +1131,30 @@ const RestaurantDetail = ({ navigation, route }: RestaurantDetailProps) => {
       <Modal
         visible={showCheckoutModal}
         animationType="slide"
-        transparent
+        presentationStyle="fullScreen"
         onRequestClose={() => setShowCheckoutModal(false)}
       >
         <SafeAreaView style={s.checkoutModal}>
           <View style={s.checkoutHeader}>
-            <TouchableOpacity onPress={() => setShowCheckoutModal(false)}>
+            <TouchableOpacity
+              style={s.checkoutBackButton}
+              onPress={() => setShowCheckoutModal(false)}
+            >
               <Ionicons name="chevron-back" size={24} color={COLORS.TEXT_PRIMARY} />
             </TouchableOpacity>
             <Text style={s.checkoutTitle}>Xác nhận đơn hàng</Text>
-            <View style={{ width: 24 }} />
+            <View style={s.checkoutHeaderSpacer} />
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false} style={s.checkoutContent}>
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            style={s.checkoutContent}
+            contentContainerStyle={[
+              s.checkoutContentContainer,
+              { paddingBottom: 20 + Math.max(insets.bottom, SPACING.GUTTER) },
+            ]}
+            keyboardShouldPersistTaps="handled"
+          >
             {/* Order Items */}
             <View style={s.checkoutSection}>
               <View style={s.sectionTitleRow}>
@@ -1184,9 +1165,9 @@ const RestaurantDetail = ({ navigation, route }: RestaurantDetailProps) => {
                 {cartItems.map((item) => (
                   <View key={item.id} style={s.checkoutItem}>
                     <View style={{ flex: 1 }}>
-                      <Text style={s.itemName}>{item.ten_mon_an}</Text>
+                      <Text style={s.itemName} numberOfLines={1}>{item.ten_mon_an}</Text>
                       {item.ghi_chu && (
-                        <Text style={s.itemNote}>{item.ghi_chu}</Text>
+                        <Text style={s.itemNote} numberOfLines={2}>{item.ghi_chu}</Text>
                       )}
                       <Text style={s.itemQty}>x{item.so_luong}</Text>
                     </View>
@@ -1212,7 +1193,10 @@ const RestaurantDetail = ({ navigation, route }: RestaurantDetailProps) => {
               {addresses.length > 0 ? (
                 <FlatList
                   data={addresses}
-                  scrollEnabled={false}
+                  scrollEnabled={addresses.length > 3}
+                  nestedScrollEnabled
+                  style={addresses.length > 3 ? s.addressListScrollable : undefined}
+                  showsVerticalScrollIndicator={addresses.length > 3}
                   keyExtractor={(item) => item.id.toString()}
                   renderItem={({ item }) => (
                     <TouchableOpacity
@@ -1228,8 +1212,8 @@ const RestaurantDetail = ({ navigation, route }: RestaurantDetailProps) => {
                         )}
                       </View>
                       <View style={{ flex: 1 }}>
-                        <Text style={s.addressName}>{item.ten_nguoi_nhan}</Text>
-                        <Text style={s.addressDetail}>{item.dia_chi}</Text>
+                        <Text style={s.addressName} numberOfLines={1}>{item.ten_nguoi_nhan}</Text>
+                        <Text style={s.addressDetail} numberOfLines={2}>{item.dia_chi}</Text>
                         <Text style={s.addressPhone}>{item.so_dien_thoai}</Text>
                       </View>
                     </TouchableOpacity>
@@ -1441,11 +1425,10 @@ const RestaurantDetail = ({ navigation, route }: RestaurantDetailProps) => {
               </View>
             </View>
 
-            <View style={{ height: 20 }} />
           </ScrollView>
 
           {/* Checkout Button */}
-          <View style={[s.checkoutFooter, { paddingBottom: (insets.bottom || 0) + SPACING.GUTTER }]}>
+          <View style={[s.checkoutFooter, { paddingBottom: Math.max(insets.bottom, 12) }]}>
             <TouchableOpacity
               style={[s.checkoutConfirmButton, submitting && { opacity: 0.6 }]}
               onPress={() => handlePlaceOrder(paymentMethod)}
@@ -1917,29 +1900,44 @@ const s = StyleSheet.create({
   },
   checkoutHeader: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: SPACING.PADDING,
-    paddingVertical: SPACING.GUTTER,
+    minHeight: 52,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
     backgroundColor: COLORS.WHITE,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: COLORS.BORDER,
   },
+  checkoutBackButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  checkoutHeaderSpacer: {
+    width: 40,
+    height: 40,
+  },
   checkoutTitle: {
-    fontSize: 18,
+    flex: 1,
+    textAlign: "center",
+    fontSize: 17,
     fontWeight: "800",
     color: COLORS.TEXT_PRIMARY,
   },
   checkoutContent: {
     flex: 1,
-    paddingHorizontal: SPACING.PADDING,
-    paddingVertical: SPACING.GUTTER,
+  },
+  checkoutContentContainer: {
+    paddingHorizontal: 16,
+    paddingTop: 14,
   },
   checkoutSection: {
     backgroundColor: COLORS.WHITE,
     borderRadius: 16,
-    padding: SPACING.PADDING,
-    marginBottom: SPACING.GUTTER,
+    padding: 16,
+    marginBottom: 14,
     elevation: 2,
     shadowColor: COLORS.CARD_SHADOW,
     shadowOffset: { width: 0, height: 1 },
@@ -1978,7 +1976,7 @@ const s = StyleSheet.create({
   checkoutItem: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
+    alignItems: "flex-start",
     paddingVertical: 10,
     paddingHorizontal: 12,
     backgroundColor: "#FAFBFC",
@@ -2004,13 +2002,18 @@ const s = StyleSheet.create({
     fontSize: 13,
     fontWeight: "800",
     color: COLORS.PRIMARY,
+    marginLeft: 10,
+    marginTop: 2,
   },
 
   /* Address Options */
+  addressListScrollable: {
+    maxHeight: 238,
+  },
   addressOption: {
     flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 12,
+    alignItems: "flex-start",
+    paddingVertical: 11,
     paddingHorizontal: 12,
     marginBottom: 8,
     borderWidth: 1.5,
@@ -2031,6 +2034,7 @@ const s = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginRight: 12,
+    marginTop: 4,
   },
   addressRadioInner: {
     width: 10,
@@ -2047,6 +2051,7 @@ const s = StyleSheet.create({
   addressDetail: {
     fontSize: 12,
     color: COLORS.TEXT_SECONDARY,
+    lineHeight: 16,
   },
   addressPhone: {
     fontSize: 11,
@@ -2270,12 +2275,16 @@ const s = StyleSheet.create({
 
   /* Checkout Footer */
   checkoutFooter: {
-    paddingHorizontal: SPACING.PADDING,
-    paddingVertical: SPACING.GUTTER,
+    paddingHorizontal: 16,
+    paddingTop: 12,
     backgroundColor: COLORS.WHITE,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: COLORS.BORDER,
-    paddingBottom: SPACING.GUTTER,
+    elevation: 16,
+    shadowColor: COLORS.CARD_SHADOW,
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
   },
   checkoutConfirmButton: {
     flexDirection: "row",
@@ -2283,8 +2292,9 @@ const s = StyleSheet.create({
     justifyContent: "center",
     gap: 8,
     backgroundColor: COLORS.PRIMARY,
-    borderRadius: 16,
+    borderRadius: 14,
     paddingVertical: 14,
+    minHeight: 48,
     elevation: 3,
     shadowColor: COLORS.PRIMARY,
     shadowOffset: { width: 0, height: 3 },

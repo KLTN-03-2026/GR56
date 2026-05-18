@@ -137,14 +137,15 @@ const buildHTML = (
 
     function geocodeAddr(addr, callback, nameHint) {
       if (!addr || !addr.trim()) { callback(null, null); return; }
-      var street = addr.split(',')[0].trim();
-      var query;
-      if (nameHint && nameHint.trim()) {
-        query = nameHint.trim() + ' ' + street + ' Đà Nẵng';
-      } else {
-        query = street + ' Đà Nẵng';
-      }
-      geocodeNDA(query, callback);
+      // Thử lần 1: tên + địa chỉ đầy đủ
+      var fullQuery = (nameHint && nameHint.trim()) ? (nameHint.trim() + ' ' + addr) : addr;
+      geocodeNDA(fullQuery, function(lng1, lat1) {
+        if (lng1 !== null) { callback(lng1, lat1); return; }
+        // Thử lần 2: chỉ tên đường đầu tiên
+        var street = addr.split(',')[0].trim();
+        var fallbackQuery = (nameHint && nameHint.trim()) ? (nameHint.trim() + ' ' + street + ' Đà Nẵng') : (street + ' Đà Nẵng');
+        geocodeNDA(fallbackQuery, callback);
+      });
     }
 
     // Dùng tọa độ sẵn có nếu hợp lệ, không thì geocode
@@ -324,9 +325,19 @@ const InlineDeliveryMap: React.FC<Props> = ({
   useEffect(() => {
     if (shipperCoord && shipperCoord.length === 2 && webViewRef.current) {
       webViewRef.current.injectJavaScript(`
-        if (typeof window.updateShipperLocation === 'function') {
-          window.updateShipperLocation(${shipperCoord[0]}, ${shipperCoord[1]});
-        }
+        (function() {
+          var overlay = document.getElementById('overlay');
+          var isOverlayVisible = overlay && !overlay.classList.contains('gone');
+          // Cập nhật biến toàn cục trong WebView với tọa độ mới
+          SHIP_COORD = [${shipperCoord[0]}, ${shipperCoord[1]}];
+          if (typeof window.updateShipperLocation === 'function' && !isOverlayVisible) {
+            // Map đã load xong, chỉ cần cập nhật marker
+            window.updateShipperLocation(${shipperCoord[0]}, ${shipperCoord[1]});
+          } else if (isOverlayVisible && typeof initShipperToCustomer === 'function') {
+            // Overlay vẫn hiện (lần đầu có tọa độ shipper), chạy lại init để vẽ map
+            initShipperToCustomer();
+          }
+        })();
         true;
       `);
     }

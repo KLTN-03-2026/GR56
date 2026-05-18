@@ -130,6 +130,7 @@ const Orders = ({ navigation, route }: any) => {
   const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [shipperCoord, setShipperCoord] = useState<[number, number] | null>(null);
+  const [customerCoord, setCustomerCoord] = useState<[number, number] | null>(null);
 
   // Cập nhật tab khi params thay đổi (ví dụ từ Profile bấm sang)
   React.useEffect(() => {
@@ -342,18 +343,23 @@ const Orders = ({ navigation, route }: any) => {
   React.useEffect(() => {
     if (!orderDetail || orderDetail.tinh_trang !== 3) {
       setShipperCoord(null);
+      setCustomerCoord(null);
       return;
     }
     let echoInstance: any = null;
 
-    // Gọi API lần đầu để lấy vị trí shipper
+    // Gọi API lần đầu để lấy vị trí shipper VÀ tọa độ khách hàng
     const fetchTracking = async () => {
       try {
         const res = await apiClient.post("/khach-hang/don-hang/theo-doi-don-hang", { id: orderDetail.id });
         if (res.data?.status && res.data?.order) {
-          const { shipper_lat, shipper_lng } = res.data.order;
+          const { shipper_lat, shipper_lng, customer_lat, customer_lng } = res.data.order;
           if (shipper_lat && shipper_lng) {
             setShipperCoord([parseFloat(shipper_lng), parseFloat(shipper_lat)]);
+          }
+          // Lấy tọa độ khách hàng từ API tracking (BE trả về customer_lat/customer_lng)
+          if (customer_lat && customer_lng) {
+            setCustomerCoord([parseFloat(customer_lng), parseFloat(customer_lat)]);
           }
         }
       } catch (_) { }
@@ -520,16 +526,33 @@ const Orders = ({ navigation, route }: any) => {
               );
             } else if (tt === 3) {
               // Đang giao → shipper GPS thật (từ API tracking + WebSocket)
+              // customerCoord lấy từ API tracking (customer_lat/customer_lng)
+              // custCoord lấy từ orderDetail.toa_do_x/y (thường null nếu BE không trả về)
+              const resolvedCustomerCoord = customerCoord ?? custCoord;
+              // Nếu chưa có tọa độ GPS shipper → fallback dual_address (quán→khách)
+              if (!shipperCoord) {
+                return (
+                  <InlineDeliveryMap
+                    mode="dual_address"
+                    destAddress={orderDetail.dia_chi_quan}
+                    destName={orderDetail.ten_quan_an}
+                    secondAddress={custAddr}
+                    secondName={orderDetail.ten_nguoi_nhan}
+                    secondCoord={resolvedCustomerCoord}
+                  />
+                );
+              }
               return (
                 <InlineDeliveryMap
                   mode="shipper_to_customer"
                   destAddress={orderDetail.dia_chi_quan}
                   destName={orderDetail.ten_quan_an}
                   shipperCoord={shipperCoord}
+                  shipperAddress={orderDetail.dia_chi_quan}
                   shipperName={orderDetail.ho_va_ten_shipper || 'Shipper'}
                   secondAddress={custAddr}
                   secondName={orderDetail.ten_nguoi_nhan}
-                  secondCoord={custCoord}
+                  secondCoord={resolvedCustomerCoord}
                 />
               );
             } else {

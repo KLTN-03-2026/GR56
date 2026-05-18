@@ -52,6 +52,44 @@ const formatMessageText = (text: string | undefined) => {
   });
 };
 
+const formatQuickReplyLabel = (reply: string) => {
+  const normalized = reply.trim().toLowerCase();
+  const labels: Record<string, string> = {
+    "tiền mặt": "Tiền mặt",
+    "tien mat": "Tiền mặt",
+    payos: "PayOS",
+    "payos qr": "PayOS QR",
+    menu: "Xem menu",
+    "thêm món": "Thêm món",
+    "them mon": "Thêm món",
+    "thanh toán": "Thanh toán",
+    "thanh toan": "Thanh toán",
+    xong: "Xong",
+    "sửa": "Sửa",
+    sua: "Sửa",
+  };
+
+  return labels[normalized] || reply.charAt(0).toUpperCase() + reply.slice(1);
+};
+
+const getQuickReplyIcon = (reply: string) => {
+  const normalized = reply.trim().toLowerCase();
+  if (normalized.includes("tiền mặt") || normalized.includes("tien mat")) return "cash-outline";
+  if (normalized.includes("payos") || normalized === "qr") return "qr-code-outline";
+  if (normalized.includes("thanh toán") || normalized.includes("thanh toan")) return "card-outline";
+  if (normalized.includes("menu")) return "restaurant-outline";
+  if (normalized.includes("thêm") || normalized.includes("them")) return "add-circle-outline";
+  if (normalized.includes("xong")) return "checkmark-circle-outline";
+  if (normalized.includes("sửa") || normalized.includes("sua")) return "create-outline";
+  return null;
+};
+
+const normalizeQrCodeUri = (qrCode?: string) => {
+  if (!qrCode) return "";
+  if (qrCode.startsWith("http") || qrCode.startsWith("data:image")) return qrCode;
+  return `data:image/png;base64,${qrCode}`;
+};
+
 const COLORS = {
   PRIMARY: "#EE4D2D",
   SECONDARY: "#f5f5f5",
@@ -65,6 +103,7 @@ const COLORS = {
 };
 
 interface PaymentInfo {
+  don_hang_id?: number;
   ma_don_hang: string;
   tong_tien: number | string;
   qr_code?: string;
@@ -104,6 +143,9 @@ interface FoodItem {
   so_danh_gia?: number;
 }
 
+type ToppingOption = { id?: number; title?: string; ten_topping?: string; price?: number; gia?: number };
+type SizeOption = { id?: number; title?: string; ten_size?: string; extra_price?: number; gia_them?: number };
+
 interface Message {
   id: string;
   type: "user" | "bot";
@@ -112,6 +154,10 @@ interface Message {
   foods?: FoodItem[];
   restaurants?: RestaurantItem[];
   payment?: PaymentInfo;
+  optionsStep?: "select_size" | "select_topping" | "confirm";
+  sizeOptions?: SizeOption[];
+  toppingOptions?: ToppingOption[];
+  pendingFood?: { title?: string; name?: string; price?: number };
   time: string;
 }
 
@@ -123,13 +169,32 @@ const INITIAL_MESSAGE: Message = {
   id: "1",
   type: "bot",
   text: "Xin chào! 👋 Tôi là FoodBee Bot, sẵn sàng giúp bạn. Bạn cần hỗ trợ gì?",
-  quickReplies: [
-    "Làm cách nào để đặt hàng?",
-    "Về chính sách giao hàng",
-    "Mã giảm giá",
-    "Liên hệ hỗ trợ",
-  ],
   time: new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }),
+};
+
+const createInitialMessage = (): Message => ({
+  ...INITIAL_MESSAGE,
+  id: Date.now().toString(),
+  time: new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }),
+});
+
+const extractCustomerId = (rawUserData: string | null) => {
+  if (!rawUserData) return null;
+
+  try {
+    const parsed = JSON.parse(rawUserData);
+    return (
+      parsed?.id ??
+      parsed?.khach_hang_id ??
+      parsed?.id_khach_hang ??
+      parsed?.khach_hang?.id ??
+      parsed?.user?.id ??
+      parsed?.data?.id ??
+      null
+    );
+  } catch {
+    return null;
+  }
 };
 
 // ════════════════════════════════════════════════════════
@@ -140,8 +205,13 @@ const ChatBot: React.FC<ChatBotProps> = ({ navigation }) => {
   const [sessionToken, setSessionToken] = useState<string>("");
   const [inputText, setInputText] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [clickedFoodRef, setClickedFoodRef] = useState<FoodItem | null>(null);
+  const [clickedRestRef, setClickedRestRef] = useState<RestaurantItem | null>(null);
+  const [selectedToppingsByMessage, setSelectedToppingsByMessage] = useState<Record<string, ToppingOption[]>>({});
   const scrollViewRef = useRef<ScrollView>(null);
-  
+  const messagesRef = useRef<Message[]>([INITIAL_MESSAGE]);
+  const skipHistoryOnceRef = useRef(false);
+
   const dot1 = useRef(new Animated.Value(0)).current;
   const dot2 = useRef(new Animated.Value(0)).current;
   const dot3 = useRef(new Animated.Value(0)).current;
@@ -165,7 +235,7 @@ const ChatBot: React.FC<ChatBotProps> = ({ navigation }) => {
       dot2.setValue(0);
       dot3.setValue(0);
     }
-  }, [isLoading]);
+  }, [dot1, dot2, dot3, isLoading]);
 
   // Load lịch sử khi mở màn hình
   useEffect(() => {
@@ -174,7 +244,7 @@ const ChatBot: React.FC<ChatBotProps> = ({ navigation }) => {
         try {
           const saved: Message[] = JSON.parse(raw);
           if (saved.length > 0) setMessages(saved);
-        } catch (_) {}
+        } catch { }
       }
     });
     AsyncStorage.getItem(SESSION_TOKEN_KEY).then(async (token) => {
@@ -184,7 +254,7 @@ const ChatBot: React.FC<ChatBotProps> = ({ navigation }) => {
         try {
           const apiBase = "https://be.foodbee.io.vn";
           const rawUser = await AsyncStorage.getItem('userData');
-          const khId = rawUser ? (() => { try { const p = JSON.parse(rawUser); return p?.id ?? null; } catch { return null; } })() : null;
+          const khId = extractCustomerId(rawUser);
           const res = await fetch(`${apiBase}/api/chatbot/session/start`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
@@ -195,13 +265,13 @@ const ChatBot: React.FC<ChatBotProps> = ({ navigation }) => {
             // Save BE session_id for later use
             await AsyncStorage.setItem('@chatbot_be_session_id', String(data.session_id));
           }
-        } catch (_) {}
+        } catch { }
       } else {
         // No token → create new BE session
         try {
           const apiBase = "https://be.foodbee.io.vn";
           const rawUser = await AsyncStorage.getItem('userData');
-          const khId = rawUser ? (() => { try { const p = JSON.parse(rawUser); return p?.id ?? null; } catch { return null; } })() : null;
+          const khId = extractCustomerId(rawUser);
           const res = await fetch(`${apiBase}/api/chatbot/session/start`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
@@ -214,22 +284,72 @@ const ChatBot: React.FC<ChatBotProps> = ({ navigation }) => {
             await AsyncStorage.setItem(SESSION_TOKEN_KEY, newToken);
             await AsyncStorage.setItem('@chatbot_be_session_id', String(data.session_id ?? ''));
           }
-        } catch (_) {}
+        } catch { }
       }
     });
   }, []);
 
   // Lưu lịch sử mỗi khi messages thay đổi
   useEffect(() => {
-    AsyncStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(messages)).catch(() => {});
+    messagesRef.current = messages;
+    AsyncStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(messages)).catch(() => { });
   }, [messages]);
 
   const scrollToBottom = (animated = true) => {
     scrollViewRef.current?.scrollToEnd({ animated });
   };
 
-  const handleSendMessage = async (text: string = inputText) => {
+  const resetChatSession = async () => {
+    const initialMessage = createInitialMessage();
+
+    setIsLoading(false);
+    setClickedFoodRef(null);
+    setClickedRestRef(null);
+    setSelectedToppingsByMessage({});
+    setInputText("");
+    setSessionToken("");
+    messagesRef.current = [initialMessage];
+    skipHistoryOnceRef.current = true;
+    setMessages([initialMessage]);
+
+    try {
+      const rawUserData = await AsyncStorage.getItem("userData");
+      const khachHangId = extractCustomerId(rawUserData);
+      const storedSessionToken = await AsyncStorage.getItem(SESSION_TOKEN_KEY);
+
+      await fetch(`${API_CHATBOT_URL}/api/session/clear`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          khach_hang_id: khachHangId,
+          session_id: storedSessionToken || sessionToken || "",
+          session_token: storedSessionToken || sessionToken || "",
+        }),
+      }).catch(() => {});
+    } finally {
+      await AsyncStorage.multiRemove([
+        CHAT_HISTORY_KEY,
+        SESSION_TOKEN_KEY,
+        "@chatbot_be_session_id",
+      ]);
+    }
+  };
+
+  const handleSendMessage = async (
+    text: string = inputText,
+    food?: FoodItem,
+    rest?: RestaurantItem,
+    extraPayload?: Record<string, unknown>
+  ) => {
     if (!text.trim()) return;
+
+    const selectedFoodForRequest = food ?? clickedFoodRef;
+    const selectedRestForRequest = rest ?? clickedRestRef;
+    if (food) setClickedFoodRef(food);
+    if (rest) setClickedRestRef(rest);
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -241,7 +361,11 @@ const ChatBot: React.FC<ChatBotProps> = ({ navigation }) => {
       }),
     };
 
-    setMessages((prev) => [...prev, userMessage]);
+    const historySource = skipHistoryOnceRef.current ? [] : messagesRef.current;
+    skipHistoryOnceRef.current = false;
+    const nextMessagesWithUser = [...messagesRef.current, userMessage];
+    messagesRef.current = nextMessagesWithUser;
+    setMessages(nextMessagesWithUser);
     setInputText("");
     setIsLoading(true);
 
@@ -272,27 +396,39 @@ const ChatBot: React.FC<ChatBotProps> = ({ navigation }) => {
       // Chuẩn bị thông tin khách hàng và lịch sử
       const rawUserData = await AsyncStorage.getItem('userData');
       let user_context = { is_logged_in: false, khach_hang_id: null };
-      if (rawUserData) {
-        try {
-          const parsed = JSON.parse(rawUserData);
-          if (parsed && parsed.id) {
-            user_context = { is_logged_in: true, khach_hang_id: parsed.id };
-          }
-        } catch (e) {}
+      const khachHangId = extractCustomerId(rawUserData);
+      if (khachHangId) {
+        user_context = { is_logged_in: true, khach_hang_id: khachHangId };
       }
 
       // Lấy lịch sử (giới hạn 10 tin nhắn gần nhất)
-      const history = messages.slice(-10).map((m) => ({
+      const history = historySource.slice(-10).map((m) => ({
         role: m.type === "user" ? "user" : "assistant",
         content: m.text || ""
       }));
 
-      const requestBody = { 
+      const requestBody: any = {
         message: text.trim(),
         history: history,
         user_context: user_context,
         session_token: sessionToken || null,
+        ...(extraPayload || {}),
       };
+      if (selectedFoodForRequest) {
+        requestBody.clicked_food = {
+          id: selectedFoodForRequest.id,
+          id_quan_an: selectedFoodForRequest.id_quan_an,
+          title: selectedFoodForRequest.title,
+          price: selectedFoodForRequest.price,
+          restaurant: selectedFoodForRequest.restaurant,
+        };
+      }
+      if (selectedRestForRequest) {
+        requestBody.clicked_restaurant = {
+          id: selectedRestForRequest.id,
+          name: selectedRestForRequest.name,
+        };
+      }
       let response: Response | null = null;
       let usedEndpoint = "";
 
@@ -334,9 +470,9 @@ const ChatBot: React.FC<ChatBotProps> = ({ navigation }) => {
         console.log("📥 [ChatBot] PARSED JSON →", JSON.stringify(data, null, 2));
         if (data?.session_token && data.session_token !== sessionToken) {
           setSessionToken(data.session_token);
-          AsyncStorage.setItem(SESSION_TOKEN_KEY, data.session_token).catch(() => {});
+          AsyncStorage.setItem(SESSION_TOKEN_KEY, data.session_token).catch(() => { });
         }
-      } catch (parseErr) {
+      } catch {
         console.warn("⚠️ [ChatBot] Response không phải JSON:", rawText);
       }
 
@@ -392,7 +528,7 @@ const ChatBot: React.FC<ChatBotProps> = ({ navigation }) => {
       }
 
       // ── Extract payment ──────────────────────────────────────
-      let payment: PaymentInfo | undefined = undefined;
+      let payment: PaymentInfo | undefined = data?.payment || undefined;
       if (typeof botText === "string") {
         const paymentIdx = botText.indexOf('__PAYMENT__');
         if (paymentIdx !== -1) {
@@ -405,16 +541,21 @@ const ChatBot: React.FC<ChatBotProps> = ({ navigation }) => {
           }
         }
       }
+      if (payment?.qr_code) {
+        payment = {
+          ...payment,
+          qr_code: normalizeQrCodeUri(payment.qr_code),
+        };
+      }
 
       // ── Quick replies + options ───────────────────────────────
       let quickReplies: string[] | undefined =
         data?.quick_replies ?? data?.suggestions ?? data?.options ?? undefined;
 
       if (data?.options_step === 'select_size' && data?.size_options) {
-        quickReplies = data.size_options.map((s: any, i: number) => String(i + 1));
+        quickReplies = undefined;
       } else if (data?.options_step === 'select_topping' && data?.topping_options) {
-        quickReplies = data.topping_options.map((t: any, i: number) => String(i + 1));
-        quickReplies.push("Xong");
+        quickReplies = undefined;
       }
 
       if (data?.buttons && Array.isArray(data.buttons)) {
@@ -435,9 +576,9 @@ const ChatBot: React.FC<ChatBotProps> = ({ navigation }) => {
               content: text.trim(),
               meta: { intent: 'unknown', response_type: 'text' },
             }),
-          }).catch(() => {});
+          }).catch(() => { });
         }
-      } catch (_) {}
+      } catch { }
 
       // ── Send bot response to BE for analytics ────────────────
       try {
@@ -459,14 +600,27 @@ const ChatBot: React.FC<ChatBotProps> = ({ navigation }) => {
               content: typeof botText === 'string' ? botText.substring(0, 255) : String(botText ?? '').substring(0, 255),
               meta: { intent, response_type: responseType, entities: {} },
             }),
-          }).catch(() => {});
+          }).catch(() => { });
         }
-      } catch (_) {}
+      } catch { }
 
       console.log("✅ [ChatBot] BOT TEXT →", botText);
       console.log("✅ [ChatBot] FOODS →", JSON.stringify(foods ?? []));
 
       // ── Compose bot message ────────────────────────────────
+      const optionsStep = data?.options_step as Message["optionsStep"] | undefined;
+      const responsePendingFood = data?.pending_food || data?.pendingFood || undefined;
+      if (optionsStep === "select_size") {
+        const foodName = responsePendingFood?.title || responsePendingFood?.name || "món này";
+        botText = `Chọn size cho ${foodName}`;
+      } else if (optionsStep === "select_topping") {
+        const foodName = responsePendingFood?.title || responsePendingFood?.name || "món này";
+        botText = `Chọn topping cho ${foodName}`;
+      } else if (optionsStep === "confirm") {
+        const foodName = responsePendingFood?.title || responsePendingFood?.name || "món này";
+        botText = `Xác nhận tùy chọn cho ${foodName}`;
+      }
+
       const botMessage: Message = {
         id: Date.now().toString(),
         type: "bot",
@@ -475,13 +629,19 @@ const ChatBot: React.FC<ChatBotProps> = ({ navigation }) => {
         foods,
         restaurants,
         payment,
+        optionsStep,
+        sizeOptions: data?.size_options || [],
+        toppingOptions: data?.topping_options || [],
+        pendingFood: responsePendingFood,
         time: new Date().toLocaleTimeString("vi-VN", {
           hour: "2-digit",
           minute: "2-digit",
         }),
       };
       console.log("✅ [ChatBot] BOT MESSAGE →", { hasFoods: !!foods, foodsCount: foods?.length });
-      setMessages((prev) => [...prev, botMessage]);
+      const nextMessagesWithBot = [...messagesRef.current, botMessage];
+      messagesRef.current = nextMessagesWithBot;
+      setMessages(nextMessagesWithBot);
     } catch (error: any) {
       console.error("❌ [ChatBot] ERROR →", error?.message ?? error);
       const errMessage: Message = {
@@ -493,9 +653,13 @@ const ChatBot: React.FC<ChatBotProps> = ({ navigation }) => {
           minute: "2-digit",
         }),
       };
-      setMessages((prev) => [...prev, errMessage]);
+      const nextMessagesWithError = [...messagesRef.current, errMessage];
+      messagesRef.current = nextMessagesWithError;
+      setMessages(nextMessagesWithError);
     } finally {
       setIsLoading(false);
+      setClickedFoodRef(null);
+      setClickedRestRef(null);
     }
   };
 
@@ -513,7 +677,7 @@ const ChatBot: React.FC<ChatBotProps> = ({ navigation }) => {
       >
         {!isUser && (
           <View style={[styles.botAvatar, { backgroundColor: "transparent" }]}>
-            <Image source={require("../../assets/images/logoFood.png")} style={{width: 28, height: 28, borderRadius: 14}} />
+            <Image source={require("../../assets/images/logoFood.png")} style={{ width: 28, height: 28, borderRadius: 14 }} />
           </View>
         )}
 
@@ -531,7 +695,9 @@ const ChatBot: React.FC<ChatBotProps> = ({ navigation }) => {
           >
             {isUser ? item.text : formatMessageText(item.text)}
           </Text>
-          <Text style={styles.messageTime}>{item.time}</Text>
+          <Text style={[styles.messageTime, isUser && styles.userMessageTime]}>
+            {item.time}
+          </Text>
         </View>
 
         {isUser && (
@@ -562,7 +728,7 @@ const ChatBot: React.FC<ChatBotProps> = ({ navigation }) => {
               style={styles.foodCard}
               activeOpacity={0.85}
               onPress={() =>
-                handleSendMessage(`tôi muốn đặt món: ${food.title}`)
+                handleSendMessage(`tôi muốn đặt món: ${food.title}`, food)
               }
             >
               <Image
@@ -638,7 +804,7 @@ const ChatBot: React.FC<ChatBotProps> = ({ navigation }) => {
               style={styles.foodCard}
               activeOpacity={0.85}
               onPress={() =>
-                handleSendMessage(`chọn quán: ${rest.name}`)
+                handleSendMessage(`chọn quán: ${rest.name}`, undefined, rest)
               }
             >
               <Image
@@ -667,26 +833,180 @@ const ChatBot: React.FC<ChatBotProps> = ({ navigation }) => {
 
   const renderPaymentCard = (message: Message) => {
     if (!message.payment || message.type === "user") return null;
-    const { ma_don_hang, tong_tien, qr_code, checkout_url, message: paymentMsg } = message.payment;
+    const { don_hang_id, ma_don_hang, tong_tien, qr_code, checkout_url, message: paymentMsg } = message.payment;
     return (
-      <View style={{ marginHorizontal: wp("4%"), marginVertical: hp("1%"), padding: 15, backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: COLORS.BORDER, alignItems: "center", shadowColor: "#000", shadowOffset: {width: 0, height: 2}, shadowOpacity: 0.1, shadowRadius: 4, elevation: 3 }}>
+      <View style={{ marginHorizontal: wp("4%"), marginVertical: hp("1%"), padding: 15, backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: COLORS.BORDER, alignItems: "center", shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 3 }}>
         <Text style={{ fontSize: 16, fontWeight: "bold", color: COLORS.TEXT_DARK, marginBottom: 5 }}>💳 Thanh toán đơn hàng</Text>
         {ma_don_hang ? <Text style={{ fontSize: 13, color: COLORS.TEXT_LIGHT, marginBottom: 2 }}>Mã ĐH: {ma_don_hang}</Text> : null}
         {tong_tien ? <Text style={{ fontSize: 18, fontWeight: "bold", color: COLORS.PRIMARY, marginBottom: 10 }}>{Number(tong_tien).toLocaleString("vi-VN")}đ</Text> : null}
         {qr_code ? (
           <Image source={{ uri: qr_code }} style={{ width: 160, height: 160, borderRadius: 8, borderWidth: 1, borderColor: "#e2e8f0", marginBottom: 10 }} resizeMode="contain" />
-        ) : null}
+        ) : (
+          <View style={styles.paymentQrPlaceholder}>
+            <Ionicons name="qr-code-outline" size={42} color={COLORS.TEXT_LIGHT} />
+            <Text style={styles.paymentQrPlaceholderText}>
+              Chưa nhận được mã QR từ PayOS. Bạn có thể bấm nút bên dưới để mở trang thanh toán.
+            </Text>
+          </View>
+        )}
         {paymentMsg ? <Text style={{ fontSize: 12, color: COLORS.WARNING, textAlign: "center", marginBottom: 10 }}>{paymentMsg}</Text> : null}
         {checkout_url ? (
-          <TouchableOpacity 
+          <TouchableOpacity
             style={{ backgroundColor: COLORS.PRIMARY, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 20 }}
             onPress={() => {
-              Linking.openURL(checkout_url).catch(()=>console.log("Cannot open url"));
+              if (don_hang_id) {
+                navigation.navigate("PayOSPayment", { id_don_hang: don_hang_id });
+                return;
+              }
+              Linking.openURL(checkout_url).catch(() => console.log("Cannot open url"));
             }}
           >
-            <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 13 }}>Thanh toán qua PayOS</Text>
+            <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 13 }}>
+              {don_hang_id ? "Thanh toán trong FoodBee" : (qr_code ? "Mở trang PayOS" : "Quét / thanh toán PayOS")}
+            </Text>
           </TouchableOpacity>
         ) : null}
+      </View>
+    );
+  };
+
+  const renderOptionSelector = (message: Message) => {
+    if (message.type === "user" || !message.optionsStep) return null;
+
+    const foodName = message.pendingFood?.title || message.pendingFood?.name || "Món đã chọn";
+    const foodPrice = Number(message.pendingFood?.price || 0);
+    const sizeOptions = message.sizeOptions || [];
+    const toppingOptions = message.toppingOptions || [];
+    const isSizeStep = message.optionsStep === "select_size" && sizeOptions.length > 0;
+    const isToppingStep =
+      message.optionsStep === "select_topping" ||
+      (message.optionsStep === "select_size" && sizeOptions.length === 0 && toppingOptions.length > 0);
+
+    if (!isSizeStep && !isToppingStep) return null;
+
+    const selectedToppings = selectedToppingsByMessage[message.id] || [];
+    const selectedToppingIds = new Set(selectedToppings.map((item) => item.id).filter(Boolean));
+    const selectedToppingTotal = selectedToppings.reduce(
+      (sum, item) => sum + Number(item.price ?? item.gia ?? 0),
+      0
+    );
+    const toggleTopping = (topping: ToppingOption) => {
+      setSelectedToppingsByMessage((prev) => {
+        const current = prev[message.id] || [];
+        const exists = current.some((item) => item.id === topping.id);
+        const next = exists
+          ? current.filter((item) => item.id !== topping.id)
+          : [...current, topping];
+        return { ...prev, [message.id]: next };
+      });
+    };
+    const sendToppingSelection = (items: ToppingOption[]) => {
+      handleSendMessage(items.length > 0 ? "Xong" : "Bỏ qua topping", undefined, undefined, {
+        local_toppings: items.map((item) => ({
+          id: item.id,
+          title: item.title || item.ten_topping,
+          price: Number(item.price ?? item.gia ?? 0),
+        })),
+      });
+    };
+
+    return (
+      <View style={styles.optionCard}>
+        <View style={styles.optionHeader}>
+          <View style={styles.optionIconWrap}>
+            <Ionicons name="restaurant-outline" size={16} color={COLORS.PRIMARY} />
+          </View>
+          <View style={styles.optionHeaderText}>
+            <Text style={styles.optionTitle} numberOfLines={1}>{foodName}</Text>
+            {foodPrice > 0 ? (
+              <Text style={styles.optionSubtitle}>{foodPrice.toLocaleString("vi-VN")}đ</Text>
+            ) : (
+              <Text style={styles.optionSubtitle}>Tùy chọn món ăn</Text>
+            )}
+          </View>
+        </View>
+
+        {isSizeStep && (
+          <View style={styles.optionSection}>
+            <Text style={styles.optionSectionTitle}>Chọn size</Text>
+            <View style={styles.sizeGrid}>
+              {sizeOptions.map((size, index) => {
+                const label = size.title || size.ten_size || `Size ${index + 1}`;
+                const extra = Number(size.extra_price ?? size.gia_them ?? 0);
+                return (
+                  <TouchableOpacity
+                    key={`${size.id || label}-${index}`}
+                    style={styles.sizeChoice}
+                    onPress={() => handleSendMessage(String(index + 1))}
+                    activeOpacity={0.82}
+                  >
+                    <Text style={styles.sizeChoiceName}>{label}</Text>
+                    <Text style={styles.sizeChoicePrice}>
+                      {extra > 0 ? `+${extra.toLocaleString("vi-VN")}đ` : "Miễn phí"}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        )}
+
+        {isToppingStep && (
+          <View style={styles.optionSection}>
+            <View style={styles.optionSectionRow}>
+              <Text style={styles.optionSectionTitle}>Thêm topping</Text>
+              <View style={styles.toppingActions}>
+                <TouchableOpacity
+                  style={styles.skipToppingButtonSecondary}
+                  onPress={() => sendToppingSelection([])}
+                >
+                  <Text style={styles.skipToppingTextSecondary}>Bỏ qua topping</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.skipToppingButton}
+                  onPress={() => sendToppingSelection(selectedToppings)}
+                >
+                  <Text style={styles.skipToppingText}>Xong</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+            {selectedToppings.length > 0 ? (
+              <Text style={styles.toppingSelectedHint}>
+                Đã chọn {selectedToppings.length} topping
+                {selectedToppingTotal > 0 ? ` (+${selectedToppingTotal.toLocaleString("vi-VN")}đ)` : ""}
+              </Text>
+            ) : (
+              <Text style={styles.toppingSelectedHint}>Bạn có thể chọn nhiều topping.</Text>
+            )}
+            <View style={styles.toppingList}>
+              {toppingOptions.map((topping, index) => {
+                const label = topping.title || topping.ten_topping || `Topping ${index + 1}`;
+                const price = Number(topping.price ?? topping.gia ?? 0);
+                const selected = !!topping.id && selectedToppingIds.has(topping.id);
+                return (
+                  <TouchableOpacity
+                    key={`${topping.id || label}-${index}`}
+                    style={[styles.toppingChoice, selected && styles.toppingChoiceSelected]}
+                    onPress={() => toggleTopping(topping)}
+                    activeOpacity={0.82}
+                  >
+                    <View style={[styles.toppingBullet, selected && styles.toppingBulletSelected]}>
+                      {selected ? (
+                        <Ionicons name="checkmark" size={15} color="#FFFFFF" />
+                      ) : (
+                        <Text style={styles.toppingBulletText}>{index + 1}</Text>
+                      )}
+                    </View>
+                    <Text style={styles.toppingName} numberOfLines={1}>{label}</Text>
+                    <Text style={styles.toppingPrice}>
+                      {price > 0 ? `+${price.toLocaleString("vi-VN")}đ` : "Miễn phí"}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        )}
       </View>
     );
   };
@@ -696,16 +1016,22 @@ const ChatBot: React.FC<ChatBotProps> = ({ navigation }) => {
 
     return (
       <View key={`quick-${message.id}`} style={styles.quickRepliesContainer}>
-        {message.quickReplies.map((reply, index) => (
-          <TouchableOpacity
-            key={index}
-            style={styles.quickReplyButton}
-            onPress={() => handleSendMessage(reply)}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.quickReplyText}>{reply}</Text>
-          </TouchableOpacity>
-        ))}
+        {message.quickReplies.map((reply, index) => {
+          const iconName = getQuickReplyIcon(reply);
+          return (
+            <TouchableOpacity
+              key={index}
+              style={styles.quickReplyButton}
+              onPress={() => handleSendMessage(reply)}
+              activeOpacity={0.78}
+            >
+              {iconName ? (
+                <Ionicons name={iconName} size={14} color={COLORS.PRIMARY} />
+              ) : null}
+              <Text style={styles.quickReplyText}>{formatQuickReplyLabel(reply)}</Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
     );
   };
@@ -716,7 +1042,7 @@ const ChatBot: React.FC<ChatBotProps> = ({ navigation }) => {
       <View style={styles.header}>
         <View style={styles.headerContent}>
           <View style={styles.botStatusContainer}>
-            <Image source={require("../../assets/images/logoFood.png")} style={{width: 24, height: 24, borderRadius: 12, marginRight: 8}} />
+            <Image source={require("../../assets/images/logoFood.png")} style={{ width: 24, height: 24, borderRadius: 12, marginRight: 8 }} />
             <View style={styles.botStatusDot} />
             <Text style={styles.headerTitle}>FoodBee Bot</Text>
           </View>
@@ -725,12 +1051,7 @@ const ChatBot: React.FC<ChatBotProps> = ({ navigation }) => {
 
         <View style={{ flexDirection: "row", gap: 12 }}>
           <TouchableOpacity
-            onPress={() => {
-              setMessages([INITIAL_MESSAGE]);
-              setSessionToken("");
-              AsyncStorage.removeItem(CHAT_HISTORY_KEY);
-              AsyncStorage.removeItem(SESSION_TOKEN_KEY);
-            }}
+            onPress={resetChatSession}
             hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
           >
             <Ionicons name="trash-outline" size={22} color={COLORS.TEXT_LIGHT} />
@@ -765,6 +1086,7 @@ const ChatBot: React.FC<ChatBotProps> = ({ navigation }) => {
             <View key={message.id}>
               {renderMessage(message)}
               {renderPaymentCard(message)}
+              {renderOptionSelector(message)}
               {renderRestaurantCards(message)}
               {renderFoodCards(message)}
               {renderQuickReply(message)}
@@ -773,9 +1095,9 @@ const ChatBot: React.FC<ChatBotProps> = ({ navigation }) => {
 
           {isLoading && (
             <View style={styles.loadingContainer}>
-            <View style={[styles.botAvatar, { backgroundColor: "transparent" }]}>
-              <Image source={require("../../assets/images/logoFood.png")} style={{width: 28, height: 28, borderRadius: 14}} />
-            </View>
+              <View style={[styles.botAvatar, { backgroundColor: "transparent" }]}>
+                <Image source={require("../../assets/images/logoFood.png")} style={{ width: 28, height: 28, borderRadius: 14 }} />
+              </View>
               <View style={styles.typingBubble}>
                 <Animated.View style={[styles.typingDot, { transform: [{ translateY: dot1 }] }]} />
                 <Animated.View style={[styles.typingDot, { transform: [{ translateY: dot2 }] }]} />
@@ -805,7 +1127,7 @@ const ChatBot: React.FC<ChatBotProps> = ({ navigation }) => {
               style={[
                 styles.sendButton,
                 (!inputText.trim() || isLoading) &&
-                  styles.sendButtonDisabled,
+                styles.sendButtonDisabled,
               ]}
               onPress={() => handleSendMessage()}
               disabled={!inputText.trim() || isLoading}
@@ -881,12 +1203,13 @@ const styles = StyleSheet.create({
 
   messagesContent: {
     paddingHorizontal: wp("4%"),
-    paddingVertical: hp("2%"),
+    paddingTop: hp("1.4%"),
+    paddingBottom: hp("2.4%"),
   },
 
   // Message
   messageContainer: {
-    marginVertical: hp("1%"),
+    marginVertical: hp("0.65%"),
     flexDirection: "row",
     alignItems: "flex-end",
   },
@@ -900,25 +1223,32 @@ const styles = StyleSheet.create({
   },
 
   messageBubble: {
-    maxWidth: wp("75%"),
-    paddingHorizontal: wp("3.5%"),
-    paddingVertical: hp("1.5%"),
-    borderRadius: 12,
+    maxWidth: wp("76%"),
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderRadius: 18,
   },
 
   userBubble: {
     backgroundColor: COLORS.PRIMARY,
-    borderBottomRightRadius: 0,
+    borderBottomRightRadius: 6,
+    shadowColor: COLORS.PRIMARY,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    elevation: 3,
   },
 
   botBubble: {
-    backgroundColor: COLORS.BOT_MESSAGE,
-    borderBottomLeftRadius: 0,
+    backgroundColor: "#F7F8FA",
+    borderBottomLeftRadius: 6,
+    borderWidth: 1,
+    borderColor: "#EEF0F3",
   },
 
   messageText: {
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 14.5,
+    lineHeight: 21,
   },
 
   userText: {
@@ -930,9 +1260,14 @@ const styles = StyleSheet.create({
   },
 
   messageTime: {
-    fontSize: 11,
+    fontSize: 10.5,
     color: COLORS.TEXT_LIGHT,
-    marginTop: 6,
+    marginTop: 7,
+  },
+
+  userMessageTime: {
+    color: "rgba(255,255,255,0.76)",
+    textAlign: "right",
   },
 
   botAvatar: {
@@ -942,37 +1277,69 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.PRIMARY,
     justifyContent: "center",
     alignItems: "center",
-    marginRight: 8,
-    marginBottom: 8,
+    marginRight: 7,
+    marginBottom: 6,
   },
 
   userAvatar: {
-    marginLeft: 8,
-    marginBottom: 8,
+    marginLeft: 7,
+    marginBottom: 6,
   },
 
   // Quick Replies
   quickRepliesContainer: {
     flexDirection: "row",
     flexWrap: "wrap",
-    marginVertical: hp("1%"),
-    gap: 8,
+    marginTop: hp("0.6%"),
+    marginBottom: hp("1%"),
+    paddingLeft: 36,
+    gap: 9,
   },
 
   quickReplyButton: {
-    backgroundColor: COLORS.BOT_MESSAGE,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: "#FFFFFF",
     borderWidth: 1,
-    borderColor: COLORS.BORDER,
-    paddingHorizontal: wp("3%"),
-    paddingVertical: hp("1%"),
-    borderRadius: 20,
+    borderColor: "#FFD2C5",
+    paddingHorizontal: 13,
+    paddingVertical: 9,
+    borderRadius: 999,
     marginBottom: 6,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 5,
+    elevation: 1,
   },
 
   quickReplyText: {
-    fontSize: 12,
+    fontSize: 12.5,
     color: COLORS.PRIMARY,
-    fontWeight: "500",
+    fontWeight: "700",
+  },
+
+  paymentQrPlaceholder: {
+    width: 160,
+    minHeight: 142,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    backgroundColor: "#F9FAFB",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 14,
+    marginBottom: 10,
+  },
+
+  paymentQrPlaceholderText: {
+    marginTop: 8,
+    fontSize: 11.5,
+    lineHeight: 16,
+    color: COLORS.TEXT_LIGHT,
+    textAlign: "center",
   },
 
   // Loading
@@ -1132,6 +1499,174 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: COLORS.TEXT_LIGHT,
     marginLeft: 2,
+  },
+
+  // Option selector
+  optionCard: {
+    marginLeft: 36,
+    marginRight: wp("4%"),
+    marginBottom: hp("1.2%"),
+    backgroundColor: "#FFFFFF",
+    borderRadius: 18,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "#F1F5F9",
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  optionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F1F5F9",
+    marginBottom: 12,
+  },
+  optionIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "#FFF1ED",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 10,
+  },
+  optionHeaderText: {
+    flex: 1,
+  },
+  optionTitle: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: COLORS.TEXT_DARK,
+  },
+  optionSubtitle: {
+    fontSize: 12,
+    color: COLORS.PRIMARY,
+    fontWeight: "700",
+    marginTop: 2,
+  },
+  optionSection: {
+    gap: 10,
+  },
+  optionSectionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  optionSectionTitle: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: COLORS.TEXT_DARK,
+  },
+  sizeGrid: {
+    gap: 8,
+  },
+  sizeChoice: {
+    borderWidth: 1.5,
+    borderColor: "#FED7CC",
+    backgroundColor: "#FFF7F4",
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  sizeChoiceName: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: COLORS.TEXT_DARK,
+  },
+  sizeChoicePrice: {
+    fontSize: 12,
+    color: COLORS.PRIMARY,
+    fontWeight: "800",
+  },
+  skipToppingButton: {
+    backgroundColor: COLORS.PRIMARY,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 999,
+  },
+  toppingActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flexShrink: 0,
+  },
+  skipToppingButtonSecondary: {
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#FED7CC",
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+  },
+  skipToppingText: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  skipToppingTextSecondary: {
+    color: COLORS.PRIMARY,
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  toppingSelectedHint: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: COLORS.TEXT_LIGHT,
+    fontWeight: "600",
+  },
+  toppingList: {
+    gap: 8,
+  },
+  toppingChoice: {
+    minHeight: 46,
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    backgroundColor: "#FAFAFA",
+    paddingHorizontal: 10,
+  },
+  toppingChoiceSelected: {
+    borderColor: COLORS.PRIMARY,
+    backgroundColor: "#FFF7F4",
+  },
+  toppingBullet: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: "#FFF1ED",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 10,
+  },
+  toppingBulletSelected: {
+    backgroundColor: COLORS.PRIMARY,
+  },
+  toppingBulletText: {
+    fontSize: 12,
+    fontWeight: "900",
+    color: COLORS.PRIMARY,
+  },
+  toppingName: {
+    flex: 1,
+    fontSize: 13,
+    color: COLORS.TEXT_DARK,
+    fontWeight: "700",
+  },
+  toppingPrice: {
+    fontSize: 12,
+    color: COLORS.TEXT_LIGHT,
+    fontWeight: "700",
+    marginLeft: 8,
   },
 
   textInputContainer: {
