@@ -8,7 +8,11 @@ import {
   ScrollView,
   RefreshControl,
   Animated,
+  Alert,
+  Linking,
+  DeviceEventEmitter,
 } from "react-native";
+import apiClient from "../../genaral/api";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
 // @ts-ignore
@@ -28,6 +32,7 @@ import {
   markNotificationRead,
   markAllNotificationsRead,
   deleteNotification,
+  formatTimeAgo,
 } from "../../utils/notificationStore";
 
 // ════════════════════════════════════════════════════════
@@ -67,8 +72,6 @@ interface NotificationProps {
 const TABS = [
   { key: "all", label: "Tất cả", icon: "apps" },
   { key: "order", label: "Đơn hàng", icon: "bag-handle" },
-  { key: "chat", label: "Tin nhắn", icon: "chatbubbles" },
-  { key: "promotion", label: "Khuyến mãi", icon: "gift" },
   { key: "system", label: "Hệ thống", icon: "settings" },
 ] as const;
 
@@ -77,20 +80,107 @@ const TABS = [
 // ════════════════════════════════════════════════════════
 const Notification: React.FC<NotificationProps> = ({ navigation }) => {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
-  const [activeTab, setActiveTab] = useState<"all" | "order" | "chat" | "promotion" | "system">("all");
+  const [activeTab, setActiveTab] = useState<"all" | "order" | "promotion" | "system">("all");
   const [isRefreshing, setIsRefreshing] = useState(false);
   const scaleAnims = useRef<{ [key: string]: Animated.Value }>({});
 
   const fetchNotifications = useCallback(async () => {
-    const list = await loadNotifications();
-    setNotifications(list);
+    console.log("[Notif] START fetch");
+    try {
+      // Load local notifications first (để hiện ngay nếu có)
+      const localList = await loadNotifications();
+
+      const res = await apiClient.get("/notifications");
+      if (res.data && res.data.status) {
+        // Map data from server to mobile format
+        const serverData = res.data.data || [];
+        const serverMapped: NotificationItem[] = serverData.map((item: any) => {
+          const d = item.data || {};
+          const isRefund = d.type === "refund_success";
+          const isCancel = d.loai === "order_cancelled" || d.type === "order_cancelled";
+          const isBroadcast = d.type === "broadcast";
+
+          let type: "order" | "promotion" | "system" = "system";
+          if (isRefund || isCancel || d.ma_don_hang) {
+            type = "order";
+          } else if (isBroadcast) {
+            // Thông báo broadcast từ Admin → luôn vào tab Hệ thống
+            type = "system";
+          } else if (d.type === "sale" || d.loai === "sale") {
+            type = "promotion";
+          }
+
+          // Xác định icon phù hợp theo loai của broadcast
+          let icon = "settings";
+          if (type === "order") icon = "bag-handle";
+          else if (type === "promotion") icon = "gift";
+          else if (isBroadcast && d.loai === "sale") icon = "gift";
+          else if (isBroadcast && d.loai === "event") icon = "megaphone";
+          else if (isBroadcast && d.loai === "news") icon = "newspaper";
+
+          // Badge label: phân biệt loai broadcast rõ ràng
+          let badgeLabel = "Hệ thống";
+          if (type === "order") badgeLabel = "Đơn hàng";
+          else if (type === "promotion") badgeLabel = "Khuyến mãi";
+          else if (isBroadcast) {
+            if (d.loai === "sale") badgeLabel = "Khuyến mãi";
+            else if (d.loai === "event") badgeLabel = "Sự kiện";
+            else if (d.loai === "news") badgeLabel = "Tin tức";
+            else badgeLabel = "Hệ thống";
+          }
+
+          return {
+            id: String(item.id),
+            type: type,
+            title: d.title || "Thông báo mới",
+            description: d.message || d.description || "",
+            icon,
+            time: item.created_at ? formatTimeAgo(new Date(item.created_at).getTime()) : "Vừa xong",
+            isRead: !!item.read_at,
+            badgeLabel,
+            link: d.link || "",
+            createdAt: item.created_at ? new Date(item.created_at).getTime() : Date.now(),
+          };
+        });
+
+        // Merge: server IDs là UUID, local IDs bắt đầu bằng "notif_"
+        // Giữ local notifications không trùng với server (theo id)
+        const serverIds = new Set(serverMapped.map((n) => n.id));
+        const localOnly = localList.filter((n) => !serverIds.has(n.id));
+
+        // Gộp và sắp xếp mới nhất trước
+        const merged = [...serverMapped, ...localOnly].sort(
+          (a, b) => b.createdAt - a.createdAt
+        );
+
+        setNotifications(merged);
+
+      } else {
+        // API không thành công → dùng local
+        setNotifications(localList);
+      }
+    } catch (err: any) {
+      console.log("[Notif] CATCH error:", err?.message || String(err));
+      Alert.alert("Lỗi Load API", err?.message || "Không thể kết nối đến server");
+      // Lỗi mạng → dùng local để vẫn hiển thị thông báo cũ
+      const localList = await loadNotifications();
+      setNotifications(localList);
+    }
   }, []);
 
   // Khởi tạo channels và xin quyền khi vào trang
   useEffect(() => {
     createNotificationChannels();
     requestNotificationPermission();
-  }, []);
+
+    const subscription = DeviceEventEmitter.addListener("NEW_NOTIFICATION", () => {
+      fetchNotifications();
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [fetchNotifications]);
 
   // Load lại mỗi khi focus vào tab
   useFocusEffect(
@@ -125,33 +215,44 @@ const Notification: React.FC<NotificationProps> = ({ navigation }) => {
   };
 
   const handleMarkAsRead = async (id: string) => {
-    await markNotificationRead(id);
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
-    );
+    try {
+      await apiClient.post("/notifications/mark-read", { id });
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
+      );
+      // Also update local store
+      await markNotificationRead(id);
+    } catch (err) {
+      console.log("Error marking notification read:", err);
+    }
   };
 
   const handleMarkAllAsRead = async () => {
-    await markAllNotificationsRead();
-    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+    try {
+      await apiClient.post("/notifications/mark-read", { id: null });
+      setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+      // Also update local store
+      await markAllNotificationsRead();
+    } catch (err) {
+      console.log("Error marking all read:", err);
+    }
   };
 
   const handleNotificationPress = (notification: NotificationItem) => {
     handleMarkAsRead(notification.id);
-    if (notification.type === "order") {
-      navigation.navigate("MainTabs", { screen: "Orders", params: { orderId: notification.id } });
+    if (notification.type === "order" || notification.type === "chat") {
+      // Vì Orders nằm trong MainTabs (hoặc ShipperTabs), nên cần navigate đúng nested structure.
+      // Notification chủ yếu được gọi từ App khách hàng, nhưng để chắc chắn ta có thể dùng merge.
+      navigation.navigate("MainTabs", { screen: "Orders" });
     } else if (notification.type === "promotion") {
       navigation.navigate("MyVouchers");
-    } else if (notification.type === "chat") {
-      // Điều hướng tới trang chat với shipper
-      if (notification.id_don_hang) {
-        navigation.navigate("ChatWithShipper", {
-          id_don_hang: notification.id_don_hang,
-          name: notification.sender_name || "Shipper",
-          avatar: notification.sender_avatar,
-          ma_don_hang: notification.ma_don_hang,
-          dia_chi: notification.dia_chi,
-        });
+    } else if (notification.type === "system") {
+      // Xử lý mở link cho thông báo hệ thống / broadcast
+      if (notification.link && notification.link.startsWith("http")) {
+        Linking.openURL(notification.link).catch(err => console.log("Không thể mở URL:", err));
+      } else if (notification.link === "/" || notification.link === "/trang-chu" || notification.badgeLabel === "Khuyến mãi" || notification.badgeLabel === "Sự kiện") {
+        // Mặc định điều hướng về trang chủ
+        navigation.navigate("MainTabs", { screen: "Home" });
       }
     }
   };
@@ -162,8 +263,6 @@ const Notification: React.FC<NotificationProps> = ({ navigation }) => {
         return { bg: COLORS.ORDER_BG, icon: COLORS.ORDER_ICON, accent: COLORS.ORDER_ACCENT };
       case "promotion":
         return { bg: COLORS.PROMO_BG, icon: COLORS.PROMO_ICON, accent: COLORS.PROMO_ACCENT };
-      case "chat":
-        return { bg: "#F0F7FF", icon: "#8B5CF6", accent: "#8B5CF6" };
       case "system":
         return { bg: COLORS.SYSTEM_BG, icon: COLORS.SYSTEM_ICON, accent: COLORS.SYSTEM_ACCENT };
       default:

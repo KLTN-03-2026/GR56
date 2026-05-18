@@ -13,50 +13,54 @@ import {
   Modal,
   Image,
   ActivityIndicator,
+  Alert,
+  Clipboard,
+  Linking,
+  DeviceEventEmitter,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import InlineDeliveryMap from "../../components/InlineDeliveryMap";
 import DeliveryMapModal from "../../components/DeliveryMapModal";
 import FloatingChatBubble from "../../components/FloatingChatBubble";
-import ChatWithCustomer from "./ChatWithCustomer";
+import { connectEcho } from "../../config/echo";
 // @ts-ignore
 import Ionicons from "react-native-vector-icons/Ionicons";
 import {
   heightPercentageToDP as hp,
   widthPercentageToDP as wp,
 } from "react-native-responsive-screen";
-import { launchCamera } from "react-native-image-picker";
-import Geolocation from "react-native-geolocation-service";
+import { launchCamera, launchImageLibrary } from "react-native-image-picker";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import apiClient from "../../genaral/api";
-import { sendLocalNotification } from "../../utils/localNotification";
-import { requestLocationPermission } from "../../utils/location";
-import InlineDeliveryMap from "../../components/InlineDeliveryMap";
 
 // ════════════════════════════════════════════════════════
 // Constants
 // ════════════════════════════════════════════════════════
-const PRIMARY      = "#EE4D2D";
+const PRIMARY = "#EE4D2D";
 const PRIMARY_DARK = "#C62828";
-const BG           = "#F5F6F8";
-const SURFACE      = "#FFFFFF";
-const TEXT_DARK    = "#1E293B";
-const TEXT_MUTED   = "#64748B";
-const TEXT_LIGHT   = "#94A3B8";
-const BORDER       = "#E2E8F0";
+const BG = "#F5F6F8";
+const SURFACE = "#FFFFFF";
+const TEXT_DARK = "#1E293B";
+const TEXT_MUTED = "#64748B";
+const TEXT_LIGHT = "#94A3B8";
+const BORDER = "#E2E8F0";
 
 // ── Status config (theo tinh_trang từ server) ───────────
 const STATUS_CONFIG: Record<number, { label: string; color: string; bg: string; icon: string }> = {
-  0: { label: "Chờ nhận",        color: "#F59E0B", bg: "#FFFBEB", icon: "time-outline" },
-  1: { label: "Đã nhận",         color: "#3B82F6", bg: "#EFF6FF", icon: "bag-check-outline" },
-  2: { label: "Quán đang làm",   color: "#F97316", bg: "#FFF7ED", icon: "restaurant-outline" },
-  3: { label: "Đang giao",       color: "#8B5CF6", bg: "#F5F3FF", icon: "bicycle-outline" },
-  4: { label: "Đã giao",         color: "#10B981", bg: "#ECFDF5", icon: "checkmark-circle-outline" },
+  0: { label: "Chờ nhận", color: "#F59E0B", bg: "#FFFBEB", icon: "time-outline" },
+  1: { label: "Đã nhận", color: "#3B82F6", bg: "#EFF6FF", icon: "bag-check-outline" },
+  2: { label: "Quán đang làm", color: "#F97316", bg: "#FFF7ED", icon: "restaurant-outline" },
+  3: { label: "Đang giao", color: "#8B5CF6", bg: "#F5F3FF", icon: "bicycle-outline" },
+  4: { label: "Đã giao", color: "#10B981", bg: "#ECFDF5", icon: "checkmark-circle-outline" },
+  5: { label: "Đã hủy", color: "#EF4444", bg: "#FEF2F2", icon: "close-circle-outline" },
 };
 
 // ── Tabs ────────────────────────────────────────────────
 const TABS = [
-  { key: "nhan_don",  label: "Nhận đơn",  icon: "time" },
+  { key: "nhan_don", label: "Nhận đơn", icon: "time" },
   { key: "dang_giao", label: "Đang giao", icon: "bicycle" },
-  { key: "lich_su",   label: "Lịch sử",   icon: "checkmark-circle" },
+  { key: "lich_su", label: "Lịch sử", icon: "checkmark-circle" },
+  { key: "da_huy", label: "Đơn huỷ", icon: "close-circle" },
 ] as const;
 
 // ── Types ────────────────────────────────────────────────
@@ -69,8 +73,8 @@ interface OrderItem {
 interface Order {
   id: number;
   ma_don_hang: string;
-  tinh_trang: number;       // 0=chờ nhận, 1=đã nhận, 2=đang giao, 3=đã giao, 
-  activeTab: "nhan_don" | "dang_giao" | "lich_su";
+  tinh_trang: number;       // 0=chờ nhận, 1=đã nhận, 2=đang giao, 3=đã giao,
+  activeTab: "nhan_don" | "dang_giao" | "lich_su" | "da_huy";
   is_thanh_toan: number;
   phuong_thuc_thanh_toan: number; // 1=tiền mặt, 2=chuyển khoản
   ten_quan_an: string;
@@ -78,18 +82,27 @@ interface Order {
   dia_chi_quan: string;
   ten_nguoi_nhan: string;
   sdt_nguoi_nhan?: string;
+  so_dien_thoai?: string; // Tên field từ BE (don_hangs.*)
   avatar: string | null;
   dia_chi_khach: string;
   ten_quan_huyen: string;
   ten_tinh_thanh: string;
-  toa_do_x?: number | null;  // longitude địa chỉ khách
-  toa_do_y?: number | null;  // latitude địa chỉ khách
+  // Tọa độ quán ăn (từ chi-tiet-mon-an API)
+  restaurant_lat?: number | null;
+  restaurant_lng?: number | null;
+  // Tọa độ khách hàng (từ chi-tiet-mon-an API)
+  customer_lat?: number | null;
+  customer_lng?: number | null;
   tong_tien: number;
   phi_ship: number;
   tien_hang?: number;
   gio_tao_don?: string;
   created_at: string;
   items?: OrderItem[];
+  // Thời gian chờ nhận đơn (từ DispatchCandidateEvent, mặc định 60s)
+  expires_in?: number;
+  // Thời điểm đơn đến tay shipper (ms timestamp) — dùng để tính đúng remaining khi mở detail
+  arrivedAt?: number;
 }
 
 // ════════════════════════════════════════════════════════
@@ -119,7 +132,7 @@ const MODAL_HIDDEN: ModalConfig = {
   message: "",
   confirmLabel: "",
   confirmColor: "",
-  onConfirm: () => {},
+  onConfirm: () => { },
 };
 
 const CustomModal = ({ config, onDismiss }: { config: ModalConfig; onDismiss: () => void }) => {
@@ -262,33 +275,55 @@ const mStyles = StyleSheet.create({
 });
 
 // ════════════════════════════════════════════════════════
-// Countdown Timer Component (5 minutes)
+// Countdown Timer Component (dynamic seconds from event)
 // ════════════════════════════════════════════════════════
-const TOTAL_SECONDS = 5 * 60; // 300 giây
 
-const CountdownTimer = ({ onExpire }: { onExpire: () => void }) => {
-  const [secondsLeft, setSecondsLeft] = useState(TOTAL_SECONDS);
+const CountdownTimer = ({ expiresIn = 60, arrivedAt, onExpire }: { expiresIn?: number; arrivedAt?: number; onExpire: () => void }) => {
+  // Tính remaining đúng dựa vào thời điểm đơn đến — tránh reset khi mở/đóng panel
+  const calcRemaining = () => {
+    if (arrivedAt) {
+      const elapsed = (Date.now() - arrivedAt) / 1000;
+      return Math.max(0, Math.round(expiresIn - elapsed));
+    }
+    return expiresIn;
+  };
+  const [secondsLeft, setSecondsLeft] = useState(calcRemaining);
   const progressAnim = useRef(new Animated.Value(1)).current;
-  const pulseAnim    = useRef(new Animated.Value(1)).current;
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const expiredRef = useRef(false);
 
-  // Chạy thanh progress animation
+  // Chạy thanh progress animation dựa theo remaining thực
   useEffect(() => {
+    const remaining = calcRemaining();
+    const ratio = expiresIn > 0 ? remaining / expiresIn : 0;
+    progressAnim.setValue(ratio);
     Animated.timing(progressAnim, {
       toValue: 0,
-      duration: TOTAL_SECONDS * 1000,
+      duration: remaining * 1000,
       useNativeDriver: false,
     }).start();
-  }, []);
+  }, [arrivedAt, expiresIn]);
 
   // Đếm ngược mỗi giây
   useEffect(() => {
-    if (secondsLeft <= 0) {
-      onExpire();
-      return;
-    }
-    const timer = setTimeout(() => setSecondsLeft((s) => s - 1), 1000);
-    return () => clearTimeout(timer);
-  }, [secondsLeft]);
+    const initial = calcRemaining();
+    setSecondsLeft(initial);
+    expiredRef.current = false;
+    const timer = setInterval(() => {
+      setSecondsLeft((s) => {
+        if (s <= 1) {
+          clearInterval(timer);
+          if (!expiredRef.current) {
+            expiredRef.current = true;
+            // Không gọi onExpire ở đây nữa vì parent đã tự cascade
+          }
+          return 0;
+        }
+        return s - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [arrivedAt, expiresIn]);
 
   // Pulse khi còn < 60s
   useEffect(() => {
@@ -296,7 +331,7 @@ const CountdownTimer = ({ onExpire }: { onExpire: () => void }) => {
       const pulse = Animated.loop(
         Animated.sequence([
           Animated.timing(pulseAnim, { toValue: 1.08, duration: 400, useNativeDriver: true }),
-          Animated.timing(pulseAnim, { toValue: 1,    duration: 400, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1, duration: 400, useNativeDriver: true }),
         ])
       );
       pulse.start();
@@ -330,7 +365,7 @@ const CountdownTimer = ({ onExpire }: { onExpire: () => void }) => {
             {
               backgroundColor: timerColor,
               width: progressAnim.interpolate({
-                inputRange:  [0, 1],
+                inputRange: [0, 1],
                 outputRange: ["0%", "100%"],
               }),
             },
@@ -352,39 +387,25 @@ const OrderDetailPanel = ({
   order,
   onClose,
   onAcceptOrder,
+  onDeclineOrder,
   onCompleteDelivery,
-  navigation,
+  onChat,
 }: {
   order: Order;
   onClose: () => void;
   onAcceptOrder: (id: number) => void;
+  onDeclineOrder: (id: number) => void;
   onCompleteDelivery: (id: number) => void;
-  navigation: any;
+  onChat?: () => void;
 }) => {
   const cfg = STATUS_CONFIG[order.tinh_trang] ?? STATUS_CONFIG[0];
   const slideAnim = useRef(new Animated.Value(300)).current;
   const [localItems, setLocalItems] = useState<OrderItem[]>(order.items ?? []);
+  const [fullOrder, setFullOrder] = useState<Order>(order);
   const [showMap, setShowMap] = useState(false);
-  const [shipperGPS, setShipperGPS] = useState<[number, number] | null>(null);
+  const [showMapToRestaurant, setShowMapToRestaurant] = useState(false);
+  const [shipperCoord, setShipperCoord] = useState<[number, number] | null>(null);
   const insets = useSafeAreaInsets();
-
-  // Lấy GPS thiết bị để hiển thị vị trí shipper trên map
-  useEffect(() => {
-    if (order.activeTab !== "dang_giao") return;
-    let cancelled = false;
-    (async () => {
-      const granted = await requestLocationPermission();
-      if (!granted || cancelled) return;
-      Geolocation.getCurrentPosition(
-        (pos) => {
-          if (!cancelled) setShipperGPS([pos.coords.longitude, pos.coords.latitude]);
-        },
-        () => {},
-        { enableHighAccuracy: true, timeout: 8000, maximumAge: 10000 }
-      );
-    })();
-    return () => { cancelled = true; };
-  }, [order.activeTab, order.id]);
 
   useEffect(() => {
     Animated.spring(slideAnim, {
@@ -398,9 +419,50 @@ const OrderDetailPanel = ({
       .then((res) => {
         const items = res.data?.data ?? [];
         if (items.length > 0) setLocalItems(items);
+
+        // Cập nhật thông tin đơn hàng đầy đủ (bao gồm so_dien_thoai từ BE)
+        if (res.data?.don_hang) {
+          setFullOrder(prev => ({ ...prev, ...res.data.don_hang }));
+        }
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
+
+  // Tracking GPS shipper real-time khi tinh_trang >= 1 (shipper đã nhận đơn)
+  React.useEffect(() => {
+    if (!fullOrder.id || fullOrder.tinh_trang < 1) {
+      setShipperCoord(null);
+      return;
+    }
+    let echoInstance: any = null;
+
+    const fetchTracking = async () => {
+      try {
+        const res = await apiClient.post("/shipper/don-hang/theo-doi", { id: fullOrder.id });
+        if (res.data?.status && res.data?.order) {
+          const { shipper_lat, shipper_lng } = res.data.order;
+          if (shipper_lat && shipper_lng) {
+            setShipperCoord([parseFloat(shipper_lng), parseFloat(shipper_lat)]);
+          }
+        }
+      } catch (_) { }
+    };
+    fetchTracking();
+
+    connectEcho().then((echo: any) => {
+      echoInstance = echo;
+      echo.private(`order.${fullOrder.id}`)
+        .listen(".shipper.location.updated", (data: any) => {
+          if (data?.lat && data?.lng) {
+            setShipperCoord([parseFloat(data.lng), parseFloat(data.lat)]);
+          }
+        });
+    }).catch(() => { });
+
+    return () => {
+      if (echoInstance) echoInstance.leave(`order.${fullOrder.id}`);
+    };
+  }, [fullOrder.id, fullOrder.tinh_trang]);
 
   const formatMoney = (v: number) => v.toLocaleString("vi-VN") + "đ";
   const deliveryAddr = [order.dia_chi_khach, order.ten_quan_huyen, order.ten_tinh_thanh]
@@ -460,12 +522,41 @@ const OrderDetailPanel = ({
               </Text>
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.recipientName}>{order.ten_nguoi_nhan}</Text>
-              {order.sdt_nguoi_nhan ? (
+              <Text style={styles.recipientName}>{fullOrder.ten_nguoi_nhan}</Text>
+              {(fullOrder.so_dien_thoai || fullOrder.sdt_nguoi_nhan) ? (
                 <View style={styles.recipientPhoneRow}>
                   {/* @ts-ignore */}
                   <Ionicons name="call-outline" size={14} color={PRIMARY} />
-                  <Text style={styles.recipientPhone}>{order.sdt_nguoi_nhan}</Text>
+                  <Text style={styles.recipientPhone}>{fullOrder.so_dien_thoai || fullOrder.sdt_nguoi_nhan}</Text>
+                  {/* Nút copy */}
+                  <TouchableOpacity
+                    onPress={() => {
+                      Clipboard.setString((fullOrder.so_dien_thoai || fullOrder.sdt_nguoi_nhan)!);
+                      Alert.alert('', 'Đã sao chép số điện thoại!');
+                    }}
+                    style={{ marginLeft: 8, padding: 4, backgroundColor: '#FFF0ED', borderRadius: 6 }}
+                  >
+                    {/* @ts-ignore */}
+                    <Ionicons name="copy-outline" size={13} color={PRIMARY} />
+                  </TouchableOpacity>
+                  {/* Nút gọi */}
+                  <TouchableOpacity
+                    onPress={() => Linking.openURL(`tel:${fullOrder.so_dien_thoai || fullOrder.sdt_nguoi_nhan}`)}
+                    style={{ marginLeft: 4, padding: 4, backgroundColor: '#ECFDF5', borderRadius: 6 }}
+                  >
+                    {/* @ts-ignore */}
+                    <Ionicons name="call" size={13} color="#10B981" />
+                  </TouchableOpacity>
+                  {/* Nút chat */}
+                  {onChat && order.activeTab === "dang_giao" && (
+                    <TouchableOpacity
+                      onPress={onChat}
+                      style={{ marginLeft: 4, padding: 4, backgroundColor: '#EFF6FF', borderRadius: 6 }}
+                    >
+                      {/* @ts-ignore */}
+                      <Ionicons name="chatbubble-ellipses" size={13} color="#3B82F6" />
+                    </TouchableOpacity>
+                  )}
                 </View>
               ) : null}
             </View>
@@ -536,45 +627,54 @@ const OrderDetailPanel = ({
       {/* ── Nút hành động cố định dưới panel ── */}
       {order.activeTab === "nhan_don" && (
         <View style={[styles.detailActions, { paddingBottom: insets.bottom > 0 ? insets.bottom : 16 }]}>
-          <TouchableOpacity
-            style={[styles.actionBtn, { backgroundColor: PRIMARY }]}
-            onPress={() => onAcceptOrder(order.id)}
-            activeOpacity={0.85}
-          >
-            <Ionicons name="bag-check-outline" size={20} color="#FFF" />
-            <Text style={styles.actionBtnText}>Nhận đơn này</Text>
-          </TouchableOpacity>
+          <CountdownTimer
+            expiresIn={order.expires_in ?? 60}
+            arrivedAt={order.arrivedAt}
+            onExpire={() => { /* cascade handled by parent global effect */ }}
+          />
+          <View style={{ flexDirection: "row", gap: wp("2%"), marginTop: hp("1%") }}>
+            <TouchableOpacity
+              style={[styles.actionBtn, { backgroundColor: "#F1F5F9", flex: 1 }]}
+              onPress={() => onDeclineOrder(order.id)}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="close-circle-outline" size={20} color={TEXT_MUTED} />
+              <Text style={[styles.actionBtnText, { color: TEXT_MUTED }]}>Từ chối</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.actionBtn, { backgroundColor: PRIMARY, flex: 2 }]}
+              onPress={() => onAcceptOrder(order.id)}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="bag-check-outline" size={20} color="#FFF" />
+              <Text style={styles.actionBtnText}>Nhận đơn này</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       )}
 
       {order.activeTab === "dang_giao" && (
         <View style={[styles.detailActions, { paddingBottom: insets.bottom > 0 ? insets.bottom : 16 }]}>
-          {/* Nút xem bản đồ */}
+          {/* Nút xem bản đồ trong app */}
           <TouchableOpacity
-            style={[styles.actionBtn, { backgroundColor: "#3B82F6", marginBottom: 8 }]}
+            style={[styles.actionBtn, { backgroundColor: "#3B82F6", marginBottom: 10 }]}
             onPress={() => setShowMap(true)}
             activeOpacity={0.85}
           >
             <Ionicons name="map-outline" size={20} color="#FFF" />
             <Text style={styles.actionBtnText}>Xem bản đồ giao hàng</Text>
           </TouchableOpacity>
+
+          {/* tinh_trang 1,2,3: nút chỉ đường đến quán ăn */}
           <TouchableOpacity
-            style={[styles.actionBtn, { backgroundColor: "#8B5CF6", marginBottom: 8 }]}
-            onPress={() => {
-              onClose();
-              navigation.navigate("ChatWithCustomer", {
-                id_don_hang: order.id,
-                name: order.ten_nguoi_nhan,
-                avatar: order.avatar,
-                ma_don_hang: order.ma_don_hang,
-                dia_chi: order.dia_chi_khach,
-              });
-            }}
+            style={[styles.actionBtn, { backgroundColor: "#F97316", marginBottom: 10 }]}
+            onPress={() => setShowMapToRestaurant(true)}
             activeOpacity={0.85}
           >
-            <Ionicons name="chatbubble-outline" size={20} color="#FFF" />
-            <Text style={styles.actionBtnText}>Nhắn tin với khách hàng</Text>
+            <Ionicons name="navigate-outline" size={20} color="#FFF" />
+            <Text style={styles.actionBtnText}>Chỉ đường đến quán ăn</Text>
           </TouchableOpacity>
+
           {/* tinh_trang 1: Đã nhận — đi lấy hàng tại quán */}
           {order.tinh_trang === 1 && (
             <View style={[styles.actionBtn, { backgroundColor: "#F1F5F9" }]}>
@@ -607,44 +707,40 @@ const OrderDetailPanel = ({
         </View>
       )}
 
-      {/* Modal bản đồ fullscreen — chỉ mount khi showMap=true để tránh nested Modal phá touch */}
-      {order.activeTab === "dang_giao" && showMap && (() => {
-        const custCoord: [number, number] | null =
-          order.toa_do_x && order.toa_do_y
-            ? [Number(order.toa_do_x), Number(order.toa_do_y)]
-            : null;
-        const mapMode =
-          order.tinh_trang === 3 ? "shipper_to_customer"
-          : order.tinh_trang === 1 ? "three_point"
-          : "dual_address";
-        return (
-          <Modal visible={true} animationType="slide" statusBarTranslucent onRequestClose={() => setShowMap(false)}>
-            <View style={{ flex: 1, backgroundColor: "#1E293B" }}>
-              <View style={{ backgroundColor: "#3B82F6", flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: wp("4%"), paddingTop: hp("5%"), paddingBottom: hp("1.5%") }}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                  <Ionicons name="navigate" size={20} color="#FFF" />
-                  <Text style={{ color: "#FFF", fontSize: wp("4.2%"), fontWeight: "700" }}>Bản đồ giao hàng</Text>
-                </View>
-                <TouchableOpacity onPress={() => setShowMap(false)} style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: "rgba(255,255,255,0.2)", justifyContent: "center", alignItems: "center" }}>
-                  <Ionicons name="close" size={22} color="#FFF" />
-                </TouchableOpacity>
-              </View>
-              <InlineDeliveryMap
-                mode={mapMode}
-                destAddress={order.dia_chi_quan}
-                destName={order.ten_quan_an}
-                shipperCoord={shipperGPS}
-                shipperName="Vị trí của bạn"
-                secondAddress={deliveryAddr}
-                secondName={order.ten_nguoi_nhan}
-                secondCoord={custCoord}
-                height={hp("85%")}
-              />
-            </View>
-          </Modal>
-        );
-      })()}
+      {/* Map Modal - đến khách hàng */}
+      <DeliveryMapModal
+        visible={showMap}
+        onClose={() => setShowMap(false)}
+        mode="shipper_delivery"
+        destAddress={deliveryAddr}
+        destName={order.ten_nguoi_nhan}
+        destCoord={
+          fullOrder.customer_lat && fullOrder.customer_lng
+            ? [fullOrder.customer_lng, fullOrder.customer_lat]
+            : null
+        }
+        restaurantCoord={
+          fullOrder.restaurant_lat && fullOrder.restaurant_lng
+            ? [fullOrder.restaurant_lng, fullOrder.restaurant_lat]
+            : null
+        }
+        shipperCoord={shipperCoord}
+      />
 
+      {/* Map Modal - đến quán ăn */}
+      <DeliveryMapModal
+        visible={showMapToRestaurant}
+        onClose={() => setShowMapToRestaurant(false)}
+        mode="shipper_delivery"
+        destAddress={order.dia_chi_quan}
+        destName={order.ten_quan_an}
+        destCoord={
+          fullOrder.restaurant_lat && fullOrder.restaurant_lng
+            ? [fullOrder.restaurant_lng, fullOrder.restaurant_lat]
+            : null
+        }
+        shipperCoord={shipperCoord}
+      />
     </Animated.View>
   );
 };
@@ -652,10 +748,11 @@ const OrderDetailPanel = ({
 // ════════════════════════════════════════════════════════
 // Main Component
 // ════════════════════════════════════════════════════════
-const ShipperOrders = ({ navigation }: any) => {
+const ShipperOrders = ({ navigation, route }: any) => {
   const [availableOrders, setAvailableOrders] = useState<Order[]>([]);
-  const [activeOrders, setActiveOrders]       = useState<Order[]>([]);
-  const [historyOrders, setHistoryOrders]     = useState<Order[]>([]);
+  const [activeOrders, setActiveOrders] = useState<Order[]>([]);
+  const [historyOrders, setHistoryOrders] = useState<Order[]>([]);
+  const [cancelledOrders, setCancelledOrders] = useState<Order[]>([]);
   const [activeTab, setActiveTab] = useState<string>("nhan_don");
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -663,9 +760,54 @@ const ShipperOrders = ({ navigation }: any) => {
   const [todayDelivered, setTodayDelivered] = useState(0);
   const [modalCfg, setModalCfg] = useState<ModalConfig>(MODAL_HIDDEN);
   const dismissModal = () => setModalCfg(MODAL_HIDDEN);
+  // ── Online / Offline toggle ──
+  const [isOpen, setIsOpen] = useState(false);
+  const [toggling, setToggling] = useState(false);
+  const toggleAnim = useRef(new Animated.Value(0)).current;
 
-  // Lưu IDs đơn "Nhận đơn" của lần fetch trước để phát hiện đơn mới
-  const prevAvailableIdsRef = useRef<Set<number> | null>(null);
+  // Load is_open từ userData
+  useEffect(() => {
+    AsyncStorage.getItem("userData").then((str) => {
+      if (!str) return;
+      const d = JSON.parse(str);
+      const val = d.is_open === true || d.is_open === 1;
+      setIsOpen(val);
+      Animated.timing(toggleAnim, { toValue: val ? 1 : 0, duration: 0, useNativeDriver: false }).start();
+    }).catch(() => { });
+  }, []);
+
+  const handleToggleOnline = async () => {
+    if (toggling) return;
+    setToggling(true);
+    try {
+      const res = await apiClient.post("/shipper/toggle-status", {});
+      if (res.data?.status === 1) {
+        const newVal = res.data.is_open === true || res.data.is_open === 1;
+        setIsOpen(newVal);
+        Animated.spring(toggleAnim, { toValue: newVal ? 1 : 0, useNativeDriver: false, speed: 20, bounciness: 4 }).start();
+        // Sync AsyncStorage
+        const str = await AsyncStorage.getItem("userData");
+        if (str) {
+          const d = JSON.parse(str);
+          await AsyncStorage.setItem("userData", JSON.stringify({ ...d, is_open: newVal }));
+        }
+      } else {
+        Alert.alert("Không thể thay đổi", res.data?.message ?? "Vui lòng thử lại.");
+      }
+    } catch {
+      Alert.alert("Lỗi", "Không thể kết nối. Vui lòng thử lại.");
+    } finally {
+      setToggling(false);
+    }
+  };
+
+  useEffect(() => {
+    if (route?.params?.initialTab) {
+      setActiveTab(route.params.initialTab);
+      // Xoá param để tránh trigger lại nếu tab đổi
+      navigation.setParams({ initialTab: undefined });
+    }
+  }, [route?.params?.initialTab, navigation]);
 
   // ── Chụp ảnh xác nhận giao hàng ──
   const [photoModal, setPhotoModal] = useState<{ visible: boolean; orderId: number | null }>({
@@ -675,14 +817,16 @@ const ShipperOrders = ({ navigation }: any) => {
   const [submittingPhoto, setSubmittingPhoto] = useState(false);
 
   const filteredOrders =
-    activeTab === "nhan_don"  ? availableOrders :
-    activeTab === "dang_giao" ? activeOrders :
-    historyOrders;
+    activeTab === "nhan_don" ? availableOrders :
+      activeTab === "dang_giao" ? activeOrders :
+        activeTab === "da_huy" ? cancelledOrders :
+          historyOrders;
 
   const countByTab = (key: string) =>
-    key === "nhan_don"  ? availableOrders.length :
-    key === "dang_giao" ? activeOrders.length :
-    historyOrders.length;
+    key === "nhan_don" ? availableOrders.length :
+      key === "dang_giao" ? activeOrders.length :
+        key === "da_huy" ? cancelledOrders.length :
+          historyOrders.length;
 
   // Helper: địa chỉ đầy đủ
   const fullAddress = (o: any) =>
@@ -701,35 +845,28 @@ const ShipperOrders = ({ navigation }: any) => {
   const fetchOrders = useCallback(async () => {
     try {
       const [r1, r2] = await Promise.all([
-        apiClient.get("/shipper/don-hang/data"),
-        apiClient.get("/shipper/don-hang/data-dang-giao"),
+        // API mới LEFT JOIN - đơn chatbot không bị drop
+        apiClient.get("/shipper/don-hang/cho-nhan"),
+        apiClient.get("/shipper/don-hang/dang-giao-chi-tiet"),
       ]);
 
       // Tab Nhận đơn — tinh_trang=0, chưa có shipper
       if (r1.data?.list_don_hang_co_the_nhan) {
-        const newOrders: Order[] = r1.data.list_don_hang_co_the_nhan.map((o: any): Order => ({
-          ...o,
-          tinh_trang: 0,
-          activeTab: "nhan_don",
-        }));
-
-        // Phát hiện đơn mới → gửi thông báo (bỏ qua lần fetch đầu tiên)
-        if (prevAvailableIdsRef.current !== null) {
-          const addedOrders = newOrders.filter((o) => !prevAvailableIdsRef.current!.has(o.id));
-          for (const o of addedOrders) {
-            sendLocalNotification({
-              title: "📦 Đơn hàng mới!",
-              description: `Đơn #${o.ma_don_hang} từ ${o.ten_quan_an} — phí ship: ${o.phi_ship.toLocaleString("vi-VN")}đ`,
-              type: "order",
-            }).catch(() => {});
-          }
-        }
-        prevAvailableIdsRef.current = new Set(newOrders.map((o) => o.id));
-
-        setAvailableOrders(newOrders);
+        const now = Date.now();
+        setAvailableOrders((prev) => {
+          const prevMap: Record<number, Order> = {};
+          prev.forEach(o => { prevMap[o.id] = o; });
+          return r1.data.list_don_hang_co_the_nhan.map((o: any): Order => ({
+            ...o,
+            tinh_trang: 0,
+            activeTab: "nhan_don",
+            // Giữ arrivedAt cũ nếu đã có (tránh reset timer khi polling)
+            arrivedAt: prevMap[o.id]?.arrivedAt ?? now,
+          }));
+        });
       }
 
-      // Tab Đang giao — tinh_trang 1 hoặc 2
+      // Tab Đang giao — tinh_trang 1, 2, 3
       if (r2.data?.data) {
         setActiveOrders(
           r2.data.data.map((o: any): Order => ({
@@ -739,7 +876,7 @@ const ShipperOrders = ({ navigation }: any) => {
         );
       }
 
-      // Tab Lịch sử — tinh_trang 3 hoặc 4
+      // Tab Lịch sử — tinh_trang 4
       if (r2.data?.list_don_hang_hoan_thanh) {
         setHistoryOrders(
           r2.data.list_don_hang_hoan_thanh.map((o: any): Order => ({
@@ -748,60 +885,201 @@ const ShipperOrders = ({ navigation }: any) => {
           }))
         );
       }
+
+      // Tab Đơn huỷ — tinh_trang 5
+      if (r2.data?.list_don_hang_da_huy) {
+        setCancelledOrders(
+          r2.data.list_don_hang_da_huy.map((o: any): Order => ({
+            ...o,
+            activeTab: "da_huy",
+          }))
+        );
+      }
     } catch {
       // giữ state rỗng, user có thể kéo xuống refresh
     }
   }, []);
 
+  useEffect(() => { fetchOrders(); }, [fetchOrders]);
+
+  // ── Real-time: Echo listener cho đơn broadcast từ Dispatcher ──
   useEffect(() => {
-    fetchOrders();
-    const interval = setInterval(fetchOrders, 5000);
-    return () => clearInterval(interval);
-  }, [fetchOrders]);
+    let isMounted = true;
+    let channelRef: any = null;
 
-  // ── Gửi vị trí shipper lên server liên tục ──────────
+    const setupEcho = async () => {
+      try {
+        const userDataStr = await AsyncStorage.getItem("userData");
+        if (!userDataStr || !isMounted) return;
+        const userData = JSON.parse(userDataStr);
+        const shipperId = userData.id;
+        if (!shipperId) return;
+
+        const echo = await connectEcho();
+        if (!isMounted) return;
+
+        // Channel riêng cho shipper — nhận broadcast đơn từ DispatcherService
+        channelRef = echo.private(`shipper.${shipperId}`);
+
+        channelRef.listen(".dispatch.candidate", (data: any) => {
+          if (!isMounted) return;
+          const order = data.order || data;
+          if (!order?.id) return;
+
+          // Thêm vào danh sách nhận đơn nếu chưa có (dùng expires_in từ BE)
+          const expiresIn = order.expires_in ?? data.expires_in ?? 60;
+          setAvailableOrders((prev) => {
+            if (prev.some((o) => o.id === order.id)) return prev;
+            return [
+              {
+                ...order,
+                tinh_trang: 0,
+                activeTab: "nhan_don",
+                expires_in: expiresIn,
+                arrivedAt: Date.now(), // ghi nhận thời điểm đơn đến
+              },
+              ...prev,
+            ];
+          });
+
+          // Thông báo cho shipper
+          DeviceEventEmitter.emit("DISPATCH_NEW_ORDER", {
+            order_id: order.id,
+            ma_don_hang: order.ma_don_hang,
+            phi_ship: order.phi_ship,
+          });
+        });
+
+        // Khi có shipper khác nhận đơn (broadcast huỷ) → xoá đơn + đóng panel
+        channelRef.listen(".dispatch.cancelled", (data: any) => {
+          if (!isMounted) return;
+          const orderId = Number(data?.order_id || data?.id);
+          if (!orderId) return;
+          setAvailableOrders((prev) => prev.filter((o) => o.id !== orderId));
+          setSelectedOrder((prev) => (prev?.id === orderId ? null : prev));
+        });
+
+        // Đơn bị hủy (admin hủy hoặc auto_cancel)
+        channelRef.listen(".don-hang.da-huy", (data: any) => {
+          if (!isMounted) return;
+          const id = Number(data?.id || data?.order_id);
+          if (!id) return;
+          // Xóa khỏi active orders (đang giao)
+          setActiveOrders((prev) => prev.filter((o) => o.id !== id));
+          // Chuyển vào cancelled orders
+          const cancelled = data;
+          setCancelledOrders((prev) => {
+            if (prev.some((o) => o.id === id)) return prev;
+            return [{ ...cancelled, tinh_trang: 5, activeTab: "da_huy" }, ...prev];
+          });
+        });
+
+        // Đơn hoàn thành — chuyển từ active → lịch sử
+        channelRef.listen(".don-hang.hoan-thanh", (data: any) => {
+          if (!isMounted) return;
+          const id = Number(data?.id || data?.order_id);
+          if (!id) return;
+          setActiveOrders((prev) => {
+            const completed = prev.find((o) => o.id === id);
+            if (completed) {
+              setHistoryOrders((h) => {
+                if (h.some((x) => x.id === id)) return h;
+                return [{ ...completed, tinh_trang: 4, activeTab: "lich_su" }, ...h];
+              });
+            }
+            return prev.filter((o) => o.id !== id);
+          });
+        });
+
+        // Quán đang chế biến — tinh_trang = 2
+        channelRef.listen(".don-hang.dang-lam", (data: any) => {
+          if (!isMounted) return;
+          const dh = data?.don_hang || data || {};
+          const id = Number(dh?.id || dh?.order_id || data?.id);
+          if (!id) return;
+          setActiveOrders((prev) => {
+            const idx = prev.findIndex((o) => o.id === id);
+            if (idx >= 0) {
+              const updated = [...prev];
+              updated[idx] = { ...updated[idx], tinh_trang: 2 };
+              return updated;
+            }
+            return prev;
+          });
+          DeviceEventEmitter.emit("ORDER_STATUS_CHANGED", { order_id: id, tinh_trang: 2 });
+        });
+
+        // Quán chuẩn bị xong — tinh_trang = 3
+        channelRef.listen(".don-hang.da-xong", (data: any) => {
+          if (!isMounted) return;
+          const dh = data?.don_hang || data || {};
+          const id = Number(dh?.id || dh?.order_id || data?.id);
+          if (!id) return;
+          setActiveOrders((prev) => {
+            const idx = prev.findIndex((o) => o.id === id);
+            if (idx >= 0) {
+              const updated = [...prev];
+              updated[idx] = { ...updated[idx], tinh_trang: 3 };
+              return updated;
+            }
+            return prev;
+          });
+          DeviceEventEmitter.emit("ORDER_STATUS_CHANGED", { order_id: id, tinh_trang: 3 });
+        });
+
+      } catch (err) {
+        console.log("[Echo] ShipperOrders setup error:", err);
+      }
+    };
+
+    setupEcho();
+    return () => {
+      isMounted = false;
+      if (channelRef) {
+        try { channelRef.stopListening(".dispatch.candidate"); } catch { }
+        try { channelRef.stopListening(".dispatch.cancelled"); } catch { }
+        try { channelRef.stopListening(".don-hang.da-huy"); } catch { }
+        try { channelRef.stopListening(".don-hang.hoan-thanh"); } catch { }
+        try { channelRef.stopListening(".don-hang.dang-lam"); } catch { }
+        try { channelRef.stopListening(".don-hang.da-xong"); } catch { }
+      }
+    };
+  }, []);
+
+  // ── Auto-polling 15 giây + lắng nghe event khi có đơn mới từ App.tsx ──
   useEffect(() => {
-    let watchId: number | null = null;
+    const interval = setInterval(() => { fetchOrders(); }, 15000);
 
-    (async () => {
-      const granted = await requestLocationPermission();
-      if (!granted) return;
+    const sub1 = DeviceEventEmitter.addListener('NEW_SHIPPER_ORDER', () => { fetchOrders(); });
 
-      watchId = Geolocation.watchPosition(
-        (pos) => {
-          const lat = pos.coords.latitude;
-          const lng = pos.coords.longitude;
+    // ── Global countdown: chạy ngầm để cascade đúng giờ dù panel có mở hay không ──
+    const cascadeInterval = setInterval(async () => {
+      setAvailableOrders((prev) => {
+        const now = Date.now();
+        const expired = prev.filter((o) => {
+          if (!o.arrivedAt) return false;
+          const elapsed = (now - o.arrivedAt) / 1000;
+          return elapsed >= (o.expires_in ?? 60);
+        });
+        if (expired.length === 0) return prev;
+        // Gọi cascade API + đóng panel cho từng đơn hết giờ
+        expired.forEach((o) => {
+          apiClient.post("/shipper/don-hang/cascade-next", { id: o.id }).catch(() => { });
+          setSelectedOrder((sel) => (sel?.id === o.id ? null : sel));
+        });
+        return prev.filter((o) => !expired.some((e) => e.id === o.id));
+      });
+    }, 1000);
 
-          // Tìm đơn đang giao trong cả activeOrders (tinh_trang 1,2) và historyOrders (tinh_trang 3)
-          // vì server có thể phân loại tinh_trang 3 vào list khác nhau
-          const deliveringOrder =
-            activeOrders.find((o) => o.tinh_trang >= 1 && o.tinh_trang <= 3) ??
-            historyOrders.find((o) => o.tinh_trang === 3);
-
-          if (deliveringOrder) {
-            // Gửi GPS kèm id_don_hang → backend broadcast qua WebSocket cho khách theo dõi
-            apiClient.post("/shipper/cap-nhat-vi-tri", {
-              lat,
-              lng,
-              id_don_hang: deliveringOrder.id,
-            }).catch(() => {});
-          }
-          // Nếu không có đơn nào đang giao → không gửi GPS (tiết kiệm pin & băng thông)
-        },
-        () => {},
-        {
-          enableHighAccuracy: true,
-          distanceFilter: 10, // chỉ gửi khi di chuyển >= 10m
-          interval: 5000,
-          fastestInterval: 3000,
-        }
-      );
-    })();
+    const sub2 = { remove: () => { } }; // cascade now handled by global interval
 
     return () => {
-      if (watchId !== null) Geolocation.clearWatch(watchId);
+      clearInterval(interval);
+      clearInterval(cascadeInterval);
+      sub1.remove();
+      sub2.remove();
     };
-  }, [activeOrders, historyOrders]);
+  }, [fetchOrders]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -811,55 +1089,126 @@ const ShipperOrders = ({ navigation }: any) => {
 
   // Nhận đơn → POST /shipper/don-hang/nhan-don
   const handleAcceptOrder = (id: number) => {
-    setModalCfg({
-      visible: true,
-      icon: "bag-check",
-      iconColor: PRIMARY,
-      iconBg: "#FFF0ED",
-      title: "Nhận đơn hàng này?",
-      message: "Bạn sẽ chịu trách nhiệm giao đơn hàng này. Xác nhận để tiếp tục!",
-      confirmLabel: "Nhận đơn",
-      confirmColor: PRIMARY,
-      cancelLabel: "Thôi, để sau",
-      onConfirm: async () => {
-        try {
-          const res = await apiClient.post("/shipper/don-hang/nhan-don", { id });
-          if (res.data?.status === 1) {
-            setSelectedOrder(null);
-            await fetchOrders();
-            setModalCfg({
-              visible: true,
-              icon: "checkmark-circle",
-              iconColor: "#10B981",
-              iconBg: "#ECFDF5",
-              title: "Đã nhận đơn!",
-              message: res.data.message ?? "Đơn hàng được chuyển sang mục Đang giao.",
-              confirmLabel: "OK",
-              confirmColor: "#10B981",
-              infoOnly: true,
-              onConfirm: () => setActiveTab("dang_giao"),
-            });
-          } else {
-            const msg: string = res.data?.message ?? "";
-            const isInsufficientBalance =
-              res.data?.can_nop_tien === true ||
-              msg.includes("số dư") ||
-              msg.includes("so du") ||
-              msg.includes("không đủ") ||
-              msg.includes("khong du") ||
-              res.data?.error_type === "insufficient_balance";
-            if (isInsufficientBalance) {
+    // 1. Đóng Modal chi tiết đơn hàng trước (Fix lỗi iOS không cho phép mở 2 Modal cùng lúc)
+    setSelectedOrder(null);
+
+    // 2. Đợi Modal cũ đóng xong rồi mới mở Modal xác nhận
+    setTimeout(() => {
+      setModalCfg({
+        visible: true,
+        icon: "bag-check",
+        iconColor: PRIMARY,
+        iconBg: "#FFF0ED",
+        title: "Nhận đơn hàng này?",
+        message: "Bạn sẽ chịu trách nhiệm giao đơn hàng này. Xác nhận để tiếp tục!",
+        confirmLabel: "Nhận đơn",
+        confirmColor: PRIMARY,
+        cancelLabel: "Thôi, để sau",
+        onConfirm: async () => {
+          try {
+            const res = await apiClient.post("/shipper/don-hang/nhan-don", { id });
+            if (res.data?.status === 1) {
+              setSelectedOrder(null);
+              await fetchOrders();
               setModalCfg({
                 visible: true,
-                icon: "wallet-outline",
-                iconColor: "#EF4444",
-                iconBg: "#FEF2F2",
-                title: "Số dư không đủ!",
-                message: msg || "Số dư tài khoản của bạn không đủ để đặt cọc cho đơn này. Vui lòng nạp thêm để tiếp tục nhận đơn.",
-                confirmLabel: "Đã hiểu",
-                confirmColor: "#EF4444",
+                icon: "checkmark-circle",
+                iconColor: "#10B981",
+                iconBg: "#ECFDF5",
+                title: "Đã nhận đơn!",
+                message: res.data.message ?? "Đơn hàng được chuyển sang mục Đang giao.",
+                confirmLabel: "OK",
+                confirmColor: "#10B981",
                 infoOnly: true,
-                onConfirm: () => {},
+                onConfirm: () => setActiveTab("dang_giao"),
+              });
+            } else {
+              const msg: string = res.data?.message ?? "";
+              const isInsufficientBalance =
+                res.data?.can_nop_tien === true ||
+                msg.includes("số dư") ||
+                msg.includes("so du") ||
+                msg.includes("không đủ") ||
+                msg.includes("khong du") ||
+                res.data?.error_type === "insufficient_balance";
+              if (isInsufficientBalance) {
+                setModalCfg({
+                  visible: true,
+                  icon: "wallet-outline",
+                  iconColor: "#EF4444",
+                  iconBg: "#FEF2F2",
+                  title: "Số dư không đủ!",
+                  message: msg || "Số dư tài khoản của bạn không đủ để đặt cọc cho đơn này. Vui lòng nạp thêm để tiếp tục nhận đơn.",
+                  confirmLabel: "Đã hiểu",
+                  confirmColor: "#EF4444",
+                  infoOnly: true,
+                  onConfirm: () => { },
+                });
+              } else {
+                setModalCfg({
+                  visible: true,
+                  icon: "warning",
+                  iconColor: "#F59E0B",
+                  iconBg: "#FFFBEB",
+                  title: "Không thể nhận",
+                  message: msg || "Đơn hàng đã có người nhận rồi.",
+                  confirmLabel: "Hiểu rồi",
+                  confirmColor: "#F59E0B",
+                  infoOnly: true,
+                  onConfirm: () => fetchOrders(),
+                });
+              }
+            }
+          } catch {
+            setModalCfg({
+              visible: true,
+              icon: "alert-circle",
+              iconColor: "#EF4444",
+              iconBg: "#FEF2F2",
+              title: "Lỗi kết nối",
+              message: "Không thể nhận đơn lúc này. Vui lòng thử lại.",
+              confirmLabel: "OK",
+              confirmColor: "#EF4444",
+              infoOnly: true,
+              onConfirm: () => { },
+            });
+          }
+        },
+      });
+    }, 300);
+  };
+
+  // Từ chối đơn → POST /shipper/don-hang/tu-choi → cascade
+  const handleDeclineOrder = (id: number) => {
+    setSelectedOrder(null);
+    setTimeout(() => {
+      setModalCfg({
+        visible: true,
+        icon: "arrow-forward-circle",
+        iconColor: "#64748B",
+        iconBg: "#F1F5F9",
+        title: "Từ chối nhận đơn?",
+        message: "Đơn sẽ được chuyển cho shipper gần khu vực đó. Bạn có chắc?",
+        confirmLabel: "Từ chối",
+        confirmColor: "#64748B",
+        cancelLabel: "Giữ đơn",
+        onConfirm: async () => {
+          try {
+            const res = await apiClient.post("/shipper/don-hang/tu-choi", { id });
+            if (res.data?.status === 1) {
+              setAvailableOrders((prev) => prev.filter((o) => o.id !== id));
+              await fetchOrders();
+              setModalCfg({
+                visible: true,
+                icon: "checkmark-circle",
+                iconColor: "#10B981",
+                iconBg: "#ECFDF5",
+                title: "Đã từ chối",
+                message: res.data.message ?? "Đơn sẽ được chuyển cho shipper khác.",
+                confirmLabel: "OK",
+                confirmColor: "#10B981",
+                infoOnly: true,
+                onConfirm: () => { },
               });
             } else {
               setModalCfg({
@@ -867,44 +1216,76 @@ const ShipperOrders = ({ navigation }: any) => {
                 icon: "warning",
                 iconColor: "#F59E0B",
                 iconBg: "#FFFBEB",
-                title: "Không thể nhận",
-                message: msg || "Đơn hàng đã có người nhận rồi.",
-                confirmLabel: "Hiểu rồi",
+                title: "Không thể từ chối",
+                message: res.data?.message ?? "Có lỗi xảy ra.",
+                confirmLabel: "OK",
                 confirmColor: "#F59E0B",
                 infoOnly: true,
                 onConfirm: () => fetchOrders(),
               });
             }
+          } catch {
+            setModalCfg({
+              visible: true,
+              icon: "alert-circle",
+              iconColor: "#EF4444",
+              iconBg: "#FEF2F2",
+              title: "Lỗi kết nối",
+              message: "Không thể từ chối đơn lúc này.",
+              confirmLabel: "OK",
+              confirmColor: "#EF4444",
+              infoOnly: true,
+              onConfirm: () => { },
+            });
           }
-        } catch {
-          setModalCfg({
-            visible: true,
-            icon: "alert-circle",
-            iconColor: "#EF4444",
-            iconBg: "#FEF2F2",
-            title: "Lỗi kết nối",
-            message: "Không thể nhận đơn lúc này. Vui lòng thử lại.",
-            confirmLabel: "OK",
-            confirmColor: "#EF4444",
-            infoOnly: true,
-            onConfirm: () => {},
-          });
-        }
-      },
-    });
+        },
+      });
+    }, 300);
   };
 
   // Hoàn thành giao hàng → yêu cầu chụp ảnh xác nhận trước
   const handleCompleteDelivery = (id: number) => {
-    setCapturedPhoto(null);
-    setPhotoModal({ visible: true, orderId: id });
+    setSelectedOrder(null);
+    setTimeout(() => {
+      setCapturedPhoto(null);
+      setPhotoModal({ visible: true, orderId: id });
+    }, 300);
   };
 
   const handleTakePhoto = () => {
     launchCamera(
       { mediaType: "photo", quality: 0.7, saveToPhotos: false, cameraType: "back" },
       (res) => {
-        if (res.didCancel || res.errorCode) return;
+        if (res.didCancel) return;
+
+        // Nếu lỗi camera (vd: trên Simulator), cho phép chọn từ thư viện
+        if (res.errorCode === 'camera_unavailable') {
+          Alert.alert(
+            "Lỗi Camera",
+            "Thiết bị không hỗ trợ Camera (hoặc đang dùng giả lập). Bạn có muốn chọn ảnh từ thư viện không?",
+            [
+              { text: "Hủy", style: "cancel" },
+              {
+                text: "Chọn ảnh",
+                onPress: () => {
+                  launchImageLibrary({ mediaType: "photo", quality: 0.7 }, (libRes) => {
+                    if (!libRes.didCancel && !libRes.errorCode) {
+                      const uri = libRes.assets?.[0]?.uri;
+                      if (uri) setCapturedPhoto(uri);
+                    }
+                  });
+                }
+              }
+            ]
+          );
+          return;
+        }
+
+        if (res.errorCode) {
+          Alert.alert("Lỗi", "Không thể mở camera: " + res.errorMessage);
+          return;
+        }
+
         const uri = res.assets?.[0]?.uri;
         if (uri) setCapturedPhoto(uri);
       }
@@ -943,7 +1324,7 @@ const ShipperOrders = ({ navigation }: any) => {
         confirmLabel: "OK",
         confirmColor: "#EF4444",
         infoOnly: true,
-        onConfirm: () => {},
+        onConfirm: () => { },
       });
     } finally {
       setSubmittingPhoto(false);
@@ -1001,9 +1382,24 @@ const ShipperOrders = ({ navigation }: any) => {
           {/* Top row */}
           <View style={styles.cardTopRow}>
             <Text style={styles.cardOrderId}>#{item.ma_don_hang}</Text>
-            <View style={[styles.statusPill, { backgroundColor: cfg.bg }]}>
-              <Ionicons name={cfg.icon} size={11} color={cfg.color} />
-              <Text style={[styles.statusPillText, { color: cfg.color }]}>{cfg.label}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              {/* Mini countdown cho đơn chờ nhận */}
+              {item.activeTab === 'nhan_don' && item.arrivedAt != null && (() => {
+                const remaining = Math.max(0, Math.round((item.expires_in ?? 60) - (Date.now() - item.arrivedAt!) / 1000));
+                const isUrgent = remaining <= 60;
+                const mm = String(Math.floor(remaining / 60)).padStart(2, '0');
+                const ss = String(remaining % 60).padStart(2, '0');
+                return (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: isUrgent ? '#FEF2F2' : '#FFFBEB', borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2 }}>
+                    <Ionicons name="timer-outline" size={11} color={isUrgent ? '#EF4444' : '#F59E0B'} />
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: isUrgent ? '#EF4444' : '#F59E0B' }}>{mm}:{ss}</Text>
+                  </View>
+                );
+              })()}
+              <View style={[styles.statusPill, { backgroundColor: cfg.bg }]}>
+                <Ionicons name={cfg.icon} size={11} color={cfg.color} />
+                <Text style={[styles.statusPillText, { color: cfg.color }]}>{cfg.label}</Text>
+              </View>
             </View>
           </View>
 
@@ -1075,9 +1471,64 @@ const ShipperOrders = ({ navigation }: any) => {
                 {new Date().toLocaleDateString("vi-VN", { weekday: "long", day: "numeric", month: "numeric" })}
               </Text>
             </View>
-            <TouchableOpacity style={styles.headerIconBtn} onPress={handleRefresh}>
-              <Ionicons name="refresh-outline" size={22} color="#FFF" />
-            </TouchableOpacity>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+              {/* ── Online Toggle ── */}
+              <TouchableOpacity
+                onPress={handleToggleOnline}
+                disabled={toggling}
+                activeOpacity={0.85}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  backgroundColor: isOpen ? "rgba(16,185,129,0.25)" : "rgba(255,255,255,0.15)",
+                  borderRadius: 20,
+                  paddingHorizontal: 10,
+                  paddingVertical: 6,
+                  gap: 6,
+                }}
+              >
+                {/* Switch track */}
+                <Animated.View
+                  style={{
+                    width: 38,
+                    height: 22,
+                    borderRadius: 11,
+                    backgroundColor: toggleAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: ["#94A3B8", "#10B981"],
+                    }),
+                    justifyContent: "center",
+                    paddingHorizontal: 2,
+                  }}
+                >
+                  <Animated.View
+                    style={{
+                      width: 18,
+                      height: 18,
+                      borderRadius: 9,
+                      backgroundColor: "#FFF",
+                      shadowColor: "#000",
+                      shadowOffset: { width: 0, height: 1 },
+                      shadowOpacity: 0.2,
+                      shadowRadius: 2,
+                      elevation: 3,
+                      transform: [{
+                        translateX: toggleAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0, 16],
+                        }),
+                      }],
+                    }}
+                  />
+                </Animated.View>
+                <Text style={{ color: "#FFF", fontSize: 12, fontWeight: "700" }}>
+                  {toggling ? "..." : isOpen ? "Online" : "Offline"}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.headerIconBtn} onPress={handleRefresh}>
+                <Ionicons name="refresh-outline" size={22} color="#FFF" />
+              </TouchableOpacity>
+            </View>
           </View>
 
           {/* Stats strip */}
@@ -1102,9 +1553,9 @@ const ShipperOrders = ({ navigation }: any) => {
 
       {/* ── Tab Bar ── */}
       <View style={styles.tabBar}>
-        <View style={styles.tabBarContent}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabBarContent}>
           {TABS.map(renderTab)}
-        </View>
+        </ScrollView>
       </View>
 
       {/* ── Orders List ── */}
@@ -1112,7 +1563,6 @@ const ShipperOrders = ({ navigation }: any) => {
         data={filteredOrders}
         keyExtractor={(item) => item.id.toString()}
         renderItem={renderOrderCard}
-        style={{ flex: 1 }}
         contentContainerStyle={[
           styles.listContent,
           filteredOrders.length === 0 && { flex: 1 },
@@ -1148,8 +1598,18 @@ const ShipperOrders = ({ navigation }: any) => {
               order={selectedOrder}
               onClose={() => setSelectedOrder(null)}
               onAcceptOrder={handleAcceptOrder}
+              onDeclineOrder={handleDeclineOrder}
               onCompleteDelivery={handleCompleteDelivery}
-              navigation={navigation}
+              onChat={() => {
+                setSelectedOrder(null);
+                navigation.navigate("ChatWithCustomer", {
+                  id_don_hang: selectedOrder.id,
+                  name: selectedOrder.ten_nguoi_nhan || "Khách hàng",
+                  avatar: selectedOrder.avatar,
+                  ma_don_hang: selectedOrder.ma_don_hang,
+                  dia_chi: selectedOrder.dia_chi_khach || "",
+                });
+              }}
             />
           )}
         </View>
@@ -1296,15 +1756,12 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   tabBarContent: {
-    flexDirection: "row",
     paddingHorizontal: wp("2%"),
   },
   tab: {
-    flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: wp("2%"),
+    paddingHorizontal: wp("3.5%"),
     paddingVertical: hp("1.4%"),
     gap: 5,
     borderBottomWidth: 2,

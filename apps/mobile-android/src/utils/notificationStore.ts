@@ -14,8 +14,6 @@ export interface StoredNotification {
   isRead: boolean;
   badgeLabel: string;
   link?: string;
-  id_don_hang?: number;
-  sender_name?: string;
   createdAt: number;
 }
 
@@ -45,11 +43,7 @@ export const loadNotifications = async (): Promise<StoredNotification[]> => {
 };
 
 export const saveNotification = async (
-  item: Pick<StoredNotification, "type" | "title" | "description" | "icon" | "badgeLabel"> & {
-    link?: string;
-    id_don_hang?: number;
-    sender_name?: string;
-  }
+  item: Pick<StoredNotification, "type" | "title" | "description" | "icon" | "badgeLabel"> & { link?: string }
 ): Promise<void> => {
   try {
     const now = Date.now();

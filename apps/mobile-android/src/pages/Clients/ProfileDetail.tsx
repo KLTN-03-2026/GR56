@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
     View,
     Text,
@@ -25,17 +25,17 @@ import {
 } from "react-native-responsive-screen";
 import apiClient from "../../genaral/api";
 
-const PRIMARY = "#EE4D2D";
+const PRIMARY   = "#EE4D2D";
 const PRIMARY_LIGHT = "#FFF0EE";
-const BG = "#F5F6F8";
-const DARK = "#1E293B";
-const MUTED = "#64748B";
-const BORDER = "#E2E8F0";
-const SURFACE = "#FFFFFF";
+const BG        = "#F5F6F8";
+const DARK      = "#1E293B";
+const MUTED     = "#64748B";
+const BORDER    = "#E2E8F0";
+const SURFACE   = "#FFFFFF";
 
-// ──────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Toast mini
-// ──────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const Toast = ({ message, type }: { message: string; type: "success" | "error" }) => {
     const slideY = useRef(new Animated.Value(-80)).current;
     useEffect(() => {
@@ -55,31 +55,39 @@ const Toast = ({ message, type }: { message: string; type: "success" | "error" }
 };
 const toast = StyleSheet.create({
     wrap: { position: "absolute", top: 16, left: 20, right: 20, flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 14, zIndex: 999, elevation: 20, shadowColor: "#000", shadowOpacity: 0.18, shadowOffset: { width: 0, height: 4 }, shadowRadius: 10 },
-    txt: { color: "#FFF", fontSize: 14, fontWeight: "600", flex: 1 },
+    txt:  { color: "#FFF", fontSize: 14, fontWeight: "600", flex: 1 },
 });
 
-// ──────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Main Component
-// ──────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+const sanitizeAvatar = (url: string) => {
+    if (!url) return "";
+    let uri = url.replace(/\\/g, '/');
+    if (uri.startsWith("http://localhost") || uri.startsWith("http://127.0.0.1")) return uri;
+    return uri.replace("be-foodbee.edu.vn", "be.foodbee.io.vn");
+};
+
 const ProfileDetail = ({ navigation }: any) => {
     const [user, setUser] = useState({
-        name: "",
-        phone: "",
-        email: "",
-        cccd: "",
+        id:       null as number | null,
+        name:     "",
+        phone:    "",
+        email:    "",
         birthday: "",
-        avatar: "",
+        avatar:   "",
+        hang_thanh_vien: "Thành viên",
     });
 
     const [pendingAvatar, setPendingAvatar] = useState<{ uri: string; name: string; type: string } | null>(null);
     const [savingProfile, setSavingProfile] = useState(false);
-    const [savingAvatar, setSavingAvatar] = useState(false);
-    const [toastMsg, setToastMsg] = useState<{ text: string; type: "success" | "error" } | null>(null);
-    const [toastKey, setToastKey] = useState(0);
+    const [savingAvatar, setSavingAvatar]   = useState(false);
+    const [toastMsg, setToastMsg]   = useState<{ text: string; type: "success" | "error" } | null>(null);
+    const [toastKey, setToastKey]   = useState(0);
     const originalPhone = useRef("");
     const scrollRef = useRef<ScrollView>(null);
-    const cccdInputRef = useRef<any>(null);
-    const bdInputRef = useRef<any>(null);
+    const cccdInputRef  = useRef<any>(null);
+    const bdInputRef    = useRef<any>(null);
 
     const showToast = (text: string, type: "success" | "error") => {
         setToastMsg({ text, type });
@@ -100,31 +108,36 @@ const ProfileDetail = ({ navigation }: any) => {
                 }
                 const phone = d.so_dien_thoai || d.phone || "";
                 originalPhone.current = phone;
-                setUser({
-                    name: d.ho_va_ten || d.ho_ten || d.name || "",
+                setUser((prev) => ({
+                    ...prev,
+                    id:       d.id || null,
+                    name:     d.ho_va_ten  || d.ho_ten || d.name  || "",
                     phone,
-                    email: d.email || "",
-                    cccd: d.cccd || d.can_cuoc_cong_dan || "",
+                    email:    d.email || d.Email || "",
+                    cccd:     d.cccd  || d.can_cuoc_cong_dan || "",
                     birthday,
-                    avatar: d.anh_dai_dien || d.hinh_anh || d.avatar || "",
-                });
-            } catch { }
+                    avatar:   sanitizeAvatar(d.anh_dai_dien || d.hinh_anh || d.avatar),
+                    hang_thanh_vien: d.hang_thanh_vien || "Thành viên",
+                }));
+            } catch {}
         };
         load();
     }, []);
 
     const handlePickAvatar = async () => {
         try {
-            const result = await launchImageLibrary({ mediaType: "photo", quality: 0.8 });
+            const result = await launchImageLibrary({ mediaType: "photo", quality: 0.4, maxWidth: 800, maxHeight: 800 });
             if (!result.didCancel && result.assets && result.assets.length > 0) {
                 const asset = result.assets[0];
                 if (asset.uri) {
                     setUser(prev => ({ ...prev, avatar: asset.uri! }));
-                    setPendingAvatar({
-                        uri: asset.uri,
+                    const avatarData = {
+                        uri:  asset.uri,
                         name: asset.fileName || `avatar_${Date.now()}.jpg`,
-                        type: asset.type || "image/jpeg",
-                    });
+                        type: asset.type     || "image/jpeg",
+                    };
+                    setPendingAvatar(avatarData);
+                    await uploadImmediateAvatar(avatarData);
                 }
             }
         } catch {
@@ -132,25 +145,47 @@ const ProfileDetail = ({ navigation }: any) => {
         }
     };
 
-    const uploadAvatar = async (): Promise<string | null> => {
-        if (!pendingAvatar) return null;
+    const uploadImmediateAvatar = async (avatarData: any) => {
         setSavingAvatar(true);
         try {
             const form = new FormData();
-            form.append("avatar", { uri: pendingAvatar.uri, name: pendingAvatar.name, type: pendingAvatar.type } as any);
-            const res = await apiClient.post("/khach-hang/update-avatar", form, {
-                headers: { "Content-Type": "multipart/form-data" },
+            form.append("avatar", avatarData as any);
+            const token = await AsyncStorage.getItem("token");
+            const response = await fetch(`${apiClient.defaults.baseURL}/khach-hang/update-avatar`, {
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${token}`,
+                },
+                body: form,
             });
-            if (res.data?.status) {
-                setPendingAvatar(null);
-                return res.data?.avatar_url || null;
+            const resData = await response.json();
+            
+            if (resData?.status) {
+                // Fetch latest data to get new avatar URL and update state
+                try {
+                    const userRes = await apiClient.get("/khach-hang/data-login");
+                    const profileData = userRes.data?.data || userRes.data?.khach_hang;
+                    if (profileData) {
+                        const str = await AsyncStorage.getItem("userData");
+                        const oldStr = str ? JSON.parse(str) : {};
+                        await AsyncStorage.setItem("userData", JSON.stringify({
+                            ...oldStr, ...profileData,
+                            avatar: profileData.avatar || oldStr.avatar,
+                            anh_dai_dien: profileData.avatar || oldStr.anh_dai_dien,
+                        }));
+                        setUser(prev => ({ ...prev, avatar: sanitizeAvatar(profileData.avatar || profileData.anh_dai_dien || prev.avatar) }));
+                    }
+                } catch (e) {
+                    console.log("Error syncing new avatar state:", e);
+                }
+                showToast("Đã đổi ảnh đại diện thành công", "success");
             } else {
-                throw new Error(res.data?.message || "Upload thất bại");
+                throw new Error(resData?.message || "Upload thất bại");
             }
         } catch (err: any) {
-            showToast(err?.response?.data?.message || "Không thể cập nhật ảnh đại diện", "error");
-            return null;
+            showToast(err?.message || "Không thể cập nhật ảnh đại diện", "error");
         } finally {
+            setPendingAvatar(null);
             setSavingAvatar(false);
         }
     };
@@ -168,15 +203,10 @@ const ProfileDetail = ({ navigation }: any) => {
         if (!user.cccd || user.cccd.trim() === "") { showToast("CCCD / CMND không được để trống", "error"); return; }
         const cleanCCCD = user.cccd.replace(/\D/g, "");
         if (cleanCCCD.length !== 12) { showToast("CCCD phải có 12 chữ số", "error"); return; }
-        if (!user.birthday || user.birthday.trim() === "") { showToast("Ngày sinh không được để trống", "error"); return; }
+        if (!user.birthday || user.birthday.trim() === "") { showToast("Ngày sinh không Ä‘Æ°á»£c Ä‘á»ƒ trá»‘ng", "error"); return; }
 
         setSavingProfile(true);
         try {
-            let avatarToSend = user.avatar;
-            if (pendingAvatar) {
-                const newAvatarUrl = await uploadAvatar();
-                if (newAvatarUrl) avatarToSend = newAvatarUrl;
-            }
             let ngay_sinh = "";
             if (user.birthday) {
                 const parts = user.birthday.split("/");
@@ -185,31 +215,41 @@ const ProfileDetail = ({ navigation }: any) => {
             }
             const originalPhoneClean = originalPhone.current.replace(/\D/g, "");
             const payload: any = {
+                id: user.id,
                 ho_va_ten: user.name.trim(),
                 so_dien_thoai: cleanPhone,
                 so_dien_thoai_cu: originalPhoneClean,
                 email: user.email.trim(),
                 ngay_sinh: ngay_sinh,
                 cccd: cleanCCCD,
-                avatar: avatarToSend,
+                avatar: user.avatar,
             };
             const res = await apiClient.post("/khach-hang/update-profile", payload);
             if (res.data?.status === 1 || res.data?.status === true) {
-                const str = await AsyncStorage.getItem("userData");
-                if (str) {
-                    const old = JSON.parse(str);
-                    await AsyncStorage.setItem("userData", JSON.stringify({
-                        ...old,
-                        ho_va_ten: user.name.trim(),
-                        so_dien_thoai: cleanPhone,
-                        email: user.email.trim(),
-                        ngay_sinh: ngay_sinh || old.ngay_sinh,
-                        cccd: cleanCCCD,
-                        anh_dai_dien: avatarToSend,
-                        avatar: avatarToSend,
-                    }));
-                    originalPhone.current = cleanPhone;
+                try {
+                    const userRes = await apiClient.get("/khach-hang/data-login");
+                    const profileData = userRes.data?.data || userRes.data?.khach_hang;
+                    
+                    if (profileData) {
+                        const str = await AsyncStorage.getItem("userData");
+                        const oldStr = str ? JSON.parse(str) : {};
+                        await AsyncStorage.setItem("userData", JSON.stringify({
+                            ...oldStr,
+                            ...profileData,
+                        }));
+                        
+                        setUser(prev => ({
+                            ...prev,
+                            name: profileData.ho_va_ten || profileData.ho_ten || profileData.name || prev.name,
+                            avatar: sanitizeAvatar(profileData.avatar || profileData.anh_dai_dien || prev.avatar),
+                            hang_thanh_vien: profileData.hang_thanh_vien || prev.hang_thanh_vien,
+                        }));
+                    }
+                } catch (e) {
+                    console.log("Error syncing user data:", e);
                 }
+                
+                originalPhone.current = cleanPhone;
                 showToast("Cập nhật hồ sơ thành công!", "success");
             } else {
                 throw new Error(res.data?.message || "Cập nhật thất bại");
@@ -230,6 +270,17 @@ const ProfileDetail = ({ navigation }: any) => {
 
     const avatarUri = user.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name || "U")}&background=EE4D2D&color=fff&size=200`;
 
+    const getTierConfig = (tier: string) => {
+        switch (tier) {
+            case 'Kim cương': return { icon: 'diamond', color: '#A78BFA' };
+            case 'Vàng': return { icon: 'star', color: '#FCD34D' };
+            case 'Bạc': return { icon: 'medal', color: '#E2E8F0' };
+            case 'Đồng': return { icon: 'ribbon', color: '#FDBA74' };
+            default: return { icon: 'person', color: '#FFF' };
+        }
+    };
+    const tierConfig = getTierConfig(user.hang_thanh_vien);
+
     return (
         <View style={st.container}>
             <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
@@ -246,7 +297,7 @@ const ProfileDetail = ({ navigation }: any) => {
                     contentContainerStyle={{ paddingBottom: hp("6%") }}
                     bounces={false}
                 >
-                    {/* ── HEADER + AVATAR ── */}
+                    {/* â”€â”€ HEADER + AVATAR â”€â”€ */}
                     <View style={st.headerBlock}>
                         <SafeAreaView edges={["top"]}>
                             <View style={st.headerRow}>
@@ -287,8 +338,10 @@ const ProfileDetail = ({ navigation }: any) => {
                             </TouchableOpacity>
                             <Text style={st.avatarName}>{user.name || "Người dùng"}</Text>
                             <View style={st.memberBadge}>
-                                <Ionicons name="star" size={11} color="#F59E0B" />
-                                <Text style={st.memberTxt}>Thành viên Bạc</Text>
+                                <Ionicons name={tierConfig.icon} size={11} color={tierConfig.color} />
+                                <Text style={[st.memberTxt, { color: tierConfig.color === '#FFF' ? '#FFF' : tierConfig.color }]}>
+                                    Hạng {user.hang_thanh_vien}
+                                </Text>
                             </View>
                             {pendingAvatar && (
                                 <View style={st.pendingBadge}>
@@ -299,9 +352,9 @@ const ProfileDetail = ({ navigation }: any) => {
                         </View>
                     </View>
 
-                    {/* ── FORM CARD ── */}
+                    {/* â”€â”€ FORM CARD â”€â”€ */}
                     <View style={st.card}>
-                        {/* Tiêu đề section */}
+                        {/* Tiêu Ä‘á» section */}
                         <View style={st.sectionHeader}>
                             <View style={st.sectionIconWrap}>
                                 <Ionicons name="person" size={15} color={PRIMARY} />
@@ -346,7 +399,7 @@ const ProfileDetail = ({ navigation }: any) => {
                             onFocus={() => {
                                 setTimeout(() => {
                                     bdInputRef.current?.measureLayout(scrollRef.current as any,
-                                        (_x: number, y: number) => { scrollRef.current?.scrollTo({ y: y - 40, animated: true }); }, () => { });
+                                        (_x: number, y: number) => { scrollRef.current?.scrollTo({ y: y - 40, animated: true }); }, () => {});
                                 }, 300);
                             }}
                         />
@@ -359,13 +412,13 @@ const ProfileDetail = ({ navigation }: any) => {
                                 const cleaned = v.replace(/\D/g, "").slice(0, 12);
                                 setUser(p => ({ ...p, cccd: cleaned }));
                             }}
-                            placeholder="12 chữ số"
+                            placeholder="12 chữ sá»‘"
                             keyboardType="number-pad"
                             maxLength={12}
                             onFocus={() => {
                                 setTimeout(() => {
                                     cccdInputRef.current?.measureLayout(scrollRef.current as any,
-                                        (_x: number, y: number) => { scrollRef.current?.scrollTo({ y: y - 40, animated: true }); }, () => { });
+                                        (_x: number, y: number) => { scrollRef.current?.scrollTo({ y: y - 40, animated: true }); }, () => {});
                                 }, 300);
                             }}
                         />
@@ -393,7 +446,7 @@ const ProfileDetail = ({ navigation }: any) => {
                         </View>
                     </View>
 
-                    {/* ── SAVE BUTTON ── */}
+                    {/* â”€â”€ SAVE BUTTON â”€â”€ */}
                     <TouchableOpacity
                         style={[st.saveFooterBtn, savingProfile && { opacity: 0.65 }]}
                         onPress={handleSaveProfile}
@@ -415,7 +468,7 @@ const ProfileDetail = ({ navigation }: any) => {
     );
 };
 
-// ── Reusable Field ─────────────────────────────────────────
+// â”€â”€ Reusable Field â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const Field = ({
     label, icon, value, onChangeText, placeholder, keyboardType, maxLength, inputRef, onFocus,
 }: {
@@ -443,7 +496,7 @@ const Field = ({
     </View>
 );
 
-// ── Styles ─────────────────────────────────────────────────
+// â”€â”€ Styles â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const st = StyleSheet.create({
     container: { flex: 1, backgroundColor: BG },
 
@@ -455,10 +508,7 @@ const st = StyleSheet.create({
         borderBottomRightRadius: wp("8%"),
         elevation: 6,
         shadowColor: PRIMARY,
-        shadowOffset: { 
-            width: 0, 
-            height: 6 
-        },
+        shadowOffset: { width: 0, height: 6 },
         shadowOpacity: 0.35,
         shadowRadius: 12,
     },
@@ -477,11 +527,7 @@ const st = StyleSheet.create({
         justifyContent: "center",
         alignItems: "center",
     },
-    headerTitle: { 
-        fontSize: wp("4.5%"), 
-        fontWeight: "700", 
-        color: "#FFF" 
-    },
+    headerTitle: { fontSize: wp("4.5%"), fontWeight: "700", color: "#FFF" },
     saveBtn: {
         backgroundColor: "rgba(255,255,255,0.25)",
         paddingHorizontal: wp("4%"),
@@ -492,93 +538,44 @@ const st = StyleSheet.create({
         borderWidth: 1,
         borderColor: "rgba(255,255,255,0.4)",
     },
-    saveBtnTxt: { 
-        color: "#FFF", 
-        fontSize: wp("3.8%"), 
-        fontWeight: "700" 
-    },
+    saveBtnTxt: { color: "#FFF", fontSize: wp("3.8%"), fontWeight: "700" },
 
     // AVATAR
-    avatarSection: { 
-        alignItems: "center", 
-        paddingTop: hp("2%"), 
-        paddingBottom: hp("1%") 
-    },
-    avatarWrap: { 
-        position: "relative", 
-        marginBottom: hp("1.5%") 
-    },
+    avatarSection: { alignItems: "center", paddingTop: hp("2%"), paddingBottom: hp("1%") },
+    avatarWrap: { position: "relative", marginBottom: hp("1.5%") },
     avatar: {
-        width: wp("24%"), 
-        height: wp("24%"), 
-        borderRadius: wp("12%"),
-        borderWidth: 3.5, 
-        borderColor: "rgba(255,255,255,0.9)",
+        width: wp("24%"), height: wp("24%"), borderRadius: wp("12%"),
         backgroundColor: "#FFE4DB",
         elevation: 8,
         shadowColor: "#000",
         shadowOpacity: 0.2,
-        shadowOffset: { 
-            width: 0, 
-            height: 4 
-        },
+        shadowOffset: { width: 0, height: 4 },
         shadowRadius: 8,
     },
-    avatarLoading: { 
-        justifyContent: "center", 
-        alignItems: "center", 
-        backgroundColor: "#FFE4DB" 
-    },
+    avatarLoading: { justifyContent: "center", alignItems: "center", backgroundColor: "#FFE4DB" },
     cameraBtn: {
-        position: "absolute", 
-        bottom: 0, 
-        right: 0,
+        position: "absolute", bottom: 0, right: 0,
         backgroundColor: DARK,
-        width: wp("8%"), 
-        height: wp("8%"), 
-        borderRadius: wp("4%"),
-        justifyContent: "center", 
-        alignItems: "center",
-        borderWidth: 2, 
-        borderColor: "#FFF",
-        elevation: 8,
-        zIndex: 10,
+        width: wp("8%"), height: wp("8%"), borderRadius: wp("4%"),
+        justifyContent: "center", alignItems: "center",
+        borderWidth: 2, borderColor: "#FFF",
+        elevation: 4,
     },
-    avatarName: { 
-        fontSize: wp("5%"), 
-        fontWeight: "800", 
-        color: "#FFF", 
-        marginBottom: 4 
-    },
+    avatarName: { fontSize: wp("5%"), fontWeight: "800", color: "#FFF", marginBottom: 4 },
     memberBadge: {
-        flexDirection: "row", 
-        alignItems: "center", 
-        gap: 4,
+        flexDirection: "row", alignItems: "center", gap: 4,
         backgroundColor: "rgba(255,255,255,0.2)",
-        paddingHorizontal: wp("3%"), 
-        paddingVertical: hp("0.4%"),
+        paddingHorizontal: wp("3%"), paddingVertical: hp("0.4%"),
         borderRadius: 20,
     },
-    memberTxt: { 
-        fontSize: wp("3%"), 
-        color: "#FFF", 
-        fontWeight: "600" 
-    },
+    memberTxt: { fontSize: wp("3%"), color: "#FFF", fontWeight: "600" },
     pendingBadge: {
-        flexDirection: "row", 
-        alignItems: "center", 
-        gap: 4,
+        flexDirection: "row", alignItems: "center", gap: 4,
         backgroundColor: "#FEF3C7",
-        paddingHorizontal: wp("3%"), 
-        paddingVertical: hp("0.4%"),
-        borderRadius: 20, 
-        marginTop: hp("1%"),
+        paddingHorizontal: wp("3%"), paddingVertical: hp("0.4%"),
+        borderRadius: 20, marginTop: hp("1%"),
     },
-    pendingTxt: { 
-        fontSize: wp("3%"), 
-        color: "#92400E", 
-        fontWeight: "600" 
-    },
+    pendingTxt: { fontSize: wp("3%"), color: "#92400E", fontWeight: "600" },
 
     // CARD
     card: {
@@ -591,69 +588,43 @@ const st = StyleSheet.create({
         elevation: 4,
         shadowColor: "#000",
         shadowOpacity: 0.08,
-        shadowOffset: { 
-            width: 0, 
-            height: 4 
-        },
+        shadowOffset: { width: 0, height: 4 },
         shadowRadius: 12,
         marginBottom: hp("2%"),
     },
     sectionHeader: {
-        flexDirection: "row", 
-        alignItems: "center",
+        flexDirection: "row", alignItems: "center",
         gap: wp("2%"),
         marginBottom: hp("2%"),
     },
     sectionIconWrap: {
-        width: wp("8%"), 
-        height: wp("8%"), 
-        borderRadius: wp("4%"),
+        width: wp("8%"), height: wp("8%"), borderRadius: wp("4%"),
         backgroundColor: PRIMARY_LIGHT,
-        justifyContent: "center", 
-        alignItems: "center",
+        justifyContent: "center", alignItems: "center",
     },
-    sectionTitle: { 
-        fontSize: wp("4%"), 
-        fontWeight: "700", 
-        color: DARK 
-    },
+    sectionTitle: { fontSize: wp("4%"), fontWeight: "700", color: DARK },
     divider: {
-        height: 1, 
-        backgroundColor: BORDER,
+        height: 1, backgroundColor: BORDER,
         marginVertical: hp("2%"),
         marginHorizontal: -wp("5%"),
     },
 
     // FIELD
-    fieldWrap: { 
-        marginBottom: hp("2%") 
-    },
+    fieldWrap: { marginBottom: hp("2%") },
     label: {
-        fontSize: wp("3.2%"), 
-        fontWeight: "700", 
-        color: MUTED,
+        fontSize: wp("3.2%"), fontWeight: "700", color: MUTED,
         marginBottom: hp("0.8%"),
-        textTransform: "uppercase", 
-        letterSpacing: 0.5,
+        textTransform: "uppercase", letterSpacing: 0.5,
     },
     inputRow: {
-        flexDirection: "row", 
-        alignItems: "center",
+        flexDirection: "row", alignItems: "center",
         backgroundColor: "#F8FAFC",
         borderRadius: wp("3%"),
-        paddingHorizontal: wp("4%"), 
-        height: hp("6.5%"),
-        borderWidth: 1.5, 
-        borderColor: BORDER,
+        paddingHorizontal: wp("4%"), height: hp("6.5%"),
+        borderWidth: 1.5, borderColor: BORDER,
     },
-    icon: { 
-        marginRight: wp("2.5%") 
-    },
-    input: { 
-        flex: 1, 
-        fontSize: wp("4%"), 
-        color: DARK, 
-        fontWeight: "500" },
+    icon: { marginRight: wp("2.5%") },
+    input: { flex: 1, fontSize: wp("4%"), color: DARK, fontWeight: "500" },
     inputDisabled: { backgroundColor: "#F0F4F8", borderColor: "#E2E8F0" },
     disabledTxt: { flex: 1, fontSize: wp("3.8%"), color: "#94A3B8", fontWeight: "500" },
     lockBadge: {

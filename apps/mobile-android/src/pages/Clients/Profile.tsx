@@ -13,7 +13,6 @@ import {
     Modal,
     TextInput,
     KeyboardAvoidingView,
-    FlatList,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 // @ts-ignore
@@ -25,51 +24,13 @@ import {
 } from "react-native-responsive-screen";
 import apiClient from "../../genaral/api";
 import LoadingModal from "../../components/LoadingModal";
-import CustomAlert, { AlertButton } from "../../components/CustomAlert";
 
 const PRIMARY_COLOR = "#EE4D2D";
 const BACKGROUND_COLOR = "#F5F6F8";
 const TEXT_DARK = "#1E293B";
 const TEXT_MUTED = "#64748B";
 
-// ── Danh sách ngân hàng Việt Nam ──────────────────────────
-const VN_BANKS = [
-    { name: "Vietcombank",          fullName: "Ngân hàng TMCP Ngoại thương Việt Nam" },
-    { name: "VietinBank",           fullName: "Ngân hàng TMCP Công thương Việt Nam" },
-    { name: "BIDV",                  fullName: "Ngân hàng TMCP Đầu tư và Phát triển VN" },
-    { name: "Agribank",             fullName: "Ngân hàng Nông nghiệp và PTNT Việt Nam" },
-    { name: "MB Bank",              fullName: "Ngân hàng TMCP Quân đội" },
-    { name: "Techcombank",          fullName: "Ngân hàng TMCP Kỹ thương Việt Nam" },
-    { name: "ACB",                   fullName: "Ngân hàng TMCP Á Châu" },
-    { name: "VPBank",               fullName: "Ngân hàng TMCP Việt Nam Thịnh Vượng" },
-    { name: "TPBank",               fullName: "Ngân hàng TMCP Tiên Phong" },
-    { name: "Sacombank",            fullName: "Ngân hàng TMCP Sài Gòn Thương Tín" },
-    { name: "HDBank",               fullName: "Ngân hàng TMCP Phát triển TP.HCM" },
-    { name: "VIB",                   fullName: "Ngân hàng TMCP Quốc tế Việt Nam" },
-    { name: "SHB",                   fullName: "Ngân hàng TMCP Sài Gòn – Hà Nội" },
-    { name: "Eximbank",             fullName: "Ngân hàng TMCP Xuất Nhập khẩu Việt Nam" },
-    { name: "MSB",                   fullName: "Ngân hàng TMCP Hàng Hải Việt Nam" },
-    { name: "SeABank",              fullName: "Ngân hàng TMCP Đông Nam Á" },
-    { name: "ABBANK",               fullName: "Ngân hàng TMCP An Bình" },
-    { name: "LienVietPostBank",     fullName: "Ngân hàng TMCP Bưu điện Liên Việt" },
-    { name: "OCB",                   fullName: "Ngân hàng TMCP Phương Đông" },
-    { name: "Nam A Bank",           fullName: "Ngân hàng TMCP Nam Á" },
-    { name: "PVcomBank",            fullName: "Ngân hàng TMCP Đại Chúng Việt Nam" },
-    { name: "VietBank",             fullName: "Ngân hàng TMCP Việt Nam Thương Tín" },
-    { name: "BVBank",               fullName: "Ngân hàng TMCP Bản Việt" },
-    { name: "KienlongBank",         fullName: "Ngân hàng TMCP Kiên Long" },
-    { name: "NCB",                   fullName: "Ngân hàng TMCP Quốc Dân" },
-    { name: "GPBank",               fullName: "Ngân hàng TMCP Dầu khí Toàn Cầu" },
-    { name: "CBBank",               fullName: "Ngân hàng Xây dựng Việt Nam" },
-    { name: "OceanBank",            fullName: "Ngân hàng TMCP Đại Dương" },
-    { name: "Cake by VPBank",       fullName: "Ngân hàng số Cake by VPBank" },
-    { name: "Timo",                  fullName: "Ngân hàng số Timo" },
-    { name: "Momo",                  fullName: "Ví điện tử MoMo" },
-    { name: "ZaloPay",              fullName: "Ví điện tử ZaloPay" },
-    { name: "VNPay",                fullName: "Ví điện tử VNPay" },
-];
-
-const Profile = ({ navigation }: any) => {
+const Profile = ({ navigation, route }: any) => {
     const [user, setUser] = useState({
         name: "Người dùng",
         phone: "Đang cập nhật...",
@@ -77,10 +38,12 @@ const Profile = ({ navigation }: any) => {
         shopeePay: "0đ",
         shopeeCoins: "0 Xu",
         vouchers: "0",
+        hang_thanh_vien: "Thành viên",
     });
     const [isBothRole, setIsBothRole] = useState(false);
     const [loadingSwitch, setLoadingSwitch] = useState(false);
     const [orderCounts, setOrderCounts] = useState<Record<number, number>>({ 0: 0, 12: 0, 3: 0, 4: 0 });
+    const [cartCount, setCartCount] = useState(0);
 
     // Đổi mật khẩu
     const [showChangePwModal, setShowChangePwModal] = useState(false);
@@ -92,45 +55,97 @@ const Profile = ({ navigation }: any) => {
     const [showConfirm, setShowConfirm] = useState(false);
     const [changingPw, setChangingPw] = useState(false);
 
-    // Tài khoản ngân hàng hoàn tiền
+    // ── Tài khoản ngân hàng hoàn tiền ────────────────────────
     const [showBankModal, setShowBankModal] = useState(false);
-    const [showAddBankForm, setShowAddBankForm] = useState(false);
-    const [bankAccounts, setBankAccounts] = useState<{
-        id: number;
-        ten_ngan_hang: string;
-        so_tai_khoan: string;
-        chu_tai_khoan: string;
-        chi_nhanh?: string;
-        is_default: number;
-    }[]>([]);
+    const [banks, setBanks] = useState<any[]>([]);
+    const [showAddBankModal, setShowAddBankModal] = useState(false);
+    const [addingBank, setAddingBank] = useState(false);
     const [newBank, setNewBank] = useState({
         ten_ngan_hang: "",
         so_tai_khoan: "",
         chu_tai_khoan: "",
         chi_nhanh: "",
     });
-    const [savingBank, setSavingBank] = useState(false);
-    const [deletingBankId, setDeletingBankId] = useState<number | null>(null);
     const [showBankPicker, setShowBankPicker] = useState(false);
-    const [bankPickerSearch, setBankPickerSearch] = useState("");
 
-    // Custom Alert
-    const [alertConfig, setAlertConfig] = useState<{
-        visible: boolean;
-        type?: "success" | "error" | "warning" | "info" | "confirm";
-        title: string;
-        message?: string;
-        buttons?: AlertButton[];
-    }>({ visible: false, title: "" });
+    const BANK_LIST = [
+        "Vietcombank", "VietinBank", "BIDV", "Agribank", "MBBank",
+        "Techcombank", "ACB", "VPBank", "HDBank", "TPBank",
+        "Sacombank", "VIB", "OCB", "SHB", "MSB",
+        "SeABank", "LienVietPostBank", "BacABank", "NCB", "PVcomBank",
+        "Eximbank", "NamABank", "KienLongBank", "PGBank", "DongABank",
+        "BaoVietBank", "BVBank", "PublicBank", "HSBC", "Standard Chartered",
+        "Shinhan Bank", "Woori Bank", "UOB", "CIMB", "VietBank",
+    ];
 
-    const showAlert = (
-        type: "success" | "error" | "warning" | "info" | "confirm",
-        title: string,
-        message?: string,
-        buttons?: AlertButton[]
-    ) => setAlertConfig({ visible: true, type, title, message, buttons });
+    const loadBanks = async () => {
+        try {
+            const res = await apiClient.get("/khach-hang/tai-khoan-ngan-hang");
+            if (res.data?.status) setBanks(res.data.data || []);
+        } catch (e) {
+            console.log("❌ Error loading banks:", e);
+        }
+    };
 
-    const hideAlert = () => setAlertConfig(prev => ({ ...prev, visible: false }));
+    const handleAddBank = async () => {
+        if (!newBank.ten_ngan_hang) return Alert.alert("Lỗi", "Vui lòng chọn ngân hàng.");
+        if (!newBank.so_tai_khoan) return Alert.alert("Lỗi", "Vui lòng nhập số tài khoản.");
+        if (!newBank.chu_tai_khoan) return Alert.alert("Lỗi", "Vui lòng nhập tên chủ tài khoản.");
+        setAddingBank(true);
+        try {
+            const res = await apiClient.post("/khach-hang/tai-khoan-ngan-hang", {
+                ...newBank,
+                chu_tai_khoan: newBank.chu_tai_khoan.toUpperCase(),
+            });
+            if (res.data?.status) {
+                Alert.alert("Thành công", res.data.message || "Thêm tài khoản thành công!");
+                setShowAddBankModal(false);
+                setNewBank({ ten_ngan_hang: "", so_tai_khoan: "", chu_tai_khoan: "", chi_nhanh: "" });
+                loadBanks();
+                setTimeout(() => setShowBankModal(true), 400);
+            } else {
+                Alert.alert("Thất bại", res.data?.message || "Thêm thất bại!");
+            }
+        } catch (err: any) {
+            const errs = err?.response?.data?.errors;
+            if (errs) {
+                const msg = Object.values(errs).map((v: any) => v[0]).join("\n");
+                Alert.alert("Lỗi", msg);
+            } else {
+                Alert.alert("Lỗi", err?.response?.data?.message || "Thêm tài khoản thất bại!");
+            }
+        } finally {
+            setAddingBank(false);
+        }
+    };
+
+    const handleDeleteBank = (id: number) => {
+        Alert.alert("Xác nhận xóa", "Bạn có chắc muốn xóa tài khoản ngân hàng này?", [
+            { text: "Hủy", style: "cancel" },
+            {
+                text: "Xóa", style: "destructive",
+                onPress: async () => {
+                    try {
+                        const res = await apiClient.delete(`/khach-hang/tai-khoan-ngan-hang/${id}`);
+                        if (res.data?.status) {
+                            Alert.alert("Thành công", "Đã xóa tài khoản ngân hàng.");
+                            loadBanks();
+                        } else Alert.alert("Thất bại", res.data?.message || "Xóa thất bại.");
+                    } catch { Alert.alert("Lỗi", "Không thể xóa tài khoản."); }
+                }
+            }
+        ]);
+    };
+
+    const handleSetDefaultBank = async (id: number) => {
+        try {
+            const res = await apiClient.post(`/khach-hang/tai-khoan-ngan-hang/${id}/default`);
+            if (res.data?.status) {
+                Alert.alert("Thành công", "Đã đặt làm tài khoản mặc định.");
+                loadBanks();
+            } else Alert.alert("Thất bại", res.data?.message || "Thất bại!");
+        } catch { Alert.alert("Lỗi", "Không thể đặt mặc định."); }
+    };
 
     // ── Hàm fetch dữ liệu từ AsyncStorage ──────────────────
     const loadUserFromStorage = async () => {
@@ -138,11 +153,18 @@ const Profile = ({ navigation }: any) => {
             const userDataString = await AsyncStorage.getItem("userData");
             if (userDataString) {
                 const userData = JSON.parse(userDataString);
+                const sanitizeAvatar = (url: string) => {
+                    if (!url) return "";
+                    let uri = url.replace(/\\/g, '/');
+                    if (uri.startsWith("http://localhost") || uri.startsWith("http://127.0.0.1")) return uri; // Local testing is fine
+                    return uri.replace("be-foodbee.edu.vn", "be.foodbee.io.vn");
+                };
                 setUser(prevUser => ({
                     ...prevUser,
                     name: userData.hoten || userData.ho_ten || userData.ho_va_ten || userData.name || prevUser.name,
                     phone: userData.sodienthoai || userData.so_dien_thoai || userData.phone || prevUser.phone,
-                    avatar: userData.hinh_anh || userData.anh_dai_dien || userData.avatar || userData.image || prevUser.avatar,
+                    avatar: sanitizeAvatar(userData.hinh_anh || userData.anh_dai_dien || userData.avatar || userData.image || prevUser.avatar),
+                    hang_thanh_vien: userData.hang_thanh_vien || prevUser.hang_thanh_vien,
                 }));
             }
             const bothRole = await AsyncStorage.getItem("isBothRole");
@@ -172,6 +194,7 @@ const Profile = ({ navigation }: any) => {
                     ...prevUser,
                     shopeeCoins: `${profileData.diem_xu ?? 0} Xu`,
                     vouchers: String(voucherCount),
+                    hang_thanh_vien: profileData.hang_thanh_vien || "Thành viên",
                 }));
                 console.log("✅ Profile data updated:", profileData);
             }
@@ -183,19 +206,37 @@ const Profile = ({ navigation }: any) => {
     // ── Hàm fetch số lượng đơn hàng ───────────────────────
     const fetchOrderCounts = async () => {
         try {
-            const orderRes = await apiClient.get("/khach-hang/don-hang/data");
+            const orderRes = await apiClient.get("/khach-hang/don-hang/data-moi");
             const list: any[] = Array.isArray(orderRes.data?.data) ? orderRes.data.data : [];
             const tt = (o: any) => Number(o.tinh_trang);
             setOrderCounts({
-                0:  list.filter((o) => tt(o) === 0).length,
-                1:  list.filter((o: any) => Number(o.tinh_trang) === 1).length,
-                2:  list.filter((o: any) => Number(o.tinh_trang) === 2).length,
-                3:  list.filter((o) => tt(o) === 3).length,
-                4:  list.filter((o) => tt(o) === 4 && !Number(o.da_danh_gia)).length,
+                0: list.filter((o) => tt(o) === 0).length,
+                1: list.filter((o: any) => Number(o.tinh_trang) === 1).length,
+                2: list.filter((o: any) => Number(o.tinh_trang) === 2).length,
+                3: list.filter((o) => tt(o) === 3).length,
+                4: list.filter((o) => tt(o) === 4 && !Number(o.da_danh_gia)).length,
             });
             console.log("✅ Order counts updated");
         } catch (error) {
             console.log("❌ Error fetching order counts:", error);
+        }
+    };
+
+    const fetchCartCount = async () => {
+        try {
+            const savedId = await AsyncStorage.getItem("last_restaurant_id");
+            if (savedId) {
+                const res = await apiClient.get(`/khach-hang/don-dat-hang/${savedId}`);
+                if (res.data?.status) {
+                    const items = res.data.gio_hang || [];
+                    const count = items.reduce((sum: number, item: any) => sum + (item.so_luong || 0), 0);
+                    setCartCount(count);
+                }
+            } else {
+                setCartCount(0);
+            }
+        } catch (error) {
+            console.log("❌ Error fetching cart count:", error);
         }
     };
 
@@ -206,10 +247,21 @@ const Profile = ({ navigation }: any) => {
             await loadUserFromStorage();
             await fetchProfileAndCoins();
             await fetchOrderCounts();
-            await fetchBankInfo();
+            await fetchCartCount();
+            await loadBanks();
         };
         initializeData();
     }, []);
+
+    // ── Xử lý params từ màn hình khác (như Orders redirect sang) ──
+    useEffect(() => {
+        if (route?.params?.tab === "bank") {
+            loadBanks();
+            setShowBankModal(true);
+            // Xóa param để không tự động mở lại khi quay lại từ màn hình khác
+            navigation.setParams({ tab: undefined });
+        }
+    }, [route?.params?.tab]);
 
     // ── Refresh dữ liệu mỗi khi focus vào tab Profile ────────
     useFocusEffect(
@@ -219,6 +271,8 @@ const Profile = ({ navigation }: any) => {
                 await loadUserFromStorage();
                 await fetchProfileAndCoins();
                 await fetchOrderCounts();
+                await fetchCartCount();
+                await loadBanks();
                 console.log("✅ All data refreshed successfully");
             };
             refreshAllData();
@@ -226,101 +280,26 @@ const Profile = ({ navigation }: any) => {
     );
 
     const orderOptions = [
-        { id: 0,  title: "Chờ xác nhận", icon: "wallet-outline",  tab: "Đã nhận" },
-        { id: 12, title: "Chờ lấy hàng", icon: "cube-outline",    tab: "Đã nhận" },
-        { id: 3,  title: "Đang giao",    icon: "car-outline",      tab: "Đang giao" },
-        { id: 4,  title: "Đánh giá",     icon: "star-outline",     tab: "Đã giao" },
+        { id: 0, title: "Chờ xác nhận", icon: "wallet-outline", tab: "Đã nhận" },
+        { id: 12, title: "Chờ lấy hàng", icon: "cube-outline", tab: "Đã nhận" },
+        { id: 3, title: "Đang giao", icon: "car-outline", tab: "Đang giao" },
+        { id: 4, title: "Đánh giá", icon: "star-outline", tab: "Đã giao" },
     ];
 
     const menuOptions = [
-        { id: 1, title: "Địa chỉ nhận hàng", icon: "location-outline", color: "#3B82F6", onPress: () => navigation.navigate("AddressBook") },
-        { id: 6, title: "Tài khoản hoàn tiền", icon: "card-outline", color: "#10B981", onPress: () => { setShowBankModal(true); setShowAddBankForm(false); } },
-        { id: 5, title: "Đổi mật khẩu", icon: "key-outline", color: "#EE4D2D", onPress: () => setShowChangePwModal(true) },
-        { id: 3, title: "Cập nhật ứng dụng", icon: "cloud-download-outline", color: "#10B981", onPress: () => navigation.navigate("AppUpdate") },
-        { id: 4, title: "Trung tâm trợ giúp", icon: "help-circle-outline", color: "#8B5CF6", onPress: () => navigation.navigate("HelpCenter") },
+        { id: 1, title: "Địa chỉ nhận hàng",    icon: "location-outline",       color: "#3B82F6", onPress: () => navigation.navigate("AddressBook") },
+        { id: 7, title: "Lịch sử giao dịch",    icon: "receipt-outline",         color: "#6366F1", onPress: () => navigation.navigate("LichSuGiaoDich") },
+        { id: 8, title: "Lịch sử FoodBee Xu",   icon: "logo-bitcoin",            color: "#D97706", onPress: () => navigation.navigate("LichSuXu") },
+        { id: 6, title: "Tài khoản ngân hàng",  icon: "card-outline",            color: "#F59E0B", onPress: () => { loadBanks(); setShowBankModal(true); } },
+        { id: 5, title: "Đổi mật khẩu",         icon: "key-outline",             color: "#EE4D2D", onPress: () => setShowChangePwModal(true) },
+        { id: 3, title: "Cập nhật ứng dụng",    icon: "cloud-download-outline",  color: "#10B981", onPress: () => navigation.navigate("AppUpdate") },
+        { id: 4, title: "Trung tâm trợ giúp",   icon: "help-circle-outline",     color: "#8B5CF6", onPress: () => navigation.navigate("HelpCenter") },
     ];
 
     const handleLogout = async () => {
         await AsyncStorage.removeItem("userData");
         await AsyncStorage.removeItem("token");
         navigation.replace("Login");
-    };
-
-    // ── Tài khoản ngân hàng ───────────────────────────────
-    const fetchBankInfo = async () => {
-        try {
-            const res = await apiClient.get("/khach-hang/tai-khoan-ngan-hang");
-            if (res.data?.status) {
-                setBankAccounts(res.data.data || []);
-            }
-        } catch {
-            // chưa có TK → giữ danh sách rỗng
-        }
-    };
-
-    const handleAddBank = async () => {
-        if (!newBank.ten_ngan_hang.trim()) { showAlert("error", "Lỗi", "Vui lòng nhập tên ngân hàng."); return; }
-        if (!newBank.so_tai_khoan.trim())  { showAlert("error", "Lỗi", "Vui lòng nhập số tài khoản."); return; }
-        if (!newBank.chu_tai_khoan.trim()) { showAlert("error", "Lỗi", "Vui lòng nhập tên chủ tài khoản."); return; }
-        setSavingBank(true);
-        try {
-            const res = await apiClient.post("/khach-hang/tai-khoan-ngan-hang", {
-                ten_ngan_hang: newBank.ten_ngan_hang.trim(),
-                so_tai_khoan: newBank.so_tai_khoan.trim(),
-                chu_tai_khoan: newBank.chu_tai_khoan.trim().toUpperCase(),
-                chi_nhanh: newBank.chi_nhanh.trim() || undefined,
-            });
-            if (res.data?.status) {
-                await fetchBankInfo();
-                setNewBank({ ten_ngan_hang: "", so_tai_khoan: "", chu_tai_khoan: "", chi_nhanh: "" });
-                setShowAddBankForm(false);
-                showAlert("success", "Thành công", "Thêm tài khoản ngân hàng thành công!");
-            } else {
-                showAlert("error", "Lỗi", res.data?.message || "Không thể thêm tài khoản.");
-            }
-        } catch (e: any) {
-            showAlert("error", "Lỗi", e?.response?.data?.message || "Có lỗi xảy ra.");
-        } finally {
-            setSavingBank(false);
-        }
-    };
-
-    const handleDeleteBank = (id: number) => {
-        showAlert(
-            "confirm",
-            "Xóa tài khoản",
-            "Bạn muốn xóa tài khoản ngân hàng này?",
-            [
-                { text: "Hủy", style: "cancel" },
-                {
-                    text: "Xóa",
-                    style: "destructive",
-                    onPress: async () => {
-                        setDeletingBankId(id);
-                        try {
-                            await apiClient.delete(`/khach-hang/tai-khoan-ngan-hang/${id}`);
-                            await fetchBankInfo();
-                        } catch {
-                            showAlert("error", "Lỗi", "Không thể xóa tài khoản.");
-                        } finally {
-                            setDeletingBankId(null);
-                        }
-                    },
-                },
-            ]
-        );
-    };
-
-    const handleSetDefaultBank = async (id: number) => {
-        try {
-            const res = await apiClient.post(`/khach-hang/tai-khoan-ngan-hang/${id}/default`);
-            if (res.data?.status) {
-                await fetchBankInfo();
-                showAlert("success", "Thành công", "Tài khoản đã được đặt làm mặc định.");
-            }
-        } catch {
-            showAlert("error", "Lỗi", "Không thể đặt mặc định.");
-        }
     };
 
     const handleChangePassword = async () => {
@@ -371,11 +350,11 @@ const Profile = ({ navigation }: any) => {
                     const token = response.data.token;
                     if (token) await AsyncStorage.setItem('token', token);
                     await AsyncStorage.setItem('userRole', 'shipper');
-                    
+
                     let newUserData = response.data.shipper;
                     if (!newUserData) newUserData = { hoten: "Tài xế", email };
                     await AsyncStorage.setItem('userData', JSON.stringify(newUserData));
-                    
+
                     navigation.replace("ShipperTabs");
                 } else {
                     Alert.alert("Thông báo", "Không thể chuyển đổi vai trò lúc này.");
@@ -391,6 +370,41 @@ const Profile = ({ navigation }: any) => {
             setLoadingSwitch(false);
         }
     }
+
+    const handleChatWithShipper = async () => {
+        try {
+            const res = await apiClient.get('/khach-hang/don-hang/data-moi');
+            if (res.data?.data) {
+                const active = res.data.data.find((o: any) => o.tinh_trang === 3 && o.id_shipper);
+                if (active) {
+                    navigation.navigate("ChatWithShipper", {
+                        id_don_hang: active.id,
+                        ma_don_hang: active.ma_don_hang,
+                        name: active.ho_va_ten_shipper || "Shipper",
+                        avatar: null
+                    });
+                } else {
+                    Alert.alert("Thông báo", "Bạn hiện không có đơn hàng nào đang được giao bởi Shipper.");
+                }
+            } else {
+                Alert.alert("Thông báo", "Không tìm thấy dữ liệu đơn hàng.");
+            }
+        } catch (error) {
+            console.log("Error fetching active order for chat:", error);
+            Alert.alert("Thông báo", "Có lỗi xảy ra khi lấy thông tin đơn hàng đang giao.");
+        }
+    }
+
+    const getTierConfig = (tier: string) => {
+        switch (tier) {
+            case 'Kim cương': return { icon: 'diamond', color: '#A78BFA' }; // Light Purple
+            case 'Vàng': return { icon: 'star', color: '#FCD34D' }; // Light Gold
+            case 'Bạc': return { icon: 'medal', color: '#E2E8F0' }; // Light Silver
+            case 'Đồng': return { icon: 'ribbon', color: '#FDBA74' }; // Light Bronze
+            default: return { icon: 'person', color: '#FFF' };
+        }
+    };
+    const tierConfig = getTierConfig(user.hang_thanh_vien);
 
     return (
         <View style={styles.container}>
@@ -409,14 +423,16 @@ const Profile = ({ navigation }: any) => {
                             <View style={{ flex: 1 }} />
 
                             <View style={styles.headerActions}>
-                                <TouchableOpacity style={styles.iconBtn}>
+                                <TouchableOpacity style={styles.iconBtn} onPress={handleChatWithShipper}>
                                     <Ionicons name="chatbubble-ellipses-outline" size={24} color="#FFF" />
                                 </TouchableOpacity>
-                                <TouchableOpacity style={styles.iconBtn}>
+                                <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.navigate("Cart")}>
                                     <Ionicons name="cart-outline" size={24} color="#FFF" />
-                                    <View style={styles.cartBadge}>
-                                        <Text style={styles.cartBadgeText}>2</Text>
-                                    </View>
+                                    {cartCount > 0 && (
+                                        <View style={styles.cartBadge}>
+                                            <Text style={styles.cartBadgeText}>{cartCount > 99 ? "99+" : cartCount}</Text>
+                                        </View>
+                                    )}
                                 </TouchableOpacity>
                             </View>
                         </View>
@@ -430,8 +446,10 @@ const Profile = ({ navigation }: any) => {
                                 <Text style={styles.userName}>{user.name}</Text>
                                 <Text style={styles.userPhone}>{user.phone}</Text>
                                 <View style={styles.memberBadge}>
-                                    <Ionicons name="diamond" size={12} color="#F59E0B" />
-                                    <Text style={styles.memberBadgeText}>Thành viên Bạc</Text>
+                                    <Ionicons name={tierConfig.icon} size={12} color={tierConfig.color} />
+                                    <Text style={[styles.memberBadgeText, { color: tierConfig.color === '#FFF' ? '#FFF' : tierConfig.color }]}>
+                                        Hạng {user.hang_thanh_vien}
+                                    </Text>
                                 </View>
                             </View>
                             <Ionicons name="chevron-forward" size={20} color="rgba(255,255,255,0.7)" />
@@ -461,7 +479,7 @@ const Profile = ({ navigation }: any) => {
                 <View style={styles.sectionCard}>
                     <View style={styles.sectionHeader}>
                         <Text style={styles.sectionTitle}>Đơn mua của tôi</Text>
-                        <TouchableOpacity style={styles.seeAllRow} onPress={() => navigation.navigate("MainTabs", { screen: "Orders" })}>
+                        <TouchableOpacity style={styles.seeAllRow} onPress={() => navigation.navigate("Orders")}>
                             <Text style={styles.seeAllText}>Xem lịch sử</Text>
                             <Ionicons name="chevron-forward" size={14} color={TEXT_MUTED} />
                         </TouchableOpacity>
@@ -473,7 +491,7 @@ const Profile = ({ navigation }: any) => {
                                 <TouchableOpacity
                                     key={item.id}
                                     style={styles.orderOption}
-                                    onPress={() => navigation.navigate("MainTabs", { screen: "Orders", params: { initialTab: item.tab } })}
+                                    onPress={() => navigation.navigate("Orders", { initialTab: item.tab })}
                                 >
                                     <View style={styles.orderIconWrap}>
                                         <Ionicons name={item.icon} size={28} color={TEXT_DARK} />
@@ -555,252 +573,6 @@ const Profile = ({ navigation }: any) => {
                 <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
                     <Text style={styles.logoutBtnText}>Đăng xuất</Text>
                 </TouchableOpacity>
-
-                {/* BANK MODAL */}
-                <Modal
-                    visible={showBankModal}
-                    transparent
-                    animationType="slide"
-                    onRequestClose={() => { setShowBankModal(false); setShowAddBankForm(false); }}
-                >
-                    <KeyboardAvoidingView
-                        behavior={Platform.OS === "ios" ? "padding" : "height"}
-                        style={styles.modalOverlay}
-                    >
-                        <View style={[styles.modalContainer, { maxHeight: '90%' }]}> 
-                            <ScrollView contentContainerStyle={{ paddingBottom: hp("4%") }} showsVerticalScrollIndicator={false}>
-                            {/* Header */}
-                            <View style={styles.modalHeader}>
-                                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                                    <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: "#FFF0ED", justifyContent: "center", alignItems: "center" }}>
-                                        <Ionicons name="card-outline" size={18} color={PRIMARY_COLOR} />
-                                    </View>
-                                    <Text style={styles.modalTitle}>Tài khoản ngân hàng</Text>
-                                </View>
-                                <TouchableOpacity onPress={() => { setShowBankModal(false); setShowAddBankForm(false); }}>
-                                    <Ionicons name="close" size={24} color="#64748B" />
-                                </TouchableOpacity>
-                            </View>
-
-                            {/* Banner */}
-                            <View style={styles.bankInfoBanner}>
-                                <Ionicons name="information-circle-outline" size={16} color={PRIMARY_COLOR} />
-                                <Text style={styles.bankInfoBannerText}>
-                                    Tài khoản mặc định sẽ nhận hoàn tiền khi đơn bị hủy sau thanh toán. Tối đa 5 tài khoản.
-                                </Text>
-                            </View>
-
-                            {/* Danh sách TK đã lưu */}
-                            {bankAccounts.map(acc => (
-                                <View key={acc.id} style={styles.bankCard}>
-                                    <View style={{ flex: 1 }}>
-                                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 2 }}>
-                                            <Text style={styles.bankCardName}>{acc.ten_ngan_hang}</Text>
-                                            {acc.is_default === 1 && (
-                                                <View style={styles.defaultBadge}>
-                                                    <Text style={styles.defaultBadgeText}>Mặc định</Text>
-                                                </View>
-                                            )}
-                                        </View>
-                                        <Text style={styles.bankCardNo}>{acc.so_tai_khoan}</Text>
-                                        <Text style={styles.bankCardOwner}>{acc.chu_tai_khoan}</Text>
-                                        {!!acc.chi_nhanh && <Text style={styles.bankCardBranch}>{acc.chi_nhanh}</Text>}
-                                    </View>
-                                    <View style={{ gap: 6 }}>
-                                        {acc.is_default !== 1 && (
-                                            <TouchableOpacity
-                                                style={styles.bankActionBtn}
-                                                onPress={() => handleSetDefaultBank(acc.id)}
-                                            >
-                                                <Ionicons name="star-outline" size={16} color="#F59E0B" />
-                                            </TouchableOpacity>
-                                        )}
-                                        <TouchableOpacity
-                                            style={[styles.bankActionBtn, { backgroundColor: "#FFF1F2" }]}
-                                            onPress={() => handleDeleteBank(acc.id)}
-                                            disabled={deletingBankId === acc.id}
-                                        >
-                                            <Ionicons name="trash-outline" size={16} color="#EF4444" />
-                                        </TouchableOpacity>
-                                    </View>
-                                </View>
-                            ))}
-
-                            {/* Chưa có TK nào */}
-                            {bankAccounts.length === 0 && !showAddBankForm && (
-                                <View style={{ alignItems: "center", paddingVertical: hp("2%") }}>
-                                    <Ionicons name="wallet-outline" size={40} color="#CBD5E1" />
-                                    <Text style={{ color: "#94A3B8", marginTop: 8, fontSize: wp("3.4%") }}>Chưa có tài khoản nào</Text>
-                                </View>
-                            )}
-
-                            {/* Nút thêm mới */}
-                            {bankAccounts.length < 5 && !showAddBankForm && (
-                                <TouchableOpacity
-                                    style={[styles.submitBtn, { backgroundColor: PRIMARY_COLOR, marginTop: hp("1.5%") }]}
-                                    onPress={() => setShowAddBankForm(true)}
-                                >
-                                    <Text style={styles.submitBtnText}>+ Thêm tài khoản mới</Text>
-                                </TouchableOpacity>
-                            )}
-
-                            {/* Form thêm mới */}
-                            {showAddBankForm && (
-                                <>
-                                    <View style={[styles.bankInfoBanner, { backgroundColor: "#FFF5F3", borderColor: "#FECACA", marginTop: hp("1%") }]}>
-                                        <Ionicons name="add-circle-outline" size={16} color={PRIMARY_COLOR} />
-                                        <Text style={[styles.bankInfoBannerText, { color: PRIMARY_COLOR }]}>Nhập thông tin tài khoản mới</Text>
-                                    </View>
-
-                                    <Text style={styles.inputLabel}>Tên ngân hàng *</Text>
-                                    <TouchableOpacity
-                                        style={[styles.pwInputRow, { justifyContent: "space-between" }]}
-                                        onPress={() => { setBankPickerSearch(""); setShowBankPicker(true); }}
-                                        activeOpacity={0.8}
-                                    >
-                                        <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
-                                            <Ionicons name="business-outline" size={18} color="#94A3B8" style={{ marginRight: 8 }} />
-                                            <Text style={[styles.pwInput, { color: newBank.ten_ngan_hang ? TEXT_DARK : "#94A3B8" }]}>
-                                                {newBank.ten_ngan_hang || "Chọn ngân hàng..."}
-                                            </Text>
-                                        </View>
-                                        <Ionicons name="chevron-down" size={18} color="#94A3B8" />
-                                    </TouchableOpacity>
-
-                                    <Text style={styles.inputLabel}>Số tài khoản *</Text>
-                                    <View style={styles.pwInputRow}>
-                                        <Ionicons name="keypad-outline" size={18} color="#94A3B8" style={{ marginRight: 8 }} />
-                                        <TextInput
-                                            style={styles.pwInput}
-                                            placeholder="Nhập số tài khoản"
-                                            placeholderTextColor="#94A3B8"
-                                            keyboardType="numeric"
-                                            value={newBank.so_tai_khoan}
-                                            onChangeText={v => setNewBank(p => ({ ...p, so_tai_khoan: v }))}
-                                        />
-                                    </View>
-
-                                    <Text style={styles.inputLabel}>Tên chủ tài khoản *</Text>
-                                    <View style={styles.pwInputRow}>
-                                        <Ionicons name="person-outline" size={18} color="#94A3B8" style={{ marginRight: 8 }} />
-                                        <TextInput
-                                            style={styles.pwInput}
-                                            placeholder="NGUYEN VAN A"
-                                            placeholderTextColor="#94A3B8"
-                                            autoCapitalize="characters"
-                                            value={newBank.chu_tai_khoan}
-                                            onChangeText={v => setNewBank(p => ({ ...p, chu_tai_khoan: v.toUpperCase() }))}
-                                        />
-                                    </View>
-
-                                    <Text style={styles.inputLabel}>Chi nhánh (tùy chọn)</Text>
-                                    <View style={styles.pwInputRow}>
-                                        <Ionicons name="git-branch-outline" size={18} color="#94A3B8" style={{ marginRight: 8 }} />
-                                        <TextInput
-                                            style={styles.pwInput}
-                                            placeholder="VD: Chi nhánh Đà Nẵng"
-                                            placeholderTextColor="#94A3B8"
-                                            value={newBank.chi_nhanh}
-                                            onChangeText={v => setNewBank(p => ({ ...p, chi_nhanh: v }))}
-                                        />
-                                    </View>
-
-                                    <View style={{ flexDirection: "row", gap: 8, marginTop: hp("2%") }}>
-                                        <TouchableOpacity
-                                            style={[styles.submitBtn, { flex: 1, backgroundColor: "#F1F5F9", marginTop: 0 }]}
-                                            onPress={() => setShowAddBankForm(false)}
-                                        >
-                                            <Text style={[styles.submitBtnText, { color: "#64748B" }]}>Hủy</Text>
-                                        </TouchableOpacity>
-                                        <TouchableOpacity
-                                            style={[styles.submitBtn, { flex: 2, backgroundColor: PRIMARY_COLOR, marginTop: 0, opacity: savingBank ? 0.6 : 1 }]}
-                                            onPress={handleAddBank}
-                                            disabled={savingBank}
-                                        >
-                                            <Text style={styles.submitBtnText}>{savingBank ? "Đang lưu..." : "Lưu tài khoản"}</Text>
-                                        </TouchableOpacity>
-                                    </View>
-                                </>
-                            )}
-                        </ScrollView>
-                        </View>
-                    </KeyboardAvoidingView>
-                </Modal>
-
-                {/* BANK PICKER MODAL */}
-                <Modal
-                    visible={showBankPicker}
-                    transparent
-                    animationType="slide"
-                    onRequestClose={() => setShowBankPicker(false)}
-                >
-                    <View style={styles.modalOverlay}>
-                        <View style={[styles.modalContainer, { maxHeight: "80%" }]}>
-                            {/* Header */}
-                            <View style={styles.modalHeader}>
-                                <Text style={styles.modalTitle}>Chọn ngân hàng</Text>
-                                <TouchableOpacity onPress={() => setShowBankPicker(false)}>
-                                    <Ionicons name="close" size={24} color="#64748B" />
-                                </TouchableOpacity>
-                            </View>
-
-                            {/* Tìm kiếm */}
-                            <View style={[styles.pwInputRow, { marginBottom: hp("1%") }]}>
-                                <Ionicons name="search-outline" size={18} color="#94A3B8" style={{ marginRight: 8 }} />
-                                <TextInput
-                                    style={styles.pwInput}
-                                    placeholder="Tìm ngân hàng..."
-                                    placeholderTextColor="#94A3B8"
-                                    value={bankPickerSearch}
-                                    onChangeText={setBankPickerSearch}
-                                    autoFocus
-                                />
-                                {bankPickerSearch.length > 0 && (
-                                    <TouchableOpacity onPress={() => setBankPickerSearch("")}>
-                                        <Ionicons name="close-circle" size={18} color="#94A3B8" />
-                                    </TouchableOpacity>
-                                )}
-                            </View>
-
-                            {/* Danh sách */}
-                            <FlatList
-                                data={VN_BANKS.filter(b =>
-                                    b.name.toLowerCase().includes(bankPickerSearch.toLowerCase()) ||
-                                    b.fullName.toLowerCase().includes(bankPickerSearch.toLowerCase())
-                                )}
-                                keyExtractor={item => item.name}
-                                keyboardShouldPersistTaps="handled"
-                                showsVerticalScrollIndicator={false}
-                                renderItem={({ item }) => (
-                                    <TouchableOpacity
-                                        style={[
-                                            styles.bankPickerItem,
-                                            newBank.ten_ngan_hang === item.name && styles.bankPickerItemActive,
-                                        ]}
-                                        onPress={() => {
-                                            setNewBank(p => ({ ...p, ten_ngan_hang: item.name }));
-                                            setShowBankPicker(false);
-                                        }}
-                                        activeOpacity={0.75}
-                                    >
-                                        <View style={styles.bankPickerIconWrap}>
-                                            <Text style={styles.bankPickerIconText}>
-                                                {item.name.charAt(0)}
-                                            </Text>
-                                        </View>
-                                        <View style={{ flex: 1 }}>
-                                            <Text style={styles.bankPickerName}>{item.name}</Text>
-                                            <Text style={styles.bankPickerFullName} numberOfLines={1}>{item.fullName}</Text>
-                                        </View>
-                                        {newBank.ten_ngan_hang === item.name && (
-                                            <Ionicons name="checkmark-circle" size={20} color="#10B981" />
-                                        )}
-                                    </TouchableOpacity>
-                                )}
-                            />
-                        </View>
-                    </View>
-                </Modal>
 
                 {/* CHANGE PASSWORD MODAL */}
                 <Modal
@@ -884,16 +656,270 @@ const Profile = ({ navigation }: any) => {
                     </KeyboardAvoidingView>
                 </Modal>
 
-            </ScrollView>
+                {/* ── BANK ACCOUNT MODAL ─────────────────────────── */}
+                <Modal
+                    visible={showBankModal}
+                    transparent
+                    animationType="slide"
+                    onRequestClose={() => setShowBankModal(false)}
+                >
+                    <View style={styles.modalOverlay}>
+                        <View style={[styles.modalContainer, { maxHeight: "85%" }]}>
+                            {/* Header */}
+                            <View style={styles.modalHeader}>
+                                <View>
+                                    <Text style={styles.modalTitle}>Tài khoản hoàn tiền</Text>
+                                    <Text style={{ fontSize: wp("3%"), color: TEXT_MUTED, marginTop: 2 }}>
+                                        Nhận hoàn tiền khi đơn bị hủy
+                                    </Text>
+                                </View>
+                                <TouchableOpacity onPress={() => setShowBankModal(false)}>
+                                    <Ionicons name="close" size={24} color="#64748B" />
+                                </TouchableOpacity>
+                            </View>
 
-            <CustomAlert
-                visible={alertConfig.visible}
-                type={alertConfig.type}
-                title={alertConfig.title}
-                message={alertConfig.message}
-                buttons={alertConfig.buttons}
-                onDismiss={hideAlert}
-            />
+                            {/* Bank list */}
+                            <ScrollView style={{ maxHeight: 380 }} showsVerticalScrollIndicator={false}>
+                                {banks.length === 0 ? (
+                                    <View style={styles.bankEmptyBox}>
+                                        <Ionicons name="card-outline" size={48} color="#CBD5E1" />
+                                        <Text style={styles.bankEmptyTitle}>Chưa có tài khoản ngân hàng</Text>
+                                        <Text style={styles.bankEmptySubtitle}>
+                                            Thêm tài khoản để nhận hoàn tiền tự động khi đơn bị hủy
+                                        </Text>
+                                        <View style={styles.bankWarningBox}>
+                                            <Ionicons name="warning-outline" size={14} color="#D97706" />
+                                            <Text style={styles.bankWarningText}>
+                                                Chưa có tài khoản = không nhận được hoàn tiền tự động
+                                            </Text>
+                                        </View>
+                                    </View>
+                                ) : (
+                                    <View style={{ paddingBottom: 8 }}>
+                                        {banks.map((bank: any) => (
+                                            <View
+                                                key={bank.id}
+                                                style={[
+                                                    styles.bankCard,
+                                                    bank.is_default == 1 && styles.bankCardDefault,
+                                                ]}
+                                            >
+                                                <View style={styles.bankCardLeft}>
+                                                    <View style={[
+                                                        styles.bankIconCircle,
+                                                        bank.is_default == 1 && { backgroundColor: "#FFF7ED" },
+                                                    ]}>
+                                                        <Ionicons
+                                                            name="business-outline"
+                                                            size={20}
+                                                            color={bank.is_default == 1 ? PRIMARY_COLOR : "#94A3B8"}
+                                                        />
+                                                    </View>
+                                                    <View style={{ flex: 1 }}>
+                                                        <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap" }}>
+                                                            <Text style={styles.bankName}>{bank.ten_ngan_hang}</Text>
+                                                            {bank.is_default == 1 && (
+                                                                <View style={styles.defaultBadge}>
+                                                                    <Text style={styles.defaultBadgeText}>Mặc định</Text>
+                                                                </View>
+                                                            )}
+                                                        </View>
+                                                        <Text style={styles.bankAccount}>
+                                                            {bank.so_tai_khoan} — {bank.chu_tai_khoan}
+                                                        </Text>
+                                                        {!!bank.chi_nhanh && (
+                                                            <Text style={styles.bankBranch}>{bank.chi_nhanh}</Text>
+                                                        )}
+                                                    </View>
+                                                </View>
+                                                <View style={styles.bankCardActions}>
+                                                    {bank.is_default != 1 && (
+                                                        <TouchableOpacity
+                                                            style={styles.setDefaultBtn}
+                                                            onPress={() => handleSetDefaultBank(bank.id)}
+                                                        >
+                                                            <Text style={styles.setDefaultBtnText}>Mặc định</Text>
+                                                        </TouchableOpacity>
+                                                    )}
+                                                    <TouchableOpacity
+                                                        style={styles.deleteBankBtn}
+                                                        onPress={() => handleDeleteBank(bank.id)}
+                                                    >
+                                                        <Ionicons name="trash-outline" size={16} color="#EF4444" />
+                                                    </TouchableOpacity>
+                                                </View>
+                                            </View>
+                                        ))}
+                                        <View style={styles.bankInfoBox}>
+                                            <Ionicons name="information-circle-outline" size={14} color="#3B82F6" />
+                                            <Text style={styles.bankInfoText}>
+                                                Tiền hoàn sẽ được chuyển vào tài khoản{" "}
+                                                <Text style={{ fontWeight: "700" }}>mặc định</Text>{" "}
+                                                trong vài phút sau khi đơn bị hủy.
+                                            </Text>
+                                        </View>
+                                    </View>
+                                )}
+                            </ScrollView>
+
+                            {/* Add button */}
+                            <TouchableOpacity
+                                style={styles.addBankBtn}
+                                onPress={() => {
+                                    setShowBankModal(false);
+                                    setTimeout(() => {
+                                        setNewBank({ ten_ngan_hang: "", so_tai_khoan: "", chu_tai_khoan: "", chi_nhanh: "" });
+                                        setShowAddBankModal(true);
+                                    }, 400);
+                                }}
+                            >
+                                <Ionicons name="add-circle-outline" size={20} color="#FFF" />
+                                <Text style={styles.addBankBtnText}>Thêm tài khoản</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </Modal>
+
+                {/* ── ADD BANK ACCOUNT MODAL ──────────────────────── */}
+                <Modal
+                    visible={showAddBankModal}
+                    transparent
+                    animationType="slide"
+                    onRequestClose={() => {
+                        setShowAddBankModal(false);
+                        setTimeout(() => setShowBankModal(true), 400);
+                    }}
+                >
+                    <KeyboardAvoidingView
+                        behavior={Platform.OS === "ios" ? "padding" : "height"}
+                        style={styles.modalOverlay}
+                    >
+                        <View style={[styles.modalContainer, { maxHeight: "90%" }]}>
+                            {/* Header */}
+                            <View style={styles.modalHeader}>
+                                <View>
+                                    <Text style={styles.modalTitle}>Thêm tài khoản ngân hàng</Text>
+                                    <Text style={{ fontSize: wp("3%"), color: TEXT_MUTED, marginTop: 2 }}>
+                                        Dùng để nhận hoàn tiền tự động
+                                    </Text>
+                                </View>
+                                <TouchableOpacity onPress={() => {
+                                    setShowAddBankModal(false);
+                                    setTimeout(() => setShowBankModal(true), 400);
+                                }}>
+                                    <Ionicons name="close" size={24} color="#64748B" />
+                                </TouchableOpacity>
+                            </View>
+
+                            <ScrollView showsVerticalScrollIndicator={false}>
+                                {/* Chọn ngân hàng */}
+                                <Text style={styles.inputLabel}>
+                                    Tên ngân hàng <Text style={{ color: PRIMARY_COLOR }}>*</Text>
+                                </Text>
+                                <TouchableOpacity
+                                    style={styles.bankPickerBtn}
+                                    onPress={() => setShowBankPicker(!showBankPicker)}
+                                >
+                                    <Text style={[
+                                        styles.bankPickerText,
+                                        !newBank.ten_ngan_hang && { color: "#94A3B8" }
+                                    ]}>
+                                        {newBank.ten_ngan_hang || "-- Chọn ngân hàng --"}
+                                    </Text>
+                                    <Ionicons
+                                        name={showBankPicker ? "chevron-up" : "chevron-down"}
+                                        size={18}
+                                        color="#94A3B8"
+                                    />
+                                </TouchableOpacity>
+                                {showBankPicker && (
+                                    <View style={styles.bankDropdown}>
+                                        <ScrollView style={{ maxHeight: 220 }} nestedScrollEnabled>
+                                            {BANK_LIST.map((b) => (
+                                                <TouchableOpacity
+                                                    key={b}
+                                                    style={[
+                                                        styles.bankDropdownItem,
+                                                        newBank.ten_ngan_hang === b && styles.bankDropdownItemSelected,
+                                                    ]}
+                                                    onPress={() => {
+                                                        setNewBank(prev => ({ ...prev, ten_ngan_hang: b }));
+                                                        setShowBankPicker(false);
+                                                    }}
+                                                >
+                                                    <Text style={[
+                                                        styles.bankDropdownItemText,
+                                                        newBank.ten_ngan_hang === b && { color: PRIMARY_COLOR, fontWeight: "700" },
+                                                    ]}>{b}</Text>
+                                                    {newBank.ten_ngan_hang === b && (
+                                                        <Ionicons name="checkmark" size={16} color={PRIMARY_COLOR} />
+                                                    )}
+                                                </TouchableOpacity>
+                                            ))}
+                                        </ScrollView>
+                                    </View>
+                                )}
+
+                                {/* Số tài khoản */}
+                                <Text style={styles.inputLabel}>
+                                    Số tài khoản <Text style={{ color: PRIMARY_COLOR }}>*</Text>
+                                </Text>
+                                <TextInput
+                                    style={styles.bankTextInput}
+                                    placeholder="Nhập số tài khoản"
+                                    placeholderTextColor="#94A3B8"
+                                    keyboardType="number-pad"
+                                    value={newBank.so_tai_khoan}
+                                    onChangeText={v => setNewBank(p => ({ ...p, so_tai_khoan: v }))}
+                                />
+
+                                {/* Chủ tài khoản */}
+                                <Text style={styles.inputLabel}>
+                                    Chủ tài khoản <Text style={{ color: PRIMARY_COLOR }}>*</Text>
+                                </Text>
+                                <TextInput
+                                    style={styles.bankTextInput}
+                                    placeholder="NGUYEN VAN A (viết hoa không dấu)"
+                                    placeholderTextColor="#94A3B8"
+                                    autoCapitalize="characters"
+                                    value={newBank.chu_tai_khoan}
+                                    onChangeText={v => setNewBank(p => ({ ...p, chu_tai_khoan: v.toUpperCase() }))}
+                                />
+
+                                {/* Chi nhánh */}
+                                <Text style={styles.inputLabel}>Chi nhánh (không bắt buộc)</Text>
+                                <TextInput
+                                    style={styles.bankTextInput}
+                                    placeholder="VD: CN Đà Nẵng"
+                                    placeholderTextColor="#94A3B8"
+                                    value={newBank.chi_nhanh}
+                                    onChangeText={v => setNewBank(p => ({ ...p, chi_nhanh: v }))}
+                                />
+
+                                {/* Warning */}
+                                <View style={styles.addBankWarningBox}>
+                                    <Ionicons name="warning-outline" size={14} color="#D97706" />
+                                    <Text style={styles.bankWarningText}>
+                                        Đảm bảo thông tin tài khoản chính xác. FoodBee không chịu trách nhiệm nếu thông tin sai.
+                                    </Text>
+                                </View>
+
+                                <TouchableOpacity
+                                    style={[styles.submitBtn, addingBank && { opacity: 0.6 }]}
+                                    onPress={handleAddBank}
+                                    disabled={addingBank}
+                                >
+                                    <Text style={styles.submitBtnText}>
+                                        {addingBank ? "Đang thêm..." : "Thêm tài khoản"}
+                                    </Text>
+                                </TouchableOpacity>
+                                <View style={{ height: 20 }} />
+                            </ScrollView>
+                        </View>
+                    </KeyboardAvoidingView>
+                </Modal>
+
+            </ScrollView>
         </View>
     );
 };
@@ -957,8 +983,6 @@ const styles = StyleSheet.create({
         marginTop: hp("3%"),
     },
     avatarOutline: {
-        padding: 2,
-        backgroundColor: "rgba(255,255,255,0.3)",
         borderRadius: wp("10%"),
         marginRight: wp("4%"),
     },
@@ -966,8 +990,6 @@ const styles = StyleSheet.create({
         width: wp("16%"),
         height: wp("16%"),
         borderRadius: wp("8%"),
-        borderWidth: 2,
-        borderColor: "#FFF",
     },
     userInfoText: {
         flex: 1,
@@ -1277,112 +1299,222 @@ const styles = StyleSheet.create({
         fontSize: wp("4%"),
         fontWeight: "700",
     },
-    // Bank info banner
-    bankInfoBanner: {
+    // ── Bank Account styles ───────────────────────────────
+    bankEmptyBox: {
+        alignItems: "center",
+        paddingVertical: hp("4%"),
+        paddingHorizontal: wp("5%"),
+    },
+    bankEmptyTitle: {
+        fontSize: wp("4%"),
+        fontWeight: "700",
+        color: TEXT_DARK,
+        marginTop: hp("1.5%"),
+        marginBottom: hp("0.5%"),
+    },
+    bankEmptySubtitle: {
+        fontSize: wp("3.2%"),
+        color: TEXT_MUTED,
+        textAlign: "center",
+        marginBottom: hp("2%"),
+    },
+    bankWarningBox: {
         flexDirection: "row",
         alignItems: "flex-start",
-        gap: 8,
-        backgroundColor: "#EFF6FF",
-        borderRadius: wp("3%"),
-        padding: wp("3%"),
-        marginBottom: hp("1%"),
+        backgroundColor: "#FFFBEB",
         borderWidth: 1,
-        borderColor: "#BFDBFE",
+        borderColor: "#FDE68A",
+        borderRadius: wp("2.5%"),
+        padding: wp("3%"),
+        gap: 6,
+        marginTop: hp("1%"),
     },
-    bankInfoBannerText: {
+    bankWarningText: {
         flex: 1,
-        fontSize: wp("3.2%"),
-        color: "#0369A1",
-        lineHeight: 20,
+        fontSize: wp("2.8%"),
+        color: "#92400E",
+        lineHeight: 18,
     },
-    // Bank account card
     bankCard: {
         flexDirection: "row",
         alignItems: "center",
+        justifyContent: "space-between",
         backgroundColor: "#F8FAFC",
+        borderWidth: 1.5,
+        borderColor: "#E2E8F0",
         borderRadius: wp("3%"),
         padding: wp("3.5%"),
-        marginTop: hp("1%"),
-        borderWidth: 1,
-        borderColor: "#E2E8F0",
-        gap: 10,
+        marginBottom: hp("1.5%"),
     },
-    bankCardName: {
-        fontSize: wp("3.8%"),
-        fontWeight: "700",
-        color: TEXT_DARK,
+    bankCardDefault: {
+        backgroundColor: "#FFF7ED",
+        borderColor: "#FDBA74",
     },
-    bankCardNo: {
-        fontSize: wp("3.5%"),
-        color: TEXT_MUTED,
-        letterSpacing: 1,
-        marginTop: 2,
-    },
-    bankCardOwner: {
-        fontSize: wp("3.2%"),
-        color: TEXT_MUTED,
-        marginTop: 1,
-    },
-    bankCardBranch: {
-        fontSize: wp("3%"),
-        color: "#94A3B8",
-        marginTop: 1,
-        fontStyle: "italic",
-    },
-    defaultBadge: {
-        backgroundColor: "#DCFCE7",
-        borderRadius: 6,
-        paddingHorizontal: 6,
-        paddingVertical: 2,
-    },
-    defaultBadgeText: {
-        fontSize: wp("2.6%"),
-        color: "#16A34A",
-        fontWeight: "700",
-    },
-    bankActionBtn: {
-        width: 32,
-        height: 32,
-        borderRadius: 8,
-        backgroundColor: "#FFFBEB",
-        justifyContent: "center",
-        alignItems: "center",
-    },
-    // Bank picker
-    bankPickerItem: {
+    bankCardLeft: {
         flexDirection: "row",
         alignItems: "center",
-        paddingVertical: hp("1.2%"),
-        paddingHorizontal: wp("2%"),
-        borderRadius: wp("2.5%"),
-        marginBottom: 4,
+        flex: 1,
         gap: 10,
     },
-    bankPickerItemActive: {
-        backgroundColor: "#F0FDF4",
-    },
-    bankPickerIconWrap: {
-        width: 36,
-        height: 36,
-        borderRadius: 18,
-        backgroundColor: "#EEF2FF",
+    bankIconCircle: {
+        width: wp("10%"),
+        height: wp("10%"),
+        borderRadius: wp("5%"),
+        backgroundColor: "#F1F5F9",
         justifyContent: "center",
         alignItems: "center",
     },
-    bankPickerIconText: {
-        fontSize: wp("4%"),
-        fontWeight: "800",
-        color: "#4F46E5",
-    },
-    bankPickerName: {
+    bankName: {
         fontSize: wp("3.8%"),
         fontWeight: "700",
         color: TEXT_DARK,
+        marginRight: 6,
     },
-    bankPickerFullName: {
-        fontSize: wp("3%"),
+    defaultBadge: {
+        backgroundColor: "#FEF3C7",
+        borderRadius: 10,
+        paddingHorizontal: wp("2%"),
+        paddingVertical: 2,
+        borderWidth: 1,
+        borderColor: "#FDE68A",
+    },
+    defaultBadgeText: {
+        fontSize: wp("2.5%"),
+        color: "#D97706",
+        fontWeight: "700",
+    },
+    bankAccount: {
+        fontSize: wp("3.2%"),
         color: TEXT_MUTED,
-        marginTop: 1,
+        marginTop: 2,
+    },
+    bankBranch: {
+        fontSize: wp("2.8%"),
+        color: "#94A3B8",
+        marginTop: 2,
+    },
+    bankCardActions: {
+        flexDirection: "column",
+        alignItems: "flex-end",
+        gap: 6,
+        marginLeft: 8,
+    },
+    setDefaultBtn: {
+        borderWidth: 1,
+        borderColor: "#FDBA74",
+        borderRadius: wp("2%"),
+        paddingHorizontal: wp("2.5%"),
+        paddingVertical: 4,
+    },
+    setDefaultBtnText: {
+        fontSize: wp("2.8%"),
+        color: "#D97706",
+        fontWeight: "600",
+    },
+    deleteBankBtn: {
+        width: wp("8%"),
+        height: wp("8%"),
+        borderRadius: wp("2%"),
+        backgroundColor: "#FEF2F2",
+        borderWidth: 1,
+        borderColor: "#FECACA",
+        justifyContent: "center",
+        alignItems: "center",
+    },
+    bankInfoBox: {
+        flexDirection: "row",
+        alignItems: "flex-start",
+        backgroundColor: "#EFF6FF",
+        borderWidth: 1,
+        borderColor: "#BFDBFE",
+        borderRadius: wp("2.5%"),
+        padding: wp("3%"),
+        gap: 6,
+        marginTop: hp("1%"),
+    },
+    bankInfoText: {
+        flex: 1,
+        fontSize: wp("2.8%"),
+        color: "#1D4ED8",
+        lineHeight: 18,
+    },
+    addBankBtn: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 8,
+        backgroundColor: PRIMARY_COLOR,
+        borderRadius: wp("3%"),
+        paddingVertical: hp("1.8%"),
+        marginTop: hp("2%"),
+    },
+    addBankBtnText: {
+        color: "#FFF",
+        fontSize: wp("4%"),
+        fontWeight: "700",
+    },
+    bankPickerBtn: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        borderWidth: 1,
+        borderColor: "#E2E8F0",
+        borderRadius: wp("3%"),
+        paddingHorizontal: wp("3.5%"),
+        height: hp("6%"),
+        backgroundColor: "#F8FAFC",
+        marginBottom: 4,
+    },
+    bankPickerText: {
+        flex: 1,
+        fontSize: wp("3.8%"),
+        color: TEXT_DARK,
+    },
+    bankDropdown: {
+        borderWidth: 1,
+        borderColor: "#E2E8F0",
+        borderRadius: wp("3%"),
+        backgroundColor: "#FFF",
+        marginBottom: hp("1%"),
+        overflow: "hidden",
+    },
+    bankDropdownItem: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        paddingHorizontal: wp("4%"),
+        paddingVertical: hp("1.3%"),
+        borderBottomWidth: 1,
+        borderBottomColor: "#F1F5F9",
+    },
+    bankDropdownItemSelected: {
+        backgroundColor: "#FFF7ED",
+    },
+    bankDropdownItemText: {
+        fontSize: wp("3.8%"),
+        color: TEXT_DARK,
+    },
+    bankTextInput: {
+        borderWidth: 1,
+        borderColor: "#E2E8F0",
+        borderRadius: wp("3%"),
+        paddingHorizontal: wp("3.5%"),
+        height: hp("6%"),
+        backgroundColor: "#F8FAFC",
+        fontSize: wp("3.8%"),
+        color: TEXT_DARK,
+    },
+    addBankWarningBox: {
+        flexDirection: "row",
+        alignItems: "flex-start",
+        backgroundColor: "#FFFBEB",
+        borderWidth: 1,
+        borderColor: "#FDE68A",
+        borderRadius: wp("2.5%"),
+        padding: wp("3%"),
+        gap: 6,
+        marginTop: hp("2%"),
+        marginBottom: hp("2%"),
     },
 });
 

@@ -18,14 +18,11 @@ import CustomAlert, { AlertButton } from "../../components/CustomAlert";
 import { SafeAreaView } from "react-native-safe-area-context";
 // @ts-ignore
 import Ionicons from "react-native-vector-icons/Ionicons";
-import Geolocation from "react-native-geolocation-service";
-import LocationPickerModal from "../../components/LocationPickerModal";
 import {
     heightPercentageToDP as hp,
     widthPercentageToDP as wp,
 } from "react-native-responsive-screen";
 import apiClient from "../../genaral/api";
-import { requestLocationPermission } from "../../utils/location";
 
 const PRIMARY = "#EE4D2D";
 const BG = "#F8FAFC";
@@ -89,9 +86,6 @@ const AddressBook = ({ navigation }: any) => {
     const [editingId, setEditingId] = useState<number | null>(null);
     const [submitting, setSubmitting] = useState(false);
     const [form, setForm] = useState(EMPTY_FORM);
-    const [manualCoord, setManualCoord] = useState<{ lng: number; lat: number } | null>(null);
-    const [gettingGPS, setGettingGPS] = useState(false);
-    const [mapPickerVisible, setMapPickerVisible] = useState(false);
 
     // ── Fetch ──────────────────────────────────────────
     const fetchAddresses = async () => {
@@ -132,7 +126,6 @@ const AddressBook = ({ navigation }: any) => {
         setSelectedProvince(null);
         setSelectedDistrict(null);
         setQuanHuyens([]);
-        setManualCoord(null);
         setShowModal(true);
     };
 
@@ -169,40 +162,7 @@ const AddressBook = ({ navigation }: any) => {
             const district = districts.find((q) => q.id === addr.id_quan_huyen);
             setSelectedDistrict(district || (addr.ten_quan_huyen ? { id: addr.id_quan_huyen, ten_quan_huyen: addr.ten_quan_huyen } : null));
         }
-        // Pre-fill tọa độ nếu địa chỉ đã có — không cần ghim lại khi chỉ sửa tên/SĐT
-        setManualCoord(
-            addr.toa_do_x && addr.toa_do_y
-                ? { lng: Number(addr.toa_do_x), lat: Number(addr.toa_do_y) }
-                : null
-        );
         setShowModal(true);
-    };
-
-    // ── Lấy GPS hiện tại ─────────────────────────────────
-    const handleGetGPS = async () => {
-        setGettingGPS(true);
-        try {
-            const granted = await requestLocationPermission();
-            if (!granted) {
-                showAlert("error", "Lỗi", "Không có quyền truy cập vị trí.");
-                setGettingGPS(false);
-                return;
-            }
-            Geolocation.getCurrentPosition(
-                (pos) => {
-                    setManualCoord({ lng: pos.coords.longitude, lat: pos.coords.latitude });
-                    setGettingGPS(false);
-                    showAlert("success", "Đã lấy vị trí GPS", "Vị trí chính xác đã được ghi nhận. Nhấn Lưu để hoàn tất.");
-                },
-                () => {
-                    showAlert("error", "Không lấy được GPS", "Hãy bật GPS và thử lại.");
-                    setGettingGPS(false);
-                },
-                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-            );
-        } catch {
-            setGettingGPS(false);
-        }
     };
 
     // ── Submit ──────────────────────────────────────────
@@ -213,25 +173,16 @@ const AddressBook = ({ navigation }: any) => {
         if (!selectedProvince) { showAlert("error", "Lỗi", "Vui lòng chọn Tỉnh / Thành phố."); return; }
         if (!form.id_quan_huyen) { showAlert("error", "Lỗi", "Vui lòng chọn Quận / Huyện."); return; }
 
-        // Yêu cầu ghim tọa độ trước khi lưu
-        if (!manualCoord) {
-            setMapPickerVisible(true);
-            return;
-        }
-
         setSubmitting(true);
         try {
             const endpoint = editingId ? "/khach-hang/dia-chi/update" : "/khach-hang/dia-chi/create";
-            const payload = editingId
-                ? { id: editingId, ...form, toa_do_x: manualCoord.lng, toa_do_y: manualCoord.lat }
-                : { ...form, toa_do_x: manualCoord.lng, toa_do_y: manualCoord.lat };
+            const payload = editingId ? { id: editingId, ...form } : form;
             const res = await apiClient.post(endpoint, payload);
 
             if (res.data?.status === 1) {
                 setShowModal(false);
-                setManualCoord(null);
                 fetchAddresses();
-                showAlert("success", "Thành công", res.data.message || "Đã lưu địa chỉ");
+                showAlert("success", "Thành công", res.data.message);
             } else {
                 showAlert("error", "Lỗi", res.data?.message || "Có lỗi xảy ra.");
             }
@@ -295,20 +246,6 @@ const AddressBook = ({ navigation }: any) => {
                 <Ionicons name="location-outline" size={14} color={MUTED} />
                 <Text style={styles.infoText} numberOfLines={2}>
                     {[item.dia_chi, item.ten_quan_huyen, item.ten_tinh_thanh].filter(Boolean).join(", ")}
-                </Text>
-            </View>
-            {/* Indicator tọa độ */}
-            <View style={styles.coordBadge}>
-                <Ionicons
-                    name={item.toa_do_x && item.toa_do_y ? "pin" : "warning-outline"}
-                    size={12}
-                    color={item.toa_do_x && item.toa_do_y ? "#10B981" : "#F59E0B"}
-                />
-                <Text style={[
-                    styles.coordBadgeText,
-                    { color: item.toa_do_x && item.toa_do_y ? "#10B981" : "#F59E0B" }
-                ]}>
-                    {item.toa_do_x && item.toa_do_y ? "Đã có tọa độ bản đồ" : "Chưa có tọa độ — cần chỉnh sửa để ghim"}
                 </Text>
             </View>
         </View>
@@ -426,7 +363,7 @@ const AddressBook = ({ navigation }: any) => {
                             </TouchableOpacity>
                         </View>
 
-                        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: hp("8%") }}>
+                        <ScrollView showsVerticalScrollIndicator={false}>
                             {/* Tên người nhận */}
                             <Text style={styles.fieldLabel}>Tên người nhận *</Text>
                             <View style={styles.fieldRow}>
@@ -484,53 +421,16 @@ const AddressBook = ({ navigation }: any) => {
                             <View style={styles.fieldRow}>
                                 <Ionicons name="home-outline" size={18} color={MUTED} style={styles.fieldIcon} />
                                 <TextInput style={styles.textInput} value={form.dia_chi}
-                                    onChangeText={(v) => { setForm({ ...form, dia_chi: v }); setManualCoord(null); }}
+                                    onChangeText={(v) => setForm({ ...form, dia_chi: v })}
                                     placeholder="Số nhà, tên đường..." placeholderTextColor="#94A3B8" maxLength={255} />
                             </View>
 
-                            {/* Coord action buttons */}
-                            {manualCoord && (
-                                <View style={styles.coordConfirmedBanner}>
-                                    <Ionicons name="checkmark-circle" size={16} color="#10B981" />
-                                    <Text style={styles.coordConfirmedText}>Đã ghim tọa độ chính xác</Text>
-                                    <TouchableOpacity onPress={() => setManualCoord(null)}>
-                                        <Ionicons name="close-circle" size={18} color="#EF4444" />
-                                    </TouchableOpacity>
-                                </View>
-                            )}
-                            <View style={styles.coordBtnRow}>
-                                {/* Map Picker button */}
-                                <TouchableOpacity
-                                    style={styles.mapPickBtn}
-                                    onPress={() => setMapPickerVisible(true)}
-                                >
-                                    <Ionicons name="map-outline" size={16} color="#FFF" />
-                                    <Text style={styles.coordBtnText}>Ghim trên bản đồ</Text>
-                                </TouchableOpacity>
-                                {/* GPS button */}
-                                <TouchableOpacity
-                                    style={styles.gpsSmallBtn}
-                                    onPress={handleGetGPS}
-                                    disabled={gettingGPS}
-                                >
-                                    {gettingGPS ? (
-                                        <ActivityIndicator size="small" color="#FFF" />
-                                    ) : (
-                                        <Ionicons name="locate-outline" size={16} color="#FFF" />
-                                    )}
-                                    <Text style={styles.coordBtnText}>{gettingGPS ? "GPS..." : "GPS"}</Text>
-                                </TouchableOpacity>
-                            </View>
-                            {!manualCoord && (
-                                <Text style={styles.gpsHint}>Bắt buộc ghim vị trí trước khi lưu. Dùng "Ghim bản đồ" để tìm từ xa, hoặc "GPS" khi đứng tại địa chỉ.</Text>
-                            )}
-
                             <TouchableOpacity
-                                style={[styles.submitBtn, submitting && { opacity: 0.6 }, !manualCoord && { backgroundColor: "#94A3B8" }]}
+                                style={[styles.submitBtn, submitting && { opacity: 0.6 }]}
                                 onPress={handleSubmit} disabled={submitting}
                             >
                                 <Text style={styles.submitBtnText}>
-                                    {submitting ? "Đang lưu..." : !manualCoord ? "Ghim vị trí để tiếp tục" : editingId ? "Cập nhật" : "Lưu địa chỉ"}
+                                    {submitting ? "Đang lưu..." : editingId ? "Cập nhật" : "Lưu địa chỉ"}
                                 </Text>
                             </TouchableOpacity>
                         </ScrollView>
@@ -569,20 +469,6 @@ const AddressBook = ({ navigation }: any) => {
                 }}
                 onClose={() => setShowDistrictPicker(false)}
                 loading={loadingDistricts}
-            />
-
-            {/* MAP PICKER */}
-            <LocationPickerModal
-                visible={mapPickerVisible}
-                initialAddress={
-                    [form.dia_chi, selectedDistrict?.ten_quan_huyen, selectedProvince?.ten_tinh_thanh]
-                        .filter(Boolean).join(", ")
-                }
-                onConfirm={(coord, _addr) => {
-                    setManualCoord(coord);
-                    setMapPickerVisible(false);
-                }}
-                onClose={() => setMapPickerVisible(false)}
             />
 
             {/* CUSTOM ALERT */}
@@ -644,7 +530,7 @@ const styles = StyleSheet.create({
     modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "flex-end" },
     modalBox: {
         backgroundColor: "#FFF", borderTopLeftRadius: wp("6%"), borderTopRightRadius: wp("6%"),
-        paddingHorizontal: wp("5%"), paddingTop: hp("2.5%"), maxHeight: "92%",
+        paddingHorizontal: wp("5%"), paddingTop: hp("2.5%"), paddingBottom: hp("5%"), maxHeight: "92%",
     },
     pickerBox: {
         backgroundColor: "#FFF", borderTopLeftRadius: wp("6%"), borderTopRightRadius: wp("6%"),
@@ -670,35 +556,6 @@ const styles = StyleSheet.create({
         alignItems: "center", marginTop: hp("3%"), marginBottom: hp("1%"),
     },
     submitBtnText: { color: "#FFF", fontSize: wp("4%"), fontWeight: "700" },
-    gpsHint: {
-        fontSize: wp("3.2%"), color: "#F59E0B", marginTop: 6, marginBottom: 4,
-        fontStyle: "italic", paddingHorizontal: 2,
-    },
-    coordBtnRow: {
-        flexDirection: "row", gap: 8, marginTop: hp("1.5%"),
-    },
-    mapPickBtn: {
-        flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
-        gap: 6, backgroundColor: PRIMARY, borderRadius: wp("2.5%"),
-        paddingVertical: hp("1.4%"),
-    },
-    gpsSmallBtn: {
-        flexDirection: "row", alignItems: "center", justifyContent: "center",
-        gap: 6, backgroundColor: "#3B82F6", borderRadius: wp("2.5%"),
-        paddingVertical: hp("1.4%"), paddingHorizontal: wp("3%"),
-    },
-    coordBtnText: { color: "#FFF", fontSize: wp("3.4%"), fontWeight: "700" },
-    coordConfirmedBanner: {
-        flexDirection: "row", alignItems: "center", gap: 6,
-        backgroundColor: "#ECFDF5", borderRadius: wp("2.5%"),
-        padding: 8, marginTop: hp("1.5%"),
-        borderWidth: 1, borderColor: "#6EE7B7",
-    },
-    coordConfirmedText: { flex: 1, fontSize: wp("3.4%"), color: "#065F46", fontWeight: "600" },
-    coordBadge: {
-        flexDirection: "row", alignItems: "center", gap: 4, marginTop: hp("0.8%"),
-    },
-    coordBadgeText: { fontSize: wp("3%"), fontWeight: "600" },
     pickerItem: {
         flexDirection: "row", alignItems: "center", paddingVertical: hp("1.5%"),
         paddingHorizontal: wp("2%"), borderBottomWidth: 1, borderBottomColor: "#F1F5F9",

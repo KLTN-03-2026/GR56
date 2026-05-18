@@ -80,8 +80,22 @@ const ShipperTopUp = ({ navigation }: any) => {
     useEffect(() => {
         const fetchBalance = async () => {
             try {
-                const res = await apiClient.get("/shipper/so-du");
-                if (res.data?.status) setBalance(res.data.data?.so_du ?? 0);
+                const userDataStr = await AsyncStorage.getItem("userData");
+                const userData = userDataStr ? JSON.parse(userDataStr) : {};
+                const id_shipper = userData.id;
+
+                if (id_shipper) {
+                    const res = await apiClient.get("/wallet/chi-tiet", {
+                        params: { loai_vi: "shipper", id_chu_vi: id_shipper },
+                    });
+                    if (res.data?.status) {
+                        setBalance(res.data.data?.vi?.so_du ?? 0);
+                    } else {
+                        setBalance(0);
+                    }
+                } else {
+                    setBalance(0);
+                }
             } catch {
                 setBalance(0);
             }
@@ -144,8 +158,16 @@ const ShipperTopUp = ({ navigation }: any) => {
             if (res.data?.status) {
                 // Refresh balance
                 try {
-                    const balRes = await apiClient.get("/shipper/so-du");
-                    if (balRes.data?.status) setBalance(balRes.data.data?.so_du ?? 0);
+                    const userDataStr = await AsyncStorage.getItem("userData");
+                    const userData = userDataStr ? JSON.parse(userDataStr) : {};
+                    const id_shipper = userData.id;
+
+                    if (id_shipper) {
+                        const balRes = await apiClient.get("/wallet/chi-tiet", {
+                            params: { loai_vi: "shipper", id_chu_vi: id_shipper },
+                        });
+                        if (balRes.data?.status) setBalance(balRes.data.data?.vi?.so_du ?? 0);
+                    }
                 } catch {}
 
                 setStep("select");

@@ -82,6 +82,7 @@ interface Dish {
   hinh_anh: string | null;
   id_quan_an: number;
   ten_quan_an: string;
+  id_danh_muc?: number;
 }
 
 interface Restaurant {
@@ -313,7 +314,7 @@ const VoucherCard = memo<VoucherCardProps>(({ voucher }) => {
       <View style={s.vDivider} />
 
       {/* Right content */}
-      <View style={s.vRight}>
+      <View style={[s.vRight, { flex: 1, overflow: "hidden" }]}>
         <Text style={s.vTitle} numberOfLines={2}>{voucher.ten_voucher}</Text>
         {voucher.don_hang_toi_thieu > 0 && (
           <View style={s.vCondRow}>
@@ -329,7 +330,7 @@ const VoucherCard = memo<VoucherCardProps>(({ voucher }) => {
         )}
         <View style={s.vFooter}>
           <View style={s.vCodeBox}>
-            <Text style={s.vCode}>{voucher.ma_code}</Text>
+            <Text style={s.vCode} numberOfLines={1} ellipsizeMode="tail">{voucher.ma_code}</Text>
           </View>
           {daysLeft !== null && (
             <Text style={[s.vExpiry, daysLeft <= 3 && { color: COLORS.PRIMARY }]}>
@@ -436,6 +437,7 @@ const HomePage = ({ navigation }: { navigation: HomeNavigation }) => {
   const [unreadCount, setUnreadCount] = useState(0);
   const [userName, setUserName] = useState("bạn");
   const [favoriteIds, setFavoriteIds] = useState<Set<number>>(new Set());
+  const [cartCount, setCartCount] = useState(0);
   const [toast, setToast] = useState({
     visible: false,
     message: "",
@@ -451,6 +453,91 @@ const HomePage = ({ navigation }: { navigation: HomeNavigation }) => {
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const headerFadeAnim = useRef(new Animated.Value(0)).current;
   const contentSlideAnim = useRef(new Animated.Value(30)).current;
+
+  // ─── Banners Carousel ───────────────────────────────────────
+  const scrollRef = useRef<ScrollView>(null);
+  const [activeBanner, setActiveBanner] = useState(0);
+
+  const banners = useMemo(() => [
+    {
+      id: 1,
+      tag: "🔥 Giao hàng siêu tốc",
+      title: "Món Ngon Tới Tay\n",
+      highlight: "Trong Tích Tắc",
+      sub: "FoodBee đưa hàng ngàn món ăn ngon từ các nhà hàng uy tín tới tận cửa nhà bạn.",
+      emoji: "🛵",
+      pills: ["🍕 Pizza Ý", "☕ Cà Phê"],
+      bg: "#0B0E14",
+      highlightColor: COLORS.PRIMARY_LIGHT,
+    },
+    {
+      id: 2,
+      tag: "🎁 Ưu đãi độc quyền",
+      title: "Siêu Sale Giữa Tháng\n",
+      highlight: "Giảm Đến 50%",
+      sub: "Thưởng thức hàng ngàn món ngon với giá siêu hời. Chỉ áp dụng trong tuần này!",
+      emoji: "🎉",
+      pills: ["🍔 Hamburger", "🍗 Gà Rán"],
+      bg: "#1E1B4B",
+      highlightColor: "#F472B6",
+    },
+    {
+      id: 3,
+      tag: "🌿 Healthy life",
+      title: "Sống Khỏe Mỗi Ngày\n",
+      highlight: "Eat Clean",
+      sub: "Cung cấp năng lượng xanh với thực đơn healthy, chuẩn calories và dinh dưỡng.",
+      emoji: "🥗",
+      pills: ["🥑 Salad", "🍹 Nước Ép"],
+      bg: "#064E3B",
+      highlightColor: "#34D399",
+    }
+  ], []);
+
+  const loopBanners = useMemo(() => [...banners, { ...banners[0], id: 999 }], [banners]);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setActiveBanner((prev) => {
+        const nextReal = (prev + 1) % banners.length;
+        const scrollIndex = prev + 1;
+        scrollRef.current?.scrollTo({
+          x: scrollIndex * (SCREEN_WIDTH - SPACING.PADDING * 2),
+          animated: true,
+        });
+        // If we're about to show the clone (last item), schedule a silent jump to real first
+        if (scrollIndex === banners.length) {
+          setTimeout(() => {
+            scrollRef.current?.scrollTo({
+              x: 0,
+              animated: false,
+            });
+          }, 350);
+        }
+        return nextReal;
+      });
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [banners.length]);
+
+  const handleBannerScroll = (e: any) => {
+    const BANNER_W = SCREEN_WIDTH - SPACING.PADDING * 2;
+    const offsetX = e.nativeEvent.contentOffset.x;
+    const rawIndex = Math.round(offsetX / BANNER_W);
+
+    // If user swiped to the clone at the end, silently jump to real first
+    if (rawIndex >= banners.length) {
+      setTimeout(() => {
+        scrollRef.current?.scrollTo({ x: 0, animated: false });
+      }, 10);
+      setActiveBanner(0);
+      return;
+    }
+
+    if (rawIndex !== activeBanner) {
+      setActiveBanner(rawIndex);
+    }
+  };
 
   // ─── Load tên người dùng ──────────────────────────────────────
   useEffect(() => {
@@ -526,8 +613,31 @@ const HomePage = ({ navigation }: { navigation: HomeNavigation }) => {
 
   useFocusEffect(
     useCallback(() => {
-      loadNotifications().then((list) => {
-        setUnreadCount(list.filter((n) => !n.isRead).length);
+      // Lấy số lượng giỏ hàng
+      AsyncStorage.getItem("last_restaurant_id").then(savedId => {
+        if (savedId) {
+          apiClient.get(`/khach-hang/don-dat-hang/${savedId}`).then((res) => {
+            if (res.data?.status) {
+              const items = res.data.gio_hang || [];
+              const count = items.reduce((sum: number, item: any) => sum + (item.so_luong || 0), 0);
+              setCartCount(count);
+            }
+          }).catch(() => {});
+        } else {
+          setCartCount(0);
+        }
+      });
+
+      // Ưu tiên lấy số lượng chưa đọc thực tế từ server
+      apiClient.get("/notifications").then((res) => {
+        if (res.data?.status && res.data.unread_count !== undefined) {
+          setUnreadCount(res.data.unread_count);
+        }
+      }).catch(() => {
+        // Fallback về local nếu lỗi mạng
+        loadNotifications().then((list) => {
+          setUnreadCount(list.filter((n) => !n.isRead).length);
+        });
       });
     }, [])
   );
@@ -542,13 +652,12 @@ const HomePage = ({ navigation }: { navigation: HomeNavigation }) => {
         try {
           await new Promise<void>((r) => setTimeout(r, 300));
           const response = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=16`,
-            { headers: { "User-Agent": "ShoppeFood-App" } }
+            `https://mapapis.openmap.vn/v1/geocode/reverse?point.lat=${lat}&point.lon=${lng}&apikey=6TTIZbUWJmRMSpiYzQ0YY8z5v8wv43w0`
           );
           const data = await response.json();
-          if (data?.display_name) {
-            // Rút ngắn địa chỉ: lấy 2 phần đầu
-            const parts = data.display_name.split(",");
+          if (data?.features?.[0]?.properties?.label) {
+            const label = data.features[0].properties.label;
+            const parts = label.split(",");
             setLocation(parts.slice(0, 2).join(",").trim());
             return;
           }
@@ -605,11 +714,7 @@ const HomePage = ({ navigation }: { navigation: HomeNavigation }) => {
   );
   const filteredDishes = useMemo(() => {
     if (!activeCat) return dishes;
-    const key = activeCat.ten_danh_muc.toLowerCase();
-    return dishes.filter(d =>
-      d.ten_mon_an.toLowerCase().includes(key) ||
-      d.ten_quan_an?.toLowerCase().includes(key)
-    );
+    return dishes.filter(d => d.id_danh_muc === activeCat.id);
   }, [dishes, activeCat]);
   const filteredSales = useMemo(() => {
     if (!activeCat) return sales;
@@ -667,8 +772,16 @@ const HomePage = ({ navigation }: { navigation: HomeNavigation }) => {
 
                 {/* Actions */}
                 <View style={s.headerActions}>
+                  <TouchableOpacity style={s.hBtn} onPress={() => navigation.navigate("RestaurantMap")}>
+                    <Ionicons name="map-outline" size={22} color={COLORS.WHITE} />
+                  </TouchableOpacity>
                   <TouchableOpacity style={s.hBtn} onPress={() => navigation.navigate("Cart")}>
                     <Ionicons name="cart-outline" size={22} color={COLORS.WHITE} />
+                    {cartCount > 0 && (
+                      <View style={s.badge}>
+                        <Text style={s.badgeTxt}>{cartCount > 99 ? "99+" : cartCount}</Text>
+                      </View>
+                    )}
                   </TouchableOpacity>
                   <TouchableOpacity style={s.hBtn} onPress={() => navigation.navigate("Notification")}>
                     <Ionicons name="notifications-outline" size={22} color={COLORS.WHITE} />
@@ -785,50 +898,69 @@ const HomePage = ({ navigation }: { navigation: HomeNavigation }) => {
             </View>
           )}
 
-          {/* ══════════ PROMO BANNER ══════════ */}
+          {/* ══════════ PREMIUM PROMO BANNER CAROUSEL ══════════ */}
           <View style={s.bannerWrap}>
-            <TouchableOpacity style={s.banner} activeOpacity={0.92}>
-              <View style={s.bannerBg}>
-                {/* Decorative circles */}
-                <View style={s.bCircle1} />
-                <View style={s.bCircle2} />
-                <View style={s.bCircle3} />
-                <View style={s.bannerContent}>
-                  <View style={{ flex: 1 }}>
-                    <View style={s.bannerChip}>
-                      <Ionicons name="flame" size={12} color={COLORS.ORANGE} />
-                      <Text style={s.bannerChipTxt}> Ưu đãi hôm nay</Text>
+            <ScrollView
+              ref={scrollRef}
+              horizontal
+              pagingEnabled
+              scrollEnabled={false}
+              showsHorizontalScrollIndicator={false}
+              onMomentumScrollEnd={handleBannerScroll}
+              scrollEventThrottle={16}
+            >
+              {loopBanners.map((item, index) => (
+                <View key={`${item.id}-${index}`} style={[s.banner, { width: SCREEN_WIDTH - SPACING.PADDING * 2 }]}>
+                  <View style={[s.bannerBg, { backgroundColor: item.bg }]}>
+                    {/* Stars/Space background effect */}
+                    <View style={[s.star, { top: 20, left: 30, width: 3, height: 3 }]} />
+                    <View style={[s.star, { top: 60, right: 40, width: 4, height: 4 }]} />
+                    <View style={[s.star, { bottom: 130, left: 80, width: 2, height: 2 }]} />
+                    <View style={[s.star, { bottom: 80, right: 20, width: 3, height: 3 }]} />
+                    <View style={[s.glowCircle, { backgroundColor: item.highlightColor }]} />
+
+                    <View style={s.bannerContentCompact}>
+                      <View style={s.bannerLeft}>
+                        {/* Tag */}
+                        <View style={[s.bannerChip, { borderColor: `${item.highlightColor}40`, backgroundColor: `${item.highlightColor}15` }]}>
+                          <Text style={[s.bannerChipTxt, { color: item.highlightColor }]}>{item.tag}</Text>
+                        </View>
+                        
+                        {/* Headlines */}
+                        <Text style={s.bannerTitleCompact}>
+                          {item.title}
+                          <Text style={{ color: item.highlightColor }}>{item.highlight}</Text>
+                        </Text>
+
+                        {/* Button */}
+                        <TouchableOpacity style={[s.btnPrimaryCompact, { backgroundColor: item.highlightColor }]} onPress={() => navigation.navigate("AllRestaurantsSale")}>
+                          <Text style={s.btnPrimaryTxtCompact}>Đặt Món Ngay</Text>
+                          <Ionicons name="arrow-forward" size={12} color="#FFF" />
+                        </TouchableOpacity>
+                      </View>
+
+                      <View style={s.bannerRight}>
+                        <View style={s.floatingEmojiWrapCompact}>
+                          <Text style={s.floatingEmojiCompact}>{item.emoji}</Text>
+                        </View>
+                        <View style={[s.glassPillCompact, { top: -5, right: -15 }]}>
+                          <Text style={s.glassPillTxtCompact}>{item.pills[0]}</Text>
+                        </View>
+                      </View>
                     </View>
-                    <Text style={s.bannerTitle}>Siêu Sale{"\n"}Cuối Tuần!</Text>
-                    <Text style={s.bannerSub}>Giao nhanh · Giảm sâu · Ăn ngon</Text>
-                    <TouchableOpacity style={s.bannerBtn}>
-                      <Text style={s.bannerBtnTxt}>Khám phá ngay</Text>
-                      <Ionicons name="arrow-forward" size={13} color={COLORS.PRIMARY} />
-                    </TouchableOpacity>
                   </View>
-                  <Text style={s.bannerEmoji}>🍜</Text>
                 </View>
-              </View>
-            </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            {/* Pagination Dots */}
+            <View style={s.paginationRow}>
+              {banners.map((_, i) => (
+                <View key={i} style={[s.dot, activeBanner === i && s.dotActive]} />
+              ))}
+            </View>
           </View>
 
-          {/* ══════════ QUICK SERVICE SHORTCUTS ══════════ */}
-          <View style={s.shortcutRow}>
-            {[
-              { icon: "bicycle-outline", label: "Giao hàng", color: "#EFF6FF", iconColor: "#3B82F6", action: () => navigation.navigate("MainTabs", { screen: "Orders" }) },
-              { icon: "storefront-outline", label: "Quán ăn", color: "#FFF7ED", iconColor: COLORS.ORANGE, action: () => navigation.navigate("AllRestaurantsSale") },
-              { icon: "leaf-outline", label: "Healthy", color: "#F0FDF4", iconColor: "#22C55E", action: () => { const cat = categories.find(c => c.ten_danh_muc.toLowerCase().includes("sinh tố") || c.ten_danh_muc.toLowerCase().includes("healthy") || c.ten_danh_muc.toLowerCase().includes("sinh to")); if (cat) { setActiveCategory(cat.id); } else { navigation.navigate("AllDishesOnSale"); } } },
-              { icon: "cafe-outline", label: "Đồ uống", color: "#FDF4FF", iconColor: "#A855F7", action: () => { const cat = categories.find(c => c.ten_danh_muc.toLowerCase().includes("nước") || c.ten_danh_muc.toLowerCase().includes("uống") || c.ten_danh_muc.toLowerCase().includes("trà") || c.ten_danh_muc.toLowerCase().includes("café") || c.ten_danh_muc.toLowerCase().includes("cafe")); if (cat) { setActiveCategory(cat.id); } else { navigation.navigate("AllDishesOnSale"); } } },
-            ].map((item, i) => (
-              <TouchableOpacity key={i} style={s.shortcutItem} activeOpacity={0.75}
-                onPress={item.action}>
-                <View style={[s.shortcutIcon, { backgroundColor: item.color }]}>
-                  <Ionicons name={item.icon as any} size={22} color={item.iconColor} />
-                </View>
-                <Text style={s.shortcutLabel}>{item.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
 
           {/* ══════════ DISHES ON SALE ══════════ */}
           {dishes.length > 0 && (
@@ -1201,97 +1333,128 @@ const s = StyleSheet.create({
   catLabel: { fontSize: 11, color: COLORS.TEXT_SECONDARY, fontWeight: "500", textAlign: "center" },
   catLabelActive: { color: COLORS.PRIMARY, fontWeight: "700" },
 
-  /* ── Banner ─────────────────────────────────────── */
+  /* ── Premium Banner ─────────────────────────────────────── */
   bannerWrap: {
     paddingHorizontal: SPACING.PADDING,
     marginTop: 20,
   },
   banner: {
-    borderRadius: 20,
+    borderRadius: 24,
     overflow: "hidden",
-    shadowColor: COLORS.PRIMARY,
-    shadowOpacity: 0.25,
-    shadowOffset: { width: 0, height: 6 },
-    shadowRadius: 14,
-    elevation: 8,
+    shadowColor: "#0F172A",
+    shadowOpacity: 0.3,
+    shadowOffset: { width: 0, height: 8 },
+    shadowRadius: 20,
+    elevation: 10,
   },
   bannerBg: {
-    backgroundColor: COLORS.PRIMARY,
-    overflow: "hidden",
-    minHeight: 160,
+    backgroundColor: "#0B0E14",
     position: "relative",
   },
-  bCircle1: {
+  star: {
     position: "absolute",
-    top: -40,
-    right: -40,
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    backgroundColor: "rgba(255,255,255,0.10)",
+    backgroundColor: "#FFF",
+    borderRadius: 50,
+    opacity: 0.4,
   },
-  bCircle2: {
+  glowCircle: {
     position: "absolute",
-    bottom: -30,
-    right: 60,
-    width: 90,
-    height: 90,
-    borderRadius: 45,
-    backgroundColor: "rgba(255,255,255,0.07)",
+    top: -50,
+    right: -50,
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: COLORS.PRIMARY,
+    opacity: 0.15,
+    transform: [{ scale: 1.5 }],
   },
-  bCircle3: {
-    position: "absolute",
-    top: 20,
-    left: -20,
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    backgroundColor: "rgba(0,0,0,0.06)",
-  },
-  bannerContent: {
+  bannerContentCompact: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 20,
+    justifyContent: "space-between",
+    padding: 16,
     paddingVertical: 20,
-    gap: 12,
+    minHeight: 140,
+  },
+  bannerLeft: {
+    flex: 1,
+    paddingRight: 10,
+    justifyContent: "center",
+  },
+  bannerRight: {
+    width: 90,
+    height: 90,
+    position: "relative",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 10,
   },
   bannerChip: {
     flexDirection: "row",
     alignSelf: "flex-start",
-    backgroundColor: "rgba(255,255,255,0.22)",
     borderRadius: 20,
     paddingHorizontal: 10,
     paddingVertical: 4,
-    alignItems: "center",
-    marginBottom: 8,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.35)",
+    marginBottom: 10,
   },
-  bannerChipTxt: { color: COLORS.WHITE, fontSize: 11, fontWeight: "700" },
-  bannerTitle: {
-    color: COLORS.WHITE,
-    fontSize: 22,
+  bannerChipTxt: { fontSize: 10, fontWeight: "800", textTransform: "uppercase" },
+  bannerTitleCompact: {
+    color: "#FFFFFF",
+    fontSize: 20,
     fontWeight: "900",
-    lineHeight: 28,
-    marginBottom: 6,
-  },
-  bannerSub: {
-    color: "rgba(255,255,255,0.78)",
-    fontSize: 12,
+    lineHeight: 26,
     marginBottom: 12,
+    letterSpacing: -0.5,
   },
-  bannerBtn: {
+  btnPrimaryCompact: {
     flexDirection: "row",
     alignSelf: "flex-start",
-    backgroundColor: COLORS.WHITE,
-    borderRadius: 22,
-    paddingHorizontal: 14,
-    paddingVertical: 7,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     alignItems: "center",
     gap: 4,
   },
-  bannerBtnTxt: { color: COLORS.PRIMARY, fontSize: 12, fontWeight: "800" },
-  bannerEmoji: { fontSize: 72, lineHeight: 82 },
+  btnPrimaryTxtCompact: { color: "#FFF", fontSize: 12, fontWeight: "800" },
+  floatingEmojiWrapCompact: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.15)",
+  },
+  floatingEmojiCompact: { fontSize: 36 },
+  glassPillCompact: {
+    position: "absolute",
+    backgroundColor: "rgba(30,41,59,0.9)",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
+  },
+  glassPillTxtCompact: { color: "#E2E8F0", fontSize: 9, fontWeight: "700" },
+  paginationRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 12,
+    gap: 6,
+  },
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "rgba(0,0,0,0.15)",
+  },
+  dotActive: {
+    width: 14,
+    backgroundColor: COLORS.PRIMARY,
+  },
 
   /* ── Quick Shortcuts ─────────────────────────────── */
   shortcutRow: {
@@ -1378,7 +1541,7 @@ const s = StyleSheet.create({
 
   /* ── Voucher Card ───────────────────────────────── */
   vCard: {
-    width: 256,
+    width: 288,
     backgroundColor: COLORS.WHITE,
     borderRadius: 18,
     flexDirection: "row",
@@ -1392,7 +1555,7 @@ const s = StyleSheet.create({
     borderColor: "#FEE2E2",
   },
   vLeft: {
-    width: 84,
+    width: 88,
     backgroundColor: COLORS.PRIMARY,
     borderTopLeftRadius: 17,
     borderBottomLeftRadius: 17,
@@ -1402,10 +1565,10 @@ const s = StyleSheet.create({
     paddingVertical: 18,
   },
   vLeftLabel: { color: "rgba(255,255,255,0.8)", fontSize: 10, fontWeight: "700", letterSpacing: 0.5 },
-  vLeftAmt: { color: COLORS.WHITE, fontSize: 22, fontWeight: "900", textAlign: "center", paddingHorizontal: 4 },
+  vLeftAmt: { color: COLORS.WHITE, fontSize: 24, fontWeight: "900", textAlign: "center", paddingHorizontal: 2 },
   vHole: {
     position: "absolute",
-    left: 76,
+    left: 79,
     width: 18,
     height: 18,
     borderRadius: 9,
@@ -1421,22 +1584,24 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#FECACA",
   },
-  vRight: { flex: 1, paddingVertical: 14, paddingHorizontal: 12, paddingLeft: 8 },
+  vRight: { flex: 1, paddingVertical: 14, paddingRight: 14, paddingLeft: 14 },
   vTitle: { fontSize: 13, fontWeight: "700", color: COLORS.TEXT_PRIMARY, lineHeight: 18 },
   vCondRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 4 },
   vCond: { fontSize: 11, color: COLORS.TEXT_MUTED },
   vShop: { fontSize: 11, color: COLORS.TEXT_MUTED, flex: 1 },
-  vFooter: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 10 },
+  vFooter: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 10, gap: 4 },
   vCodeBox: {
     backgroundColor: "#FEF2F2",
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 7,
+
     borderWidth: 1,
     borderColor: "#FEE2E2",
+    flexShrink: 1,
   },
   vCode: { fontSize: 11, fontWeight: "900", color: COLORS.PRIMARY, letterSpacing: 1 },
-  vExpiry: { fontSize: 10, color: COLORS.TEXT_MUTED, fontWeight: "600" },
+  vExpiry: { fontSize: 10, color: COLORS.TEXT_MUTED, fontWeight: "600", flexShrink: 0 },
 
   /* ── Restaurant Card (Favorites) ─────────────────── */
   favCard: {

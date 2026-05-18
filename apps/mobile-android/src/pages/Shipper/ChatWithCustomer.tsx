@@ -24,7 +24,6 @@ import {
 import apiClient from "../../genaral/api";
 import { getImageUrl } from "../../utils/imageHelper";
 import { connectEcho } from "../../config/echo";
-import { launchCamera, launchImageLibrary } from "react-native-image-picker";
 import {
   createNotificationChannels,
   requestNotificationPermission,
@@ -48,9 +47,6 @@ interface RawMessage {
   noi_dung: string;
   da_doc: boolean | number;
   created_at: string;
-  hinh_anh?: string | null;
-  anh?: string | null;
-  image_url?: string | null;
 }
 
 interface Message {
@@ -59,8 +55,6 @@ interface Message {
   noi_dung: string;
   created_at: string;
   da_doc: boolean | number;
-  imageUrl?: string;
-  localImageUri?: string;
 }
 
 // ─── Helpers ──────────────────────────────────────────────
@@ -273,11 +267,6 @@ const ChatWithCustomer = ({ navigation, route }: any) => {
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState("");
-  const [selectedImage, setSelectedImage] = useState<{
-    uri: string;
-    name: string;
-    type: string;
-  } | null>(null);
   const [sending, setSending] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [inputFocused, setInputFocused] = useState(false);
@@ -296,11 +285,6 @@ const ChatWithCustomer = ({ navigation, route }: any) => {
       noi_dung: m.noi_dung,
       created_at: m.created_at,
       da_doc: m.da_doc,
-      imageUrl:
-        m.hinh_anh ||
-        m.anh ||
-        m.image_url ||
-        undefined,
     }));
 
   const loadMessages = useCallback(
@@ -326,16 +310,11 @@ const ChatWithCustomer = ({ navigation, route }: any) => {
                   latest.noi_dung
                 );
                 saveNotification({
-                  type: "chat",
+                  type: "order",
                   title: `Tin nhắn từ ${name}`,
                   description: latest.noi_dung,
                   icon: "chatbubble-ellipses",
                   badgeLabel: "Tin nhắn",
-                  id_don_hang: id_don_hang,
-                  sender_name: name,
-                  sender_avatar: avatar,
-                  ma_don_hang: ma_don_hang,
-                  dia_chi: dia_chi,
                 });
               }
             }
@@ -417,43 +396,9 @@ const ChatWithCustomer = ({ navigation, route }: any) => {
     ]).start();
   };
 
-  const openCamera = () => {
-    launchCamera(
-      { mediaType: "photo", quality: 0.7, saveToPhotos: false, cameraType: "back" },
-      (res) => {
-        if (res.didCancel || res.errorCode) return;
-        const asset = res.assets?.[0];
-        if (asset?.uri) {
-          setSelectedImage({
-            uri: asset.uri,
-            name: asset.fileName || `photo_${Date.now()}.jpg`,
-            type: asset.type || "image/jpeg",
-          });
-        }
-      }
-    );
-  };
-
-  const openGallery = () => {
-    launchImageLibrary(
-      { mediaType: "photo", quality: 0.7 },
-      (res) => {
-        if (res.didCancel || res.errorCode) return;
-        const asset = res.assets?.[0];
-        if (asset?.uri) {
-          setSelectedImage({
-            uri: asset.uri,
-            name: asset.fileName || `photo_${Date.now()}.jpg`,
-            type: asset.type || "image/jpeg",
-          });
-        }
-      }
-    );
-  };
-
   const handleSend = async () => {
     const text = inputText.trim();
-    if ((!text && !selectedImage) || sending || !id_don_hang) return;
+    if (!text || sending || !id_don_hang) return;
 
     animateSend();
     const optimisticId = Date.now();
@@ -463,36 +408,19 @@ const ChatWithCustomer = ({ navigation, route }: any) => {
       noi_dung: text,
       created_at: new Date().toISOString(),
       da_doc: false,
-      localImageUri: selectedImage?.uri,
     };
     setInputText("");
-    setSelectedImage(null);
     setMessages((prev) => [...prev, optimistic]);
     setSending(true);
 
     try {
-      let res;
-      if (selectedImage) {
-        const formData = new FormData();
-        formData.append("id_don_hang", String(id_don_hang));
-        formData.append("noi_dung", text);
-        formData.append("anh", {
-          uri: selectedImage.uri,
-          type: selectedImage.type,
-          name: selectedImage.name,
-        } as any);
-        res = await apiClient.post("/shipper/chat/gui", formData, {
-          headers: { "Content-Type": "multipart/form-data" },
-        });
-      } else {
-        res = await apiClient.post("/shipper/chat/gui", {
-          id_don_hang,
-          noi_dung: text,
-        });
-      }
-
+      const res = await apiClient.post("/shipper/chat/gui", {
+        id_don_hang,
+        noi_dung: text,
+      });
       if (res.data?.tin_nhan?.id) {
         lastIdRef.current = res.data.tin_nhan.id;
+        // Cập nhật id thật thay cho optimistic id
         setMessages((prev) =>
           prev.map((m) =>
             m.id === optimisticId
@@ -502,8 +430,9 @@ const ChatWithCustomer = ({ navigation, route }: any) => {
         );
       }
     } catch (err: any) {
+      // Xóa optimistic message nếu gửi thất bại
       setMessages((prev) => prev.filter((m) => m.id !== optimisticId));
-      setInputText(text);
+      setInputText(text); // Khôi phục nội dung đã gõ
       const msg =
         err?.response?.data?.message ||
         "Không thể gửi tin nhắn. Vui lòng thử lại.";

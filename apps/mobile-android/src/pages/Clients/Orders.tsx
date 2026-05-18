@@ -10,6 +10,11 @@ import {
   ActivityIndicator,
   Animated,
   Dimensions,
+  Modal,
+  TextInput,
+  Platform,
+  KeyboardAvoidingView,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
@@ -23,7 +28,7 @@ import apiClient from "../../genaral/api";
 import { getImageUrl, getShipperAvatarUrl } from "../../utils/imageHelper";
 import CustomAlert, { AlertButton } from "../../components/CustomAlert";
 import InlineDeliveryMap from "../../components/InlineDeliveryMap";
-import { createEcho } from "../../config/echo";
+import { connectEcho } from "../../config/echo";
 
 // ════════════════ Types ════════════════
 
@@ -97,11 +102,11 @@ const COLORS = { PRIMARY: "#EE4D2D" };
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 
 const STATUS_MAP: Record<number, { label: string; color: string; bg: string; tab: string }> = {
-  0: { label: "Chờ xác nhận",  color: "#F59E0B", bg: "#FEF3C7", tab: "Đang giao" }, // chưa có shipper
-  1: { label: "Đã nhận",        color: "#3B82F6", bg: "#EFF6FF", tab: "Đang giao" }, // shipper đã nhận
-  2: { label: "Quán đang làm",  color: "#8B5CF6", bg: "#F5F3FF", tab: "Đang giao" }, // quán đang nấu
-  3: { label: "Đang giao",      color: "#F97316", bg: "#FFF7ED", tab: "Đang giao" }, // shipper đang giao
-  4: { label: "Đã giao",        color: "#10B981", bg: "#ECFDF5", tab: "Đã Giao"  }, // hoàn thành
+  0: { label: "Chờ xác nhận", color: "#F59E0B", bg: "#FEF3C7", tab: "Đang giao" }, // chưa có shipper
+  1: { label: "Đã nhận", color: "#3B82F6", bg: "#EFF6FF", tab: "Đang giao" }, // shipper đã nhận
+  2: { label: "Quán đang làm", color: "#8B5CF6", bg: "#F5F3FF", tab: "Đang giao" }, // quán đang nấu
+  3: { label: "Đang giao", color: "#F97316", bg: "#FFF7ED", tab: "Đang giao" }, // shipper đang giao
+  4: { label: "Đã giao", color: "#10B981", bg: "#ECFDF5", tab: "Đã Giao" }, // hoàn thành
 };
 
 const formatPrice = (price: number): string => {
@@ -112,7 +117,7 @@ const formatPrice = (price: number): string => {
 const formatDate = (dateStr: string): string => {
   if (!dateStr) return "";
   const d = new Date(dateStr);
-  return `${d.getDate().toString().padStart(2,"0")}/${(d.getMonth()+1).toString().padStart(2,"0")}/${d.getFullYear()} ${d.getHours().toString().padStart(2,"0")}:${d.getMinutes().toString().padStart(2,"0")}`;
+  return `${d.getDate().toString().padStart(2, "0")}/${(d.getMonth() + 1).toString().padStart(2, "0")}/${d.getFullYear()} ${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
 };
 
 // ════════════════ Component ════════════════
@@ -125,6 +130,13 @@ const Orders = ({ navigation, route }: any) => {
   const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [shipperCoord, setShipperCoord] = useState<[number, number] | null>(null);
+
+  // Cập nhật tab khi params thay đổi (ví dụ từ Profile bấm sang)
+  React.useEffect(() => {
+    if (route?.params?.initialTab) {
+      setActiveTab(route.params.initialTab);
+    }
+  }, [route?.params?.initialTab]);
 
   // Custom Alert state
   const [alertVisible, setAlertVisible] = useState(false);
@@ -156,13 +168,97 @@ const Orders = ({ navigation, route }: any) => {
     setAlertVisible(true);
   };
 
+  // ── Report/Cancel state ──
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportOrder, setReportOrder] = useState<any>(null);
+  const [reportForm, setReportForm] = useState({
+    tieu_de: "",
+    noi_dung: "",
+    yeu_cau_huy: false,
+    ly_do_huy: "",
+  });
+  const [reportLoading, setReportLoading] = useState(false);
+  const [checkingBank, setCheckingBank] = useState(false);
+
+  // ── Xử lý yêu cầu hủy đơn ──
+  const handleToggleCancelRequest = async (order: any) => {
+    if (reportForm.yeu_cau_huy) {
+      setReportForm(f => ({ ...f, yeu_cau_huy: false, ly_do_huy: "" }));
+      return;
+    }
+
+    const isOnlinePayment = order?.payos_payment_link_id;
+    if (!isOnlinePayment) {
+      setReportForm(f => ({ ...f, yeu_cau_huy: true }));
+      return;
+    }
+
+    setCheckingBank(true);
+    try {
+      const res = await apiClient.get("/khach-hang/tai-khoan-ngan-hang");
+      const banks = res.data.data || [];
+      if (banks.length === 0) {
+        showAlert("warning", "Thông báo", "Bạn cần thêm tài khoản ngân hàng để nhận hoàn tiền khi hủy đơn thanh toán online!", [
+          { text: "Để sau", style: "cancel" },
+          {
+            text: "Thêm ngay",
+            style: "default",
+            onPress: () => {
+              setShowReportModal(false);
+              navigation.navigate("Profile", { tab: "bank" });
+            }
+          },
+        ]);
+      } else {
+        setReportForm(f => ({ ...f, yeu_cau_huy: true }));
+      }
+    } catch {
+      setReportForm(f => ({ ...f, yeu_cau_huy: true }));
+    } finally {
+      setCheckingBank(false);
+    }
+  };
+
+  const submitReport = async () => {
+    if (!reportForm.tieu_de.trim() || !reportForm.noi_dung.trim()) {
+      return Alert.alert("Lỗi", "Vui lòng nhập tiêu đề và nội dung báo cáo!");
+    }
+    if (reportForm.yeu_cau_huy && !reportForm.ly_do_huy.trim()) {
+      return Alert.alert("Lỗi", "Vui lòng nhập lý do yêu cầu hủy đơn!");
+    }
+
+    setReportLoading(true);
+    try {
+      const data = {
+        id_don_hang: reportOrder.id,
+        tieu_de: reportForm.tieu_de,
+        noi_dung: reportForm.noi_dung,
+        yeu_cau_huy: reportForm.yeu_cau_huy ? 1 : 0,
+        ly_do_huy: reportForm.ly_do_huy,
+      };
+
+      const res = await apiClient.post("/khach-hang/reports/create", data);
+      if (res.data.status) {
+        showAlert("success", "Thành công", res.data.message || "Báo cáo đã được gửi!");
+        setShowReportModal(false);
+        setReportForm({ tieu_de: "", noi_dung: "", yeu_cau_huy: false, ly_do_huy: "" });
+      } else {
+        Alert.alert("Thất bại", res.data.message || "Không thể gửi báo cáo!");
+      }
+    } catch (e: any) {
+      Alert.alert("Lỗi", e.response?.data?.message || "Có lỗi xảy ra khi gửi báo cáo.");
+    } finally {
+      setReportLoading(false);
+    }
+  };
+
   const tabs = ["Đã nhận", "Đang giao", "Đã giao"];
 
   // ── Load danh sách đơn hàng ──
   const loadOrders = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await apiClient.get("/khach-hang/don-hang/data");
+      const res = await apiClient.get("/khach-hang/don-hang/data-moi");
       if (res.data?.status) {
         setOrders(res.data.data || []);
       }
@@ -185,10 +281,10 @@ const Orders = ({ navigation, route }: any) => {
       setLoadingDetail(true);
       setOrderDetail(null);
       setOrderItems([]);
-      const res = await apiClient.post("/khach-hang/don-hang/data-chi-tiet", { id: orderId });
+      const res = await apiClient.post("/khach-hang/don-hang/chi-tiet-single", { id: orderId });
       if (res.data?.status) {
-        setOrderDetail(res.data.don_hang);
-        setOrderItems(res.data.chi_tiet_mon_an || []);
+        setOrderDetail(res.data.data);
+        setOrderItems(res.data.chi_tiet || []);
       }
     } catch (error) {
       console.log("Load order detail error:", error);
@@ -200,68 +296,39 @@ const Orders = ({ navigation, route }: any) => {
   // Silent refresh — không reset state, dùng cho polling
   const silentRefreshDetail = useCallback(async (orderId: number) => {
     try {
-      const res = await apiClient.post("/khach-hang/don-hang/data-chi-tiet", { id: orderId });
+      const res = await apiClient.post("/khach-hang/don-hang/chi-tiet-single", { id: orderId });
       if (res.data?.status) {
-        setOrderDetail(res.data.don_hang);
-        setOrderItems(res.data.chi_tiet_mon_an || []);
-        // Sync tinh_trang vào danh sách để badge cũng cập nhật
+        setOrderDetail(res.data.data);
+        setOrderItems(res.data.chi_tiet || []);
         setOrders(prev =>
-          prev.map(o => o.id === orderId ? { ...o, tinh_trang: res.data.don_hang.tinh_trang } : o)
+          prev.map(o => o.id === orderId ? { ...o, tinh_trang: res.data.data.tinh_trang } : o)
         );
       }
-    } catch (_) {}
+    } catch (_) { }
   }, []);
 
   // ── Xử lý Reorder ──
   const handleReorder = useCallback(async (orderId: number) => {
     try {
-      showAlert("info", "", "Đang xử lý...", [{text: "OK", style: "cancel"}]);
+      showAlert("info", "", "Đang xử lý...", [{ text: "OK", style: "cancel" }]);
       const res = await apiClient.post("/khach-hang/don-hang/reorder", { id: orderId });
       if (res.data?.status) {
         showAlert("success", "Thành công", res.data.message, [
-          {text: "OK", style: "default", onPress: () => {
-            setOrderDetail(null);
-            setOrderItems([]);
-            navigation.navigate("RestaurantDetail", { id: res.data.id_quan_an });
-          }}
+          {
+            text: "OK", style: "default", onPress: () => {
+              setOrderDetail(null);
+              setOrderItems([]);
+              navigation.navigate("RestaurantDetail", { id: res.data.id_quan_an });
+            }
+          }
         ]);
       } else {
-        showAlert("error", "Thất bại", res.data?.message || "Không thể đặt lại đơn hàng", [{text: "OK", style: "cancel"}]);
+        showAlert("error", "Thất bại", res.data?.message || "Không thể đặt lại đơn hàng", [{ text: "OK", style: "cancel" }]);
       }
     } catch (error: any) {
-      showAlert("error", "Lỗi", error.response?.data?.message || "Có lỗi xảy ra", [{text: "OK", style: "cancel"}]);
+      showAlert("error", "Lỗi", error.response?.data?.message || "Có lỗi xảy ra", [{ text: "OK", style: "cancel" }]);
     }
   }, [showAlert, navigation]);
-
-  // ── Xử lý Yêu cầu hủy đơn ──
-  const handleCancelRequest = useCallback(async (orderId: number) => {
-    showAlert(
-      "confirm",
-      "Yêu cầu hủy đơn",
-      "Bạn có chắc muốn gửi yêu cầu hủy đơn này đến admin? Chúng tôi sẽ xem xét và phản hồi sớm nhất.",
-      [
-        { text: "Không", style: "cancel" },
-        {
-          text: "Gửi yêu cầu",
-          style: "default",
-          onPress: async () => {
-            try {
-              const res = await apiClient.post("/khach-hang/don-hang/yeu-cau-huy", { id: orderId });
-              if (res.data?.status) {
-                showAlert("success", "Đã gửi yêu cầu", res.data.message || "Yêu cầu hủy đơn đã được gửi đến admin. Chúng tôi sẽ liên hệ bạn sớm.", [
-                  { text: "OK", style: "default" },
-                ]);
-              } else {
-                showAlert("error", "Thất bại", res.data?.message || "Không thể gửi yêu cầu hủy đơn.", [{ text: "OK", style: "cancel" }]);
-              }
-            } catch (error: any) {
-              showAlert("error", "Lỗi", error.response?.data?.message || "Có lỗi xảy ra khi gửi yêu cầu.", [{ text: "OK", style: "cancel" }]);
-            }
-          },
-        },
-      ]
-    );
-  }, [showAlert]);
 
   // Polling 5s khi đang xem detail của đơn chưa hoàn thành (0-3)
   // → tự động hiện thông tin shipper khi shipper nhận đơn
@@ -282,19 +349,19 @@ const Orders = ({ navigation, route }: any) => {
     // Gọi API lần đầu để lấy vị trí shipper
     const fetchTracking = async () => {
       try {
-        const res = await apiClient.post("/khach-hang/theo-doi-don-hang", { id: orderDetail.id });
+        const res = await apiClient.post("/khach-hang/don-hang/theo-doi-don-hang", { id: orderDetail.id });
         if (res.data?.status && res.data?.order) {
           const { shipper_lat, shipper_lng } = res.data.order;
           if (shipper_lat && shipper_lng) {
             setShipperCoord([parseFloat(shipper_lng), parseFloat(shipper_lat)]);
           }
         }
-      } catch (_) {}
+      } catch (_) { }
     };
     fetchTracking();
 
     // WebSocket real-time cập nhật vị trí shipper
-    createEcho().then((echo) => {
+    connectEcho().then((echo) => {
       echoInstance = echo;
       echo.private(`order.${orderDetail.id}`)
         .listen(".shipper.location.updated", (data: any) => {
@@ -302,19 +369,19 @@ const Orders = ({ navigation, route }: any) => {
             setShipperCoord([parseFloat(data.lng), parseFloat(data.lat)]);
           }
         });
-    }).catch(() => {});
+    }).catch(() => { });
 
     return () => {
       if (echoInstance) echoInstance.leave(`order.${orderDetail.id}`);
     };
   }, [orderDetail?.id, orderDetail?.tinh_trang]);
 
-  
+
 
   const getFilteredOrders = () => {
-    if (activeTab === "Đã nhận")   return orders.filter((o) => o.tinh_trang <= 2);
+    if (activeTab === "Đã nhận") return orders.filter((o) => o.tinh_trang <= 2);
     if (activeTab === "Đang giao") return orders.filter((o) => o.tinh_trang === 3);
-    if (activeTab === "Đã giao")   return orders.filter((o) => o.tinh_trang === 4);
+    if (activeTab === "Đã giao") return orders.filter((o) => o.tinh_trang === 4);
     return [];
   };
 
@@ -365,15 +432,6 @@ const Orders = ({ navigation, route }: any) => {
               >
                 <Text style={styles.detailButtonText}>Theo dõi đơn hàng</Text>
               </TouchableOpacity>
-              {item.tinh_trang <= 2 && (
-                <TouchableOpacity
-                  style={styles.cancelRequestButton}
-                  onPress={() => handleCancelRequest(item.id)}
-                >
-                  <Ionicons name="close-circle-outline" size={13} color="#EE4D2D" />
-                  <Text style={styles.cancelRequestButtonText}>Hủy đơn</Text>
-                </TouchableOpacity>
-              )}
             </>
           ) : item.da_danh_gia ? (
             // 4=đã giao + đã đánh giá
@@ -400,6 +458,19 @@ const Orders = ({ navigation, route }: any) => {
             </>
           )}
         </View>
+
+        {/* Nút báo sự cố cho mọi loại đơn */}
+        <TouchableOpacity
+          style={styles.reportMiniBtn}
+          onPress={() => {
+            setReportOrder(item);
+            setReportForm({ tieu_de: "", noi_dung: "", yeu_cau_huy: false, ly_do_huy: "" });
+            setShowReportModal(true);
+          }}
+        >
+          <Ionicons name="alert-circle-outline" size={14} color="#64748B" />
+          <Text style={styles.reportMiniBtnText}>Báo sự cố / Khiếu nại</Text>
+        </TouchableOpacity>
       </View>
     );
   };
@@ -431,13 +502,10 @@ const Orders = ({ navigation, route }: any) => {
           {(() => {
             const tt = orderDetail.tinh_trang;
             const custAddr = `${orderDetail.dia_chi}, ${orderDetail.ten_quan_huyen}, ${orderDetail.ten_tinh_thanh}`;
-            // toa_do_x = longitude (kinh độ), toa_do_y = latitude (vĩ độ)
-            // Map nhận [lng, lat] → đúng thứ tự
-            const _lng = Number(orderDetail.toa_do_x);
-            const _lat = Number(orderDetail.toa_do_y);
             const custCoord: [number, number] | null =
-              _lng && _lat ? [_lng, _lat] : null;
-            console.log('[MAP] khách:', custCoord, '| địa chỉ:', custAddr);
+              orderDetail.toa_do_x && orderDetail.toa_do_y
+                ? [orderDetail.toa_do_x, orderDetail.toa_do_y]
+                : null;
             if (tt <= 2) {
               // 0=chờ nhận, 1=đã nhận, 2=quán đang làm → hiện quán + khách
               return (
@@ -502,9 +570,9 @@ const Orders = ({ navigation, route }: any) => {
               <View style={styles.statusContainer}>
                 <View style={styles.statusRow}>
                   {[
-                    { label: "Chờ nhận",  step: 0 },
-                    { label: "Đã nhận",   step: 1 },
-                    { label: "Đang làm",  step: 2 },
+                    { label: "Chờ nhận", step: 0 },
+                    { label: "Đã nhận", step: 1 },
+                    { label: "Đang làm", step: 2 },
                     { label: "Đang giao", step: 3 },
                   ].map((s, idx, arr) => (
                     <React.Fragment key={s.step}>
@@ -527,42 +595,42 @@ const Orders = ({ navigation, route }: any) => {
           {/* Shipper — hiện khi đã có shipper nhận đơn (tinh_trang >= 1) */}
           {orderDetail.tinh_trang >= 1 && orderDetail.tinh_trang <= 3 &&
             (!!orderDetail.id_shipper || !!orderDetail.ho_va_ten_shipper || !!orderDetail.sdt_shipper) && (
-            <View style={styles.shipperSection}>
-              <View style={styles.shipperHeader}>
-                <Image source={{ uri: getShipperAvatarUrl(orderDetail.hinh_anh_shipper) }} style={styles.shipperAvatar} />
-                <View style={styles.shipperInfo}>
-                  <Text style={styles.shipperName}>{orderDetail.ho_va_ten_shipper || "Shipper"}</Text>
-                  <Text style={styles.phone}>{orderDetail.sdt_shipper}</Text>
-                </View>
-                <View style={styles.shipperActions}>
-                  <TouchableOpacity
-                    style={styles.actionButton1}
-                    onPress={() =>
-                      navigation.navigate("ChatWithShipper", {
-                        id_don_hang: orderDetail.id,
-                        name: orderDetail.ho_va_ten_shipper,
-                        avatar: orderDetail.hinh_anh_shipper,
-                        ma_don_hang: orderDetail.ma_don_hang,
-                      })
-                    }
-                  >
-                    <Ionicons name="chatbox-ellipses" size={18} color={COLORS.PRIMARY} />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.actionButton}
-                    onPress={() =>
-                      showAlert("info", "Gọi shipper", `Bạn muốn gọi cho ${orderDetail.ho_va_ten_shipper}?\n${orderDetail.sdt_shipper}`, [
-                        { text: "Hủy", style: "cancel" },
-                        { text: "Gọi ngay", style: "default" },
-                      ])
-                    }
-                  >
-                    <Ionicons name="call" size={18} color="#fff" />
-                  </TouchableOpacity>
+              <View style={styles.shipperSection}>
+                <View style={styles.shipperHeader}>
+                  <Image source={{ uri: getShipperAvatarUrl(orderDetail.hinh_anh_shipper) }} style={styles.shipperAvatar} />
+                  <View style={styles.shipperInfo}>
+                    <Text style={styles.shipperName}>{orderDetail.ho_va_ten_shipper || "Shipper"}</Text>
+                    <Text style={styles.phone}>{orderDetail.sdt_shipper}</Text>
+                  </View>
+                  <View style={styles.shipperActions}>
+                    <TouchableOpacity
+                      style={styles.actionButton1}
+                      onPress={() =>
+                        navigation.navigate("ChatWithShipper", {
+                          id_don_hang: orderDetail.id,
+                          name: orderDetail.ho_va_ten_shipper,
+                          avatar: orderDetail.hinh_anh_shipper,
+                          ma_don_hang: orderDetail.ma_don_hang,
+                        })
+                      }
+                    >
+                      <Ionicons name="chatbox-ellipses" size={18} color={COLORS.PRIMARY} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.actionButton}
+                      onPress={() =>
+                        showAlert("info", "Gọi shipper", `Bạn muốn gọi cho ${orderDetail.ho_va_ten_shipper}?\n${orderDetail.sdt_shipper}`, [
+                          { text: "Hủy", style: "cancel" },
+                          { text: "Gọi ngay", style: "default" },
+                        ])
+                      }
+                    >
+                      <Ionicons name="call" size={18} color="#fff" />
+                    </TouchableOpacity>
+                  </View>
                 </View>
               </View>
-            </View>
-          )}
+            )}
 
           {/* Địa chỉ nhận */}
           <View style={styles.orderSection}>
@@ -647,13 +715,16 @@ const Orders = ({ navigation, route }: any) => {
               <Ionicons name="help-circle-outline" size={18} color="#666" />
               <Text style={styles.supportButtonText} numberOfLines={1}>Hỗ trợ</Text>
             </TouchableOpacity>
-            {orderDetail.tinh_trang <= 2 && (
+            {orderDetail.tinh_trang <= 3 && (
               <TouchableOpacity
-                style={[styles.cancelRequestButtonDetail, { flex: 1 }]}
-                onPress={() => handleCancelRequest(orderDetail.id)}
+                style={styles.cancelOrderBtn}
+                onPress={() => {
+                  setReportOrder(orderDetail);
+                  setReportForm({ tieu_de: "", noi_dung: "", yeu_cau_huy: false, ly_do_huy: "" });
+                  setShowReportModal(true);
+                }}
               >
-                <Ionicons name="close-circle-outline" size={15} color="#EE4D2D" />
-                <Text style={styles.cancelRequestButtonDetailText}>Yêu cầu hủy đơn</Text>
+                <Text style={styles.cancelOrderBtnText}>Báo sự cố / Yêu cầu hủy</Text>
               </TouchableOpacity>
             )}
             {orderDetail.payos_payment_link_id && orderDetail.is_thanh_toan === 0 && orderDetail.tinh_trang <= 3 && (
@@ -750,8 +821,8 @@ const Orders = ({ navigation, route }: any) => {
                     {activeTab === "Đã nhận"
                       ? "Bạn chưa có đơn hàng nào đang chờ xử lý"
                       : activeTab === "Đang giao"
-                      ? "Không có đơn nào đang trên đường giao"
-                      : "Chưa có đơn hàng nào được giao xong"}
+                        ? "Không có đơn nào đang trên đường giao"
+                        : "Chưa có đơn hàng nào được giao xong"}
                   </Text>
                 </View>
               }
@@ -760,6 +831,93 @@ const Orders = ({ navigation, route }: any) => {
           )}
         </>
       )}
+
+      {/* MODAL BÁO CÁO / HỦY ĐƠN */}
+      <Modal
+        visible={showReportModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowReportModal(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.modalOverlay}
+        >
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Báo cáo sự cố / Hủy đơn</Text>
+              <TouchableOpacity onPress={() => setShowReportModal(false)}>
+                <Ionicons name="close" size={24} color="#333" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <Text style={styles.inputLabel}>Tiêu đề báo cáo <Text style={{ color: 'red' }}>*</Text></Text>
+              <TextInput
+                style={styles.textInput}
+                placeholder="VD: Không liên lạc được với shipper, Quán làm sai món..."
+                value={reportForm.tieu_de}
+                onChangeText={v => setReportForm(f => ({ ...f, tieu_de: v }))}
+              />
+
+              <Text style={styles.inputLabel}>Nội dung chi tiết <Text style={{ color: 'red' }}>*</Text></Text>
+              <TextInput
+                style={[styles.textInput, { height: 100, textAlignVertical: 'top' }]}
+                placeholder="Mô tả chi tiết vấn đề bạn gặp phải..."
+                multiline
+                value={reportForm.noi_dung}
+                onChangeText={v => setReportForm(f => ({ ...f, noi_dung: v }))}
+              />
+
+              <TouchableOpacity
+                style={styles.checkboxRow}
+                onPress={() => handleToggleCancelRequest(reportOrder)}
+                disabled={checkingBank}
+              >
+                <View style={[styles.checkbox, reportForm.yeu_cau_huy && styles.checkboxActive]}>
+                  {reportForm.yeu_cau_huy && <Ionicons name="checkmark" size={14} color="#FFF" />}
+                </View>
+                <Text style={styles.checkboxLabel}>Tôi muốn yêu cầu hủy đơn hàng này</Text>
+                {checkingBank && <ActivityIndicator size="small" color={COLORS.PRIMARY} style={{ marginLeft: 8 }} />}
+              </TouchableOpacity>
+
+              {reportForm.yeu_cau_huy && (
+                <>
+                  <Text style={styles.inputLabel}>Lý do hủy đơn <Text style={{ color: 'red' }}>*</Text></Text>
+                  <TextInput
+                    style={styles.textInput}
+                    placeholder="Tại sao bạn muốn hủy đơn?"
+                    value={reportForm.ly_do_huy}
+                    onChangeText={v => setReportForm(f => ({ ...f, ly_do_huy: v }))}
+                  />
+                  {reportOrder?.payos_payment_link_id && (
+                    <View style={styles.refundInfoBox}>
+                      <Ionicons name="information-circle-outline" size={16} color="#1D4ED8" />
+                      <Text style={styles.refundInfoText}>
+                        Đơn đã thanh toán online sẽ được hoàn tiền vào tài khoản ngân hàng mặc định của bạn sau khi Admin phê duyệt.
+                      </Text>
+                    </View>
+                  )}
+                </>
+              )}
+
+              <TouchableOpacity
+                style={[styles.submitBtn, reportLoading && { opacity: 0.6 }]}
+                onPress={submitReport}
+                disabled={reportLoading}
+              >
+                {reportLoading ? (
+                  <ActivityIndicator color="#FFF" />
+                ) : (
+                  <Text style={styles.submitBtnText}>Gửi báo cáo</Text>
+                )}
+              </TouchableOpacity>
+              <View style={{ height: 20 }} />
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
       <CustomAlert
         visible={alertVisible}
         type={alertConfig.type}
@@ -1204,41 +1362,6 @@ const styles = StyleSheet.create({
     color: "#333",
     fontWeight: "600",
   },
-  // Nút yêu cầu hủy đơn — trên card
-  cancelRequestButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: wp("1%"),
-    paddingVertical: hp("1.2%"),
-    paddingHorizontal: wp("2.5%"),
-    borderRadius: wp("3%"),
-    borderWidth: 1.5,
-    borderColor: "#EE4D2D",
-    backgroundColor: "#FFF5F5",
-  },
-  cancelRequestButtonText: {
-    fontSize: wp("2.8%"),
-    color: "#EE4D2D",
-    fontWeight: "700",
-  },
-  // Nút yêu cầu hủy đơn — trong detail view
-  cancelRequestButtonDetail: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: wp("1.5%"),
-    paddingVertical: hp("1.5%"),
-    borderRadius: wp("3%"),
-    borderWidth: 1.5,
-    borderColor: "#EE4D2D",
-    backgroundColor: "#FFF5F5",
-  },
-  cancelRequestButtonDetailText: {
-    fontSize: wp("3.2%"),
-    color: "#EE4D2D",
-    fontWeight: "700",
-  },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -1405,7 +1528,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   detailButton: {
-    flex: 1,
+    width: "100%",
     paddingVertical: hp("1.2%"),
     borderRadius: wp("3%"),
     borderWidth: 1,
@@ -1470,6 +1593,136 @@ const styles = StyleSheet.create({
   },
   activeNavText: {
     color: "#E63946",
+  },
+  reportMiniBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: hp("1%"),
+    marginTop: hp("0.5%"),
+    borderTopWidth: 1,
+    borderTopColor: "#F8FAFC",
+    gap: 6,
+  },
+  reportMiniBtnText: {
+    fontSize: wp("2.8%"),
+    color: "#64748B",
+    fontWeight: "500",
+  },
+  cancelOrderBtn: {
+    flex: 1,
+    paddingVertical: hp("1.2%"),
+    borderRadius: wp("3%"),
+    borderWidth: 1.5,
+    borderColor: "#E63946",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FFF",
+  },
+  cancelOrderBtnText: {
+    fontSize: wp("3.2%"),
+    color: "#E63946",
+    fontWeight: "600",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
+  },
+  modalContainer: {
+    backgroundColor: "#FFF",
+    borderTopLeftRadius: wp("6%"),
+    borderTopRightRadius: wp("6%"),
+    paddingHorizontal: wp("5%"),
+    paddingTop: hp("2%"),
+    paddingBottom: hp("6%"),
+    maxHeight: hp("85%"),
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: hp("2.5%"),
+    paddingBottom: hp("1.5%"),
+    borderBottomWidth: 1,
+    borderBottomColor: "#F1F5F9",
+  },
+  modalTitle: {
+    fontSize: wp("4.5%"),
+    fontWeight: "700",
+    color: "#1E293B",
+  },
+  inputLabel: {
+    fontSize: wp("3.2%"),
+    fontWeight: "600",
+    color: "#64748B",
+    marginBottom: hp("1%"),
+    marginTop: hp("1.5%"),
+  },
+  textInput: {
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    borderRadius: wp("3%"),
+    paddingHorizontal: wp("4%"),
+    paddingVertical: hp("1.2%"),
+    fontSize: wp("3.8%"),
+    color: "#1E293B",
+    backgroundColor: "#F8FAFC",
+  },
+  checkboxRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: hp("2.5%"),
+    marginBottom: hp("1%"),
+    gap: 10,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 4,
+    borderWidth: 1.5,
+    borderColor: "#CBD5E1",
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#FFF",
+  },
+  checkboxActive: {
+    backgroundColor: "#E63946",
+    borderColor: "#E63946",
+  },
+  checkboxLabel: {
+    fontSize: wp("3.5%"),
+    color: "#1E293B",
+    fontWeight: "600",
+  },
+  refundInfoBox: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    backgroundColor: "#EFF6FF",
+    padding: wp("3%"),
+    borderRadius: wp("2.5%"),
+    marginTop: hp("1%"),
+    gap: 8,
+    borderWidth: 1,
+    borderColor: "#BFDBFE",
+  },
+  refundInfoText: {
+    flex: 1,
+    fontSize: wp("2.8%"),
+    color: "#1D4ED8",
+    lineHeight: 18,
+  },
+  submitBtn: {
+    backgroundColor: "#EE4D2D",
+    borderRadius: wp("3%"),
+    paddingVertical: hp("1.8%"),
+    alignItems: "center",
+    marginTop: hp("3%"),
+  },
+  submitBtnText: {
+    color: "#FFF",
+    fontSize: wp("4%"),
+    fontWeight: "700",
   },
 });
 

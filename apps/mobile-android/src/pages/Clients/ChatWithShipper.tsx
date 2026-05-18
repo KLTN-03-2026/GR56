@@ -23,7 +23,7 @@ import {
 } from "react-native-responsive-screen";
 import apiClient from "../../genaral/api";
 import { getImageUrl } from "../../utils/imageHelper";
-import { createEcho } from "../../config/echo";
+import { connectEcho } from "../../config/echo";
 import {
   createNotificationChannels,
   requestNotificationPermission,
@@ -312,16 +312,11 @@ const ChatWithShipper = ({ navigation, route }: any) => {
                   latest.noi_dung
                 );
                 saveNotification({
-                  type: "chat",
+                  type: "order",
                   title: `Tin nhắn từ ${name}`,
                   description: latest.noi_dung,
                   icon: "chatbubble-ellipses",
                   badgeLabel: "Tin nhắn",
-                  id_don_hang: id_don_hang,
-                  sender_name: name,
-                  sender_avatar: avatar,
-                  ma_don_hang: (route?.params as any)?.ma_don_hang,
-                  dia_chi: (route?.params as any)?.dia_chi,
                 });
               }
             }
@@ -373,7 +368,7 @@ const ChatWithShipper = ({ navigation, route }: any) => {
   useEffect(() => {
     if (!id_don_hang) return;
     let echoInstance: any = null;
-    createEcho().then((echo) => {
+    connectEcho().then((echo) => {
       echoInstance = echo;
       echo.private(`chat.${id_don_hang}`)
         .listen(".tin-nhan.moi", () => {

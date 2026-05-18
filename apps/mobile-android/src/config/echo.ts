@@ -7,7 +7,7 @@ const Pusher = PusherModule.default || PusherModule;
 const Echo = EchoModule.default || EchoModule;
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-// ── Cấu hình Laravel Reverb - GIỐNG HỆT IOS_FOODBEE ────────────────────────────────
+// ── Cấu hình Laravel Reverb - GIỐNG HỆT FE ────────────────────────────────
 // FE dùng: wsHost=be.foodbee.io.vn, wsPort=443, wssPort=443, forceTLS=true
 const REVERB_APP_KEY = "2d2yukosred4fojaykyy";
 const REVERB_HOST = "be.foodbee.io.vn";
@@ -82,7 +82,7 @@ export const connectEcho = async (): Promise<Echo> => {
     // Có thể là { default: EchoClass, __esModule: true }
     EchoClass = EchoClass.default || EchoClass;
   }
-  if (EchoClass && typeof EchoClass === "object" && (EchoClass as any).__esModule) {
+  if (EchoClass && typeof EchoClass === "object" && EchoClass.__esModule) {
     EchoClass = (EchoClass as any).default || EchoClass;
   }
 

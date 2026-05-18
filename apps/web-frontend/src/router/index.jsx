@@ -37,6 +37,7 @@ const TimKiem = lazy(() => import('../pages/KhachHang/TimKiem'));
 const KichHoat = lazy(() => import('../pages/KhachHang/KichHoat'));
 const PaymentReturn = lazy(() => import('../pages/KhachHang/PaymentReturn'));
 const YeuThich = lazy(() => import('../pages/KhachHang/YeuThich'));
+const RestaurantMapPage = lazy(() => import('../pages/KhachHang/RestaurantMap'));
 
 // Lazy QuanAn auth
 const QuanAnDangKy = lazy(() => import('../pages/QuanAn/DangKy'));
@@ -121,6 +122,7 @@ const router = createBrowserRouter([
       { path: '/khach-hang/lich-su-xu', element: <PrivateRoute>{S(LichSuXu)}</PrivateRoute> },
       { path: '/khach-hang/lich-su-giao-dich', element: <PrivateRoute>{S(LichSuGiaoDich)}</PrivateRoute> },
       { path: '/khach-hang/yeu-thich', element: <PrivateRoute>{S(YeuThich)}</PrivateRoute> },
+      { path: '/khach-hang/banner-map', element: <PrivateRoute>{S(RestaurantMapPage)}</PrivateRoute> },
       { path: '/tim-kiem/:thong_tin', element: S(TimKiem) },
     ],
   },

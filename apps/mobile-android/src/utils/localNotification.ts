@@ -3,6 +3,7 @@ import notifee, {
   AndroidStyle,
   AuthorizationStatus,
 } from "@notifee/react-native";
+import { DeviceEventEmitter } from "react-native";
 
 // ─── Channel IDs ────────────────────────────────────────
 export const CHANNEL_ORDER  = "channel_order";
@@ -79,12 +80,17 @@ function getBadgeLabel(type: NotifType): string {
 
 // ─── Gửi thông báo ra màn hình ngoài ───────────────────
 export async function sendLocalNotification(payload: NotifPayload) {
+  console.log("[LocalNotif] Sending notification:", payload);
   const { title, description, type, imageUrl } = payload;
   const channelId = getChannelByType(type);
   const badge = getBadgeLabel(type);
 
+  // Không dùng Toast.show() — chỉ dùng notifee system banner
+  // Emit event to update Notification screen in real-time
+  DeviceEventEmitter.emit("NEW_NOTIFICATION");
+
   await notifee.displayNotification({
-    title: `<b>${title}</b>`,
+    title: title,
     body: description,
     subtitle: badge,
     android: {
@@ -98,7 +104,7 @@ export async function sendLocalNotification(payload: NotifPayload) {
             style: {
               type: AndroidStyle.BIGPICTURE,
               picture: imageUrl,
-              title: `<b>${title}</b>`,
+              title: title,
               summary: description,
             },
           }
@@ -112,6 +118,12 @@ export async function sendLocalNotification(payload: NotifPayload) {
     ios: {
       categoryId: type,
       sound: "default",
+      foregroundPresentationOptions: {
+        badge: true,
+        sound: true,
+        banner: true,  // Hiện banner iOS dù app đang mở (user muốn cái này)
+        list: true,
+      },
     },
   });
 }

@@ -13,16 +13,14 @@ import {
   ActivityIndicator,
   Modal,
   TextInput,
-  Alert,
-  Linking,
-  Clipboard,
 } from "react-native";
 // @ts-ignore
 import Ionicons from "react-native-vector-icons/Ionicons";
 import apiClient from "../../genaral/api";
+import { notify } from "../../utils/localNotification";
 import { getImageUrl } from "../../utils/imageHelper";
 import ToastMessage from "../../components/ToastMessage";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 // ════════════════════════════════════════════════════════
 // Constants & Types
@@ -143,12 +141,9 @@ const CartItemCard = memo<CartItemCardProps>(
         </Text>
         <Text style={s.itemPrice}>{formatPrice(item.don_gia)}</Text>
         {item.ghi_chu && (
-          <View style={s.itemNoteRow}>
-            <Ionicons name="document-text-outline" size={12} color="#94A3B8" />
-            <Text style={s.itemNote} numberOfLines={1}>
-              {item.ghi_chu}
-            </Text>
-          </View>
+          <Text style={s.itemNote} numberOfLines={1}>
+            📝 {item.ghi_chu}
+          </Text>
         )}
       </View>
 
@@ -274,7 +269,7 @@ const ProductDetailModal = memo<ProductDetailModalProps>(
                 <View style={s.detailSection}>
                   <Text style={s.detailSectionTitle}>Topping</Text>
                   <View style={s.detailToppingsList}>
-                    {parsedNotes.toppings.map((topping, index) => (
+                    {parsedNotes.toppings?.map((topping, index) => (
                       <View key={index} style={s.detailToppingItem}>
                         <Ionicons name="checkmark-circle" size={16} color={COLORS.PRIMARY} />
                         <Text style={s.detailToppingName}>{topping}</Text>
@@ -322,6 +317,7 @@ const ProductDetailModal = memo<ProductDetailModalProps>(
 // ════════════════════════════════════════════════════════
 
 const Cart = ({ navigation }: any) => {
+  const insets = useSafeAreaInsets();
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(true);
@@ -355,25 +351,7 @@ const Cart = ({ navigation }: any) => {
   const [suggestedVouchers, setSuggestedVouchers] = useState<Voucher[]>([]);
   const [loadingSuggestedVouchers, setLoadingSuggestedVouchers] = useState(false);
 
-  // Payment QR Modal State
-  const [showPaymentQRModal, setShowPaymentQRModal] = useState(false);
-  const [paymentQRInfo, setPaymentQRInfo] = useState<{
-    qr_code_url?: string;
-    checkout_url?: string;
-    payment_link_id?: string;
-    amount?: number;
-    order_code?: string;
-    ma_don_hang?: string;
-    bank_info?: {
-      ten_ngan_hang: string;
-      so_tai_khoan: string;
-      chu_tai_khoan: string;
-      chi_nhanh?: string;
-    };
-  } | null>(null);
-  const [processingPayment, setProcessingPayment] = useState(false);
-
-  console.log("Cart render - showCheckoutModal:", showCheckoutModal);
+  console.log("🟢 Cart render - showCheckoutModal:", showCheckoutModal);
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Toast Helper
@@ -440,28 +418,6 @@ const Cart = ({ navigation }: any) => {
 
   const [restaurantId, setRestaurantId] = useState<string | null>(null);
 
-  // Load địa chỉ của người dùng (đặt trước useEffect sử dụng nó)
-  const loadAddresses = useCallback(async () => {
-    try {
-      const res = await apiClient.get("/khach-hang/dia-chi/data");
-      if (res.data?.status && res.data?.data) {
-        const list: Address[] = res.data.data;
-        setAddresses(list);
-        // Nếu địa chỉ đang chọn không còn tồn tại (bị xóa) → reset về địa chỉ đầu tiên hoặc 0
-        setSelectedAddressId(prev => {
-          const stillExists = list.some(a => a.id === prev);
-          if (stillExists) return prev;
-          return list.length > 0 ? list[0].id : 0;
-        });
-      } else {
-        setAddresses([]);
-        setSelectedAddressId(0);
-      }
-    } catch (error) {
-      console.log("Load addresses error:", error);
-    }
-  }, []);
-
   const loadCart = useCallback(async () => {
     try {
       setLoading(true);
@@ -493,6 +449,13 @@ const Cart = ({ navigation }: any) => {
         setCartItems(processedItems);
         // Mặc định chọn tất cả khi load
         setSelectedIds(new Set(processedItems.map((i: CartItem) => i.id)));
+
+        // Cập nhật địa chỉ từ cùng API response
+        const addrs = res.data.dia_chi_khach || [];
+        if (addrs.length > 0) {
+          setAddresses(addrs);
+          setSelectedAddressId(addrs[0].id);
+        }
       } else {
         console.log("loadCart: status false, message:", res.data?.message);
         setCartItems([]);
@@ -506,27 +469,12 @@ const Cart = ({ navigation }: any) => {
     }
   }, [showToast]);
 
-  // Ref để biết có cần mở lại modal không khi quay lại
-  const reopenModalRef = React.useRef(false);
-
-  // Mỗi khi Cart lấy lại focus
+  // Reload mỗi khi tab Cart được focus
   useFocusEffect(
     useCallback(() => {
       loadCart();
-      // Nếu từ AddressBook quay về → mở lại modal (modal open sẽ tự load địa chỉ)
-      if (reopenModalRef.current) {
-        reopenModalRef.current = false;
-        setShowCheckoutModal(true);
-      }
-    }, [loadCart, setShowCheckoutModal])
+    }, [loadCart])
   );
-
-  // Mỗi khi modal checkout MỞ LÊN: load lại danh sách địa chỉ mới nhất
-  useEffect(() => {
-    if (showCheckoutModal) {
-      loadAddresses();
-    }
-  }, [showCheckoutModal, loadAddresses]);
 
   // Cập nhật phí giao hàng khi chọn địa chỉ (gọi API thật)
   useEffect(() => {
@@ -551,6 +499,21 @@ const Cart = ({ navigation }: any) => {
     };
     fetchShipping();
   }, [selectedAddressId, restaurantId]);
+
+  // Load địa chỉ của người dùng
+  const loadAddresses = useCallback(async () => {
+    try {
+      const res = await apiClient.get("/khach-hang/dia-chi");
+      if (res.data?.status && res.data?.data) {
+        setAddresses(res.data.data);
+        if (res.data.data.length > 0) {
+          setSelectedAddressId(res.data.data[0].id);
+        }
+      }
+    } catch (error) {
+      console.log("Load addresses error:", error);
+    }
+  }, []);
 
   // Load thông tin người dùng
   const loadUserInfo = useCallback(async () => {
@@ -802,137 +765,9 @@ const Cart = ({ navigation }: any) => {
   // Order Placement
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  // Yêu cầu tạo QR thanh toán từ server (PayOS)
-  const requestPaymentQR = useCallback(
-    async (): Promise<boolean> => {
-      try {
-        setProcessingPayment(true);
-
-        // ── Bước 1: Tạo đơn hàng (giống web frontend) ──
-        let url = `/khach-hang/xac-nhan-dat-hang/${restaurantId}/${selectedAddressId}`;
-        const params: string[] = [];
-        if (voucher.applied && voucher.info) {
-          params.push(`id_voucher=${voucher.info.id}`);
-        }
-        if (useXuPoints && xuPointsUsed > 0) {
-          params.push(`su_dung_xu=${xuPointsUsed}`);
-        }
-        if (params.length > 0) {
-          url += `?${params.join('&')}`;
-        }
-
-        const res = await apiClient.get(url);
-
-        if (!res.data?.status) {
-          showToast(res.data?.message || "Không thể tạo đơn hàng", "error");
-          return false;
-        }
-
-        // API trả về flat structure: res.data.id_don_hang, res.data.tong_tien, ...
-        const idDonHang = res.data.id_don_hang || res.data.data?.id_don_hang;
-        const tongTienDH = res.data.tong_tien || res.data.data?.tong_tien;
-        const maDonHang = res.data.ma_don_hang || res.data.data?.ma_don_hang;
-
-        // ── Bước 2: Tạo link PayOS (giống web frontend) ──
-        let qrCodeUrl = '';
-        let checkoutUrl = '';
-        let paymentLinkId = '';
-
-        try {
-          const payosRes = await apiClient.post(`/payos/tao-link/${idDonHang}`);
-          if (payosRes.data?.status) {
-            qrCodeUrl = payosRes.data?.qr_code_url || payosRes.data?.data?.qr_code_url || '';
-            checkoutUrl = payosRes.data?.checkout_url || payosRes.data?.data?.checkout_url || '';
-            paymentLinkId = payosRes.data?.payment_link_id || payosRes.data?.data?.payment_link_id || '';
-          }
-        } catch {
-          // PayOS không khả dụng → dùng VietQR fallback bên dưới
-        }
-
-        // ── Fallback: bank_info từ API đặt hàng hoặc hardcode MB Bank (từ web) ──
-        const bankInfoFromOrder =
-          res.data.bank_info ||
-          res.data.data?.bank_info ||
-          null;
-
-        // Hardcode MB Bank giống web frontend (ConfirmModal dùng MB-0394425076)
-        const FALLBACK_BANK = {
-          ten_ngan_hang: 'Ngân hàng TMCP Quân đội MB',
-          so_tai_khoan: '0394425076',
-          chu_tai_khoan: 'FOODBEE',
-          chi_nhanh: 'MB Bank',
-        };
-
-        const bankInfo = bankInfoFromOrder || FALLBACK_BANK;
-
-        // Nếu PayOS không có QR → dùng VietQR URL
-        if (!qrCodeUrl) {
-          qrCodeUrl = `https://img.vietqr.io/image/MB-${bankInfo.so_tai_khoan}-qr_only.png?amount=${tongTienDH}&addInfo=${encodeURIComponent(maDonHang || '')}`;
-        }
-
-        setPaymentQRInfo({
-          qr_code_url: qrCodeUrl,
-          checkout_url: checkoutUrl,
-          payment_link_id: paymentLinkId,
-          order_code: idDonHang,
-          amount: tongTienDH,
-          ma_don_hang: maDonHang,
-          bank_info: bankInfo,
-        });
-        setShowPaymentQRModal(true);
-        return true;
-
-      } catch (error: any) {
-        const errMsg = error.response?.data?.message || "Lỗi khi tạo mã thanh toán";
-        showToast(errMsg, "error");
-        return false;
-      } finally {
-        setProcessingPayment(false);
-      }
-    },
-    [restaurantId, selectedAddressId, voucher, useXuPoints, xuPointsUsed, showToast]
-  );
-
-  // Xác nhận đã thanh toán (chuyển khoản VietQR)
-  const confirmPayment = useCallback(async () => {
-    try {
-      setProcessingPayment(true);
-
-      // Gọi API xác nhận thanh toán chuyển khoản
-      const res = await apiClient.post(`/khach-hang/xac-nhan-thanh-toan-chuyen-khoan`, {
-        id_don_hang: paymentQRInfo?.order_code,
-      });
-
-      if (res.data?.status) {
-        showToast("Đặt hàng thành công! Đơn hàng đang chờ xác nhận.", "success");
-        setCartItems([]);
-        setShowCheckoutModal(false);
-        setShowPaymentQRModal(false);
-        setPaymentQRInfo(null);
-        setSelectedIds(new Set());
-        setVoucher({
-          code: "",
-          applied: false,
-          info: null,
-          discount: 0,
-          applying: false,
-        });
-        setUseXuPoints(false);
-        navigation.navigate("MainTabs", { screen: "Orders" });
-      } else {
-        showToast(res.data?.message || "Không thể xác nhận thanh toán. Vui lòng thử lại.", "error");
-      }
-    } catch (error: any) {
-      console.log("Confirm payment error:", error);
-      const errMsg = error.response?.data?.message || "Lỗi xác nhận thanh toán";
-      showToast(errMsg, "error");
-    } finally {
-      setProcessingPayment(false);
-    }
-  }, [paymentQRInfo, showToast, navigation]);
-
   const placeOrder = useCallback(
     async (method: "1" | "2") => {
+      Alert.alert("DEBUG placeOrder", `method: ${method}, selectedIds: ${selectedIds.size}, addressId: ${selectedAddressId}`);
       if (selectedIds.size === 0) {
         showToast("Vui lòng chọn ít nhất một sản phẩm", "error");
         return;
@@ -943,16 +778,12 @@ const Cart = ({ navigation }: any) => {
         return;
       }
 
-      // Nếu thanh toán chuyển khoản -> yêu cầu tạo QR trước
-      if (method === "2") {
-        const qrSuccess = await requestPaymentQR();
-        if (!qrSuccess) return;
-        return;
-      }
-
-      // Thanh toán tiền mặt -> đặt hàng trực tiếp
       try {
-        const endpoint = "/khach-hang/xac-nhan-dat-hang-tien-mat";
+        const endpoint =
+          method === "1"
+            ? "/khach-hang/xac-nhan-dat-hang-tien-mat"
+            : "/khach-hang/xac-nhan-dat-hang";
+
         let url = `${endpoint}/${restaurantId}/${selectedAddressId}`;
 
         if (voucher.applied && voucher.info) {
@@ -964,38 +795,50 @@ const Cart = ({ navigation }: any) => {
 
         const res = await apiClient.get(url);
 
+        Alert.alert("DEBUG", `status: ${res.data?.status}, method: ${method}`);
         if (res.data?.status) {
-          showToast(res.data.message || "Đặt hàng thành công!", "success");
-          setCartItems([]);
-          setShowCheckoutModal(false);
-          setSelectedIds(new Set());
-          setVoucher({
-            code: "",
-            applied: false,
-            info: null,
-            discount: 0,
-            applying: false,
-          });
-          setUseXuPoints(false);
-          navigation.navigate("MainTabs", { screen: "Orders" });
+          const { ma_don_hang, tong_tien } = res.data;
+          console.log("[Cart] Order success!", ma_don_hang, tong_tien);
+
+          if (method === "1") {
+            showToast(res.data.message || "Đặt hàng thành công!", "success");
+            console.log("[Cart] Calling notify.order...");
+            notify.order(
+              "Đặt hàng thành công!",
+              `Mã đơn: ${ma_don_hang} - Tổng: ${new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(tong_tien)}`
+            );
+            console.log("[Cart] notify.order called");
+            setCartItems([]);
+            setShowCheckoutModal(false);
+            setSelectedIds(new Set());
+            setVoucher({
+              code: "",
+              applied: false,
+              info: null,
+              discount: 0,
+              applying: false,
+            });
+            setUseXuPoints(false);
+            navigation.navigate("MainTabs", { screen: "Orders" });
+          } else {
+            showToast(res.data.message || "Đang chuyển đến thanh toán...", "info");
+            setCartItems([]);
+            setShowCheckoutModal(false);
+            setSelectedIds(new Set());
+            setVoucher({
+              code: "",
+              applied: false,
+              info: null,
+              discount: 0,
+              applying: false,
+            });
+            setUseXuPoints(false);
+            navigation.navigate("PayOSPayment", { id_don_hang: res.data.id_don_hang });
+          }
         } else {
           showToast("Hệ thống bị lỗi, vui lòng thử lại!", "error");
         }
       } catch (error: any) {
-        const responseStatus = error.response?.status;
-        const responseData = error.response?.data;
-        
-        console.log("=== LOI DAT HANG (Cart) ===");
-        console.log("Status:", responseStatus);
-        console.log("Data:", JSON.stringify(responseData, null, 2));
-        console.log("===========================");
-
-        Alert.alert(
-          "Lỗi đặt hàng",
-          `Status: ${responseStatus}\n\nData: ${JSON.stringify(responseData, null, 2)}`,
-          [{ text: "OK" }]
-        );
-
         const errors = error.response?.data?.errors;
         if (errors) {
           Object.values(errors).forEach((err: any) => {
@@ -1006,7 +849,7 @@ const Cart = ({ navigation }: any) => {
         }
       }
     },
-    [selectedIds.size, selectedAddressId, restaurantId, voucher.applied, voucher.info, useXuPoints, xuPointsUsed, showToast, navigation, requestPaymentQR]
+    [selectedIds.size, selectedAddressId, restaurantId, voucher.applied, voucher.info, useXuPoints, xuPointsUsed, showToast, navigation]
   );
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1015,7 +858,14 @@ const Cart = ({ navigation }: any) => {
 
   if (loading) {
     return (
-      <SafeAreaView style={s.root}>
+      <SafeAreaView edges={["bottom"]} style={s.root}>
+        <View style={[s.header, { paddingTop: Math.max(insets.top, 16) + 8 }]}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Ionicons name="chevron-back" size={28} color="white" />
+          </TouchableOpacity>
+          <Text style={s.headerTitle}>Giỏ Hàng</Text>
+          <View style={{ width: 28 }} />
+        </View>
         <View style={s.loadingContainer}>
           <ActivityIndicator size="large" color={COLORS.PRIMARY} />
           <Text style={s.loadingText}>Đang tải giỏ hàng...</Text>
@@ -1030,17 +880,17 @@ const Cart = ({ navigation }: any) => {
 
   return (
     <>
-      <SafeAreaView style={s.root}>
-        <StatusBar backgroundColor={COLORS.PRIMARY} barStyle="light-content" />
+      <SafeAreaView edges={["bottom"]} style={s.root}>
+        <StatusBar backgroundColor="transparent" translucent barStyle="light-content" />
 
         {/* Header */}
-        <View style={s.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="chevron-back" size={28} color="white" />
-        </TouchableOpacity>
-        <Text style={s.headerTitle}>Giỏ Hàng</Text>
-        <View style={{ width: 28 }} />
-      </View>
+        <View style={[s.header, { paddingTop: Math.max(insets.top, 16) + 8, paddingBottom: 12 }]}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Ionicons name="chevron-back" size={28} color="white" />
+          </TouchableOpacity>
+          <Text style={s.headerTitle}>Giỏ Hàng</Text>
+          <View style={{ width: 28 }} />
+        </View>
 
       {/* Empty Cart */}
       {cartItems.length === 0 ? (
@@ -1128,14 +978,20 @@ const Cart = ({ navigation }: any) => {
             <TouchableOpacity
               style={s.checkoutBtn}
               onPress={() => {
+                console.log("🔴 Đặt hàng button pressed");
+                console.log("🔴 selectedIds.size:", selectedIds.size);
                 if (selectedIds.size === 0) {
                   showToast("Vui lòng chọn ít nhất một sản phẩm", "error");
                   return;
                 }
+                console.log("🔴 Loading addresses and user info...");
+                loadAddresses();
                 loadUserInfo();
                 loadSuggestedVouchers();
                 setUseXuPoints(false);
-                setShowCheckoutModal(true); // useEffect sẽ tự gọi loadAddresses()
+                console.log("🔴 Setting showCheckoutModal to true");
+                setShowCheckoutModal(true);
+                console.log("🔴 After setShowCheckoutModal");
               }}
             >
               <Text style={s.checkoutBtnText}>Đặt hàng ngay</Text>
@@ -1189,19 +1045,18 @@ const Cart = ({ navigation }: any) => {
                   <Text style={s.modalSectionTitle}>Địa chỉ nhận hàng</Text>
                   <TouchableOpacity
                     onPress={() => {
-                      reopenModalRef.current = true;
                       setShowCheckoutModal(false);
                       navigation.navigate("AddressBook");
                     }}
                     style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
                   >
-                    <Ionicons name="location-outline" size={16} color={COLORS.PRIMARY} />
-                    <Text style={{ fontSize: 12, fontWeight: "700", color: COLORS.PRIMARY }}>Quản lý địa chỉ</Text>
+                    <Ionicons name="add-circle-outline" size={16} color={COLORS.PRIMARY} />
+                    <Text style={{ fontSize: 12, fontWeight: "700", color: COLORS.PRIMARY }}>Thêm địa chỉ</Text>
                   </TouchableOpacity>
                 </View>
                 {addresses.length > 0 ? (
                   <View style={s.addressSelect}>
-                    {addresses.map((addr) => (
+                    {addresses?.map((addr) => (
                       <TouchableOpacity
                         key={addr.id}
                         style={[s.addressOption, selectedAddressId === addr.id && s.addressOptionActive]}
@@ -1288,12 +1143,9 @@ const Cart = ({ navigation }: any) => {
               {/* Suggested Vouchers */}
               {!voucher.applied && suggestedVouchers.length > 0 && (
                 <View style={s.suggestedVouchersContainer}>
-                  <View style={s.suggestedVouchersHeader}>
-                    <Ionicons name="bulb-outline" size={18} color={COLORS.PRIMARY} />
-                    <Text style={s.modalSectionTitle}>Gợi ý cho bạn</Text>
-                  </View>
+                  <Text style={s.modalSectionTitle}>💡 Gợi ý cho bạn</Text>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.suggestedVouchersList}>
-                    {suggestedVouchers.map((sv, index) => {
+                    {suggestedVouchers?.map((sv, index) => {
                       const discountText =
                         sv.loai_giam === 1
                           ? `${sv.so_giam_gia}%`
@@ -1327,7 +1179,7 @@ const Cart = ({ navigation }: any) => {
                 <View style={s.xuRow}>
                   <Ionicons name="gift" size={16} color="#F59E0B" />
                   <View style={{ flex: 1, marginLeft: 10 }}>
-                    <Text style={s.xuTitle}>FoodBee Xu</Text>
+                    <Text style={s.xuTitle}>FoodBeeq Xu</Text>
                     <Text style={s.xuAvailable}>
                       Có sẵn: {userInfo?.diem_xu || 0} xu (≈ {formatPrice(userInfo?.diem_xu || 0)})
                     </Text>
@@ -1439,196 +1291,6 @@ const Cart = ({ navigation }: any) => {
           </View>
         </View>
       </Modal>
-
-      {/* Payment QR Modal */}
-      <Modal
-        visible={showPaymentQRModal}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => {
-          if (!processingPayment) {
-            setShowPaymentQRModal(false);
-            setPaymentQRInfo(null);
-          }
-        }}
-      >
-        <View style={s.modalOverlay}>
-          <View style={s.qrModalContainer}>
-            {/* Header */}
-            <View style={s.qrModalHeader}>
-              <Text style={s.qrModalTitle}>Thanh toán chuyển khoản</Text>
-              {!processingPayment && (
-                <TouchableOpacity onPress={() => {
-                  setShowPaymentQRModal(false);
-                  setPaymentQRInfo(null);
-                }}>
-                  <Ionicons name="close" size={22} color="#64748B" />
-                </TouchableOpacity>
-              )}
-            </View>
-
-            <ScrollView style={s.qrModalBody} showsVerticalScrollIndicator={false}>
-              {/* Tip Banner */}
-              <View style={s.qrTipBanner}>
-                <Ionicons name="bulb-outline" size={16} color="#F59E0B" />
-                <Text style={s.qrTipText}>
-                  Mở App Ngân hàng bất kỳ để{' '}
-                  <Text style={s.qrTipBold}>quét mã VietQR</Text> hoặc{' '}
-                  <Text style={s.qrTipBold}>chuyển khoản thủ công</Text> theo thông tin bên dưới
-                </Text>
-              </View>
-
-              {(paymentQRInfo?.bank_info || paymentQRInfo?.qr_code_url) ? (
-                <>
-                  {/* QR Code centered */}
-                  <View style={s.qrImageWrapper}>
-                    <Image
-                      source={{
-                        uri: paymentQRInfo.qr_code_url ||
-                          `https://img.vietqr.io/image/MB-${paymentQRInfo.bank_info?.so_tai_khoan}-qr_only.png?amount=${paymentQRInfo.amount}&addInfo=${encodeURIComponent(paymentQRInfo.ma_don_hang || '')}`
-                      }}
-                      style={s.vietQRImage}
-                      resizeMode="contain"
-                    />
-                    <Text style={s.qrScanHint}>Quét mã để thanh toán</Text>
-                  </View>
-
-                  {/* Bank info card */}
-                  <View style={s.bankCard}>
-                    <View style={s.bankCardHeader}>
-                      <Ionicons name="business-outline" size={15} color="#3B82F6" />
-                      <Text style={s.bankCardTitle}>Thông tin chuyển khoản</Text>
-                    </View>
-
-                    {/* Bank name row */}
-                    <View style={s.bankRow}>
-                      <Text style={s.bankRowLabel}>Ngân hàng</Text>
-                      <Text style={s.bankRowValue} numberOfLines={1}>
-                        {paymentQRInfo.bank_info?.ten_ngan_hang || 'MB Bank'}
-                      </Text>
-                    </View>
-
-                    {/* Account holder row */}
-                    <View style={s.bankRow}>
-                      <Text style={s.bankRowLabel}>Chủ tài khoản</Text>
-                      <Text style={s.bankRowValueBold}>
-                        {paymentQRInfo.bank_info?.chu_tai_khoan || 'FOODBEE'}
-                      </Text>
-                    </View>
-
-                    <View style={s.bankDivider} />
-
-                    {/* Account number */}
-                    <View style={s.bankRow}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={s.bankRowLabel}>Số tài khoản</Text>
-                        <Text style={s.bankRowValueBold}>
-                          {paymentQRInfo.bank_info?.so_tai_khoan || '0394425076'}
-                        </Text>
-                      </View>
-                      <TouchableOpacity
-                        style={s.copyBtn}
-                        onPress={() => {
-                          Clipboard.setString(paymentQRInfo?.bank_info?.so_tai_khoan || '');
-                          showToast('Đã sao chép số tài khoản', 'success');
-                        }}
-                      >
-                        <Ionicons name="copy-outline" size={12} color="#475569" />
-                        <Text style={s.copyBtnText}>Sao chép</Text>
-                      </TouchableOpacity>
-                    </View>
-
-                    {/* Amount */}
-                    <View style={s.bankRow}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={s.bankRowLabel}>Số tiền</Text>
-                        <Text style={s.bankAmountValue}>
-                          {new Intl.NumberFormat('vi-VN').format(paymentQRInfo.amount || 0)} đ
-                        </Text>
-                      </View>
-                      <TouchableOpacity
-                        style={s.copyBtn}
-                        onPress={() => {
-                          Clipboard.setString(String(paymentQRInfo?.amount || 0));
-                          showToast('Đã sao chép số tiền', 'success');
-                        }}
-                      >
-                        <Ionicons name="copy-outline" size={12} color="#475569" />
-                        <Text style={s.copyBtnText}>Sao chép</Text>
-                      </TouchableOpacity>
-                    </View>
-
-                    {/* Transfer content */}
-                    <View style={s.bankRow}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={s.bankRowLabel}>Nội dung CK</Text>
-                        <Text style={s.bankRowValueBold} numberOfLines={1}>
-                          {paymentQRInfo.ma_don_hang || ''}
-                        </Text>
-                      </View>
-                      <TouchableOpacity
-                        style={s.copyBtn}
-                        onPress={() => {
-                          Clipboard.setString(paymentQRInfo?.ma_don_hang || '');
-                          showToast('Đã sao chép nội dung', 'success');
-                        }}
-                      >
-                        <Ionicons name="copy-outline" size={12} color="#475569" />
-                        <Text style={s.copyBtnText}>Sao chép</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-
-                  {/* Warning */}
-                  <View style={s.qrWarningBox}>
-                    <Ionicons name="warning-outline" size={14} color={COLORS.PRIMARY} />
-                    <Text style={s.qrWarningNote}>
-                      Vui lòng chuyển <Text style={s.qrWarningNoteBold}>
-                        đúng số tiền {new Intl.NumberFormat('vi-VN').format(paymentQRInfo.amount || 0)}đ
-                      </Text> để đơn hàng được xác nhận tự động
-                    </Text>
-                  </View>
-                </>
-              ) : (
-                <View style={s.qrPlaceholder}>
-                  <ActivityIndicator size="large" color={COLORS.PRIMARY} />
-                  <Text style={s.qrPlaceholderText}>Đang tải thông tin thanh toán...</Text>
-                </View>
-              )}
-            </ScrollView>
-
-            {/* Footer */}
-            {(paymentQRInfo?.bank_info || paymentQRInfo?.qr_code_url) && (
-              <View style={s.qrModalFooter}>
-                <TouchableOpacity
-                  style={s.qrCancelButton}
-                  onPress={() => {
-                    setShowPaymentQRModal(false);
-                    setPaymentQRInfo(null);
-                  }}
-                  disabled={processingPayment}
-                >
-                  <Text style={s.qrCancelButtonText}>Huỷ</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[s.qrConfirmButton, processingPayment && { opacity: 0.6 }]}
-                  onPress={confirmPayment}
-                  disabled={processingPayment}
-                >
-                  {processingPayment ? (
-                    <ActivityIndicator size="small" color="white" />
-                  ) : (
-                    <>
-                      <Ionicons name="checkmark-circle" size={18} color="white" />
-                      <Text style={s.qrConfirmButtonText}>Đã thanh toán</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-              </View>
-            )}
-          </View>
-        </View>
-      </Modal>
     </>
   );
 };
@@ -1651,7 +1313,7 @@ const s = StyleSheet.create({
     alignItems: "center",
     backgroundColor: COLORS.PRIMARY,
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    // paddingVertical: 12, // handled inline for notch support
     elevation: 2,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
@@ -1818,11 +1480,6 @@ const s = StyleSheet.create({
     fontSize: 11,
     color: "#94A3B8",
     fontStyle: "italic",
-  },
-  itemNoteRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
   },
 
   itemControls: {
@@ -2124,12 +1781,6 @@ const s = StyleSheet.create({
   // Suggested Vouchers
   suggestedVouchersContainer: {
     marginBottom: 20,
-  },
-  suggestedVouchersHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginBottom: 12,
   },
   suggestedVouchersList: {
     gap: 10,
@@ -2497,483 +2148,6 @@ const s = StyleSheet.create({
     fontWeight: "800",
     color: "white",
     letterSpacing: 0.2,
-  },
-
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━ Payment QR Modal ━━━━━━━━━━━━━━━━
-
-  qrModalContainer: {
-    backgroundColor: "white",
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    height: "92%",
-    overflow: "hidden",
-  },
-
-  qrModalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    backgroundColor: "white",
-    borderBottomWidth: 1,
-    borderBottomColor: "#E2E8F0",
-  },
-
-  qrModalTitle: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: "#0F172A",
-    letterSpacing: 0.2,
-  },
-
-  qrModalBody: {
-    flex: 1,
-    padding: 16,
-  },
-
-  qrCodeContainer: {
-    alignItems: "center",
-    backgroundColor: "white",
-    borderRadius: 12,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-    marginBottom: 16,
-  },
-
-  qrCodeImage: {
-    width: 200,
-    height: 200,
-  },
-
-  qrPlaceholder: {
-    alignItems: "center",
-    backgroundColor: "#F8FAFC",
-    borderRadius: 12,
-    padding: 40,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-    borderStyle: "dashed",
-    marginBottom: 16,
-  },
-
-  qrPlaceholderText: {
-    fontSize: 13,
-    color: "#94A3B8",
-    marginTop: 12,
-  },
-
-  openLinkButton: {
-    backgroundColor: COLORS.PRIMARY,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
-    marginTop: 16,
-  },
-
-  openLinkButtonText: {
-    color: "white",
-    fontWeight: "600",
-    fontSize: 15,
-  },
-
-  orderCodeContainer: {
-    alignItems: "center",
-    backgroundColor: "#F8FAFC",
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-  },
-
-  orderCodeLabel: {
-    fontSize: 12,
-    color: "#64748B",
-    fontWeight: "600",
-    marginBottom: 4,
-  },
-
-  orderCodeValue: {
-    fontSize: 16,
-    color: "#0F172A",
-    fontWeight: "800",
-    letterSpacing: 1,
-  },
-
-  paymentAmountContainer: {
-    alignItems: "center",
-    backgroundColor: "#ECFDF5",
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: "#10B981",
-  },
-
-  paymentAmountLabel: {
-    fontSize: 12,
-    color: "#64748B",
-    fontWeight: "600",
-    marginBottom: 4,
-  },
-
-  paymentAmount: {
-    fontSize: 24,
-    fontWeight: "900",
-    color: "#10B981",
-    letterSpacing: 0.3,
-  },
-
-  bankInfoContainer: {
-    backgroundColor: "#F8FAFC",
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-  },
-
-  bankInfoTitle: {
-    fontSize: 14,
-    fontWeight: "800",
-    color: "#0F172A",
-    marginBottom: 12,
-  },
-
-  bankInfoRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 8,
-  },
-
-  bankInfoLabel: {
-    fontSize: 13,
-    color: "#64748B",
-    fontWeight: "500",
-  },
-
-  bankInfoValue: {
-    fontSize: 13,
-    color: "#0F172A",
-    fontWeight: "700",
-  },
-
-  paymentInstructions: {
-    backgroundColor: "#FFFBEB",
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: "#FCD34D",
-  },
-
-  paymentInstructionsTitle: {
-    fontSize: 14,
-    fontWeight: "800",
-    color: "#0F172A",
-    marginBottom: 12,
-  },
-
-  instructionItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    marginBottom: 10,
-  },
-
-  instructionText: {
-    flex: 1,
-    fontSize: 13,
-    color: "#64748B",
-    fontWeight: "500",
-    lineHeight: 18,
-  },
-
-  paymentWarning: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    backgroundColor: "#FFF7ED",
-    borderRadius: 12,
-    padding: 14,
-    gap: 10,
-    borderWidth: 1,
-    borderColor: "#FEDBA8",
-    marginBottom: 16,
-  },
-
-  // VietQR Styles
-  vietQRContainer: {
-    alignItems: "center",
-    paddingBottom: 8,
-  },
-
-  vietQRImageWrapper: {
-    backgroundColor: "white",
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-
-  qrImageWrapper: {
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-
-  vietQRImage: {
-    width: 200,
-    height: 200,
-    borderRadius: 12,
-  },
-
-  qrScanHint: {
-    marginTop: 8,
-    fontSize: 12,
-    color: '#64748B',
-    fontWeight: '500',
-  },
-
-  bankInfoCard: {
-    width: "100%",
-    backgroundColor: "#F8FAFC",
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-  },
-
-  bankInfoValueBold: {
-    fontSize: 14,
-    color: COLORS.PRIMARY,
-    fontWeight: "800",
-  },
-
-  copyableRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-
-  amountCard: {
-    width: "100%",
-    backgroundColor: "#ECFDF5",
-    borderRadius: 10,
-    padding: 14,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: "#10B981",
-    alignItems: "center",
-  },
-
-  amountLabel: {
-    fontSize: 11,
-    color: "#059669",
-    fontWeight: "600",
-    marginBottom: 4,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-
-  amountValue: {
-    fontSize: 22,
-    color: "#10B981",
-    fontWeight: "900",
-  },
-
-  paymentWarningText: {
-    flex: 1,
-    fontSize: 12,
-    color: "#92400E",
-    fontWeight: "500",
-    lineHeight: 18,
-  },
-
-  qrModalFooter: {
-    flexDirection: "row",
-    gap: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    backgroundColor: "white",
-    borderTopWidth: 1,
-    borderTopColor: "#E2E8F0",
-  },
-
-  qrCancelButton: {
-    flex: 1,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-    borderRadius: 10,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-
-  qrCancelButtonText: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#64748B",
-    letterSpacing: 0.2,
-  },
-
-  qrConfirmButton: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    backgroundColor: "#10B981",
-    borderRadius: 10,
-  },
-
-  qrConfirmButtonText: {
-    fontSize: 14,
-    fontWeight: "800",
-    color: "white",
-    letterSpacing: 0.2,
-  },
-
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━ Payment QR Layout ━━━━━━━━━━━━━━━━
-
-  qrTipBanner: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-    backgroundColor: '#FFFBEB',
-    borderWidth: 1,
-    borderColor: '#FDE68A',
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 16,
-  },
-
-  qrTipText: {
-    flex: 1,
-    fontSize: 12,
-    color: '#78350F',
-    lineHeight: 18,
-  },
-
-  qrTipBold: {
-    fontWeight: '700',
-    color: '#78350F',
-  },
-
-  // Bank card
-  bankCard: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: 12,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    marginBottom: 12,
-    gap: 10,
-  },
-
-  bankCardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 4,
-  },
-
-  bankCardTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#3B82F6',
-  },
-
-  bankRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-
-  bankRowLabel: {
-    fontSize: 11,
-    color: '#94A3B8',
-    fontWeight: '500',
-    marginBottom: 1,
-  },
-
-  bankRowValue: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#1E293B',
-    flexShrink: 1,
-    textAlign: 'right',
-  },
-
-  bankRowValueBold: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#0F172A',
-  },
-
-  bankAmountValue: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: '#10B981',
-  },
-
-  bankDivider: {
-    height: 1,
-    backgroundColor: '#E2E8F0',
-    marginVertical: 2,
-  },
-
-  copyBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#F1F5F9',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-
-  copyBtnText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#475569',
-  },
-
-  qrWarningBox: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 6,
-    backgroundColor: '#FFF5F5',
-    borderRadius: 10,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#FECACA',
-    marginBottom: 8,
-  },
-
-  qrWarningNote: {
-    flex: 1,
-    fontSize: 12,
-    color: COLORS.PRIMARY,
-    lineHeight: 18,
-  },
-
-  qrWarningNoteBold: {
-    fontWeight: '800',
-    color: COLORS.PRIMARY,
   },
 });
 

@@ -45,11 +45,9 @@ const calculateDiscount = (original: number, discounted: number): number => {
 interface DishCardProps {
   dish: Dish;
   onPress: () => void;
-  isFavorite?: boolean;
-  onToggleFavorite?: (dishId: number) => void;
 }
 
-const DishCard = memo<DishCardProps>(({ dish, onPress, isFavorite = false, onToggleFavorite }) => {
+const DishCard = memo<DishCardProps>(({ dish, onPress }) => {
   const uri = getImageUri(dish.hinh_anh);
   const discount = calculateDiscount(dish.gia_ban, dish.gia_khuyen_mai);
 
@@ -67,17 +65,6 @@ const DishCard = memo<DishCardProps>(({ dish, onPress, isFavorite = false, onTog
           <Text style={s.pctTxt}>-{discount}%</Text>
         </View>
       )}
-      <TouchableOpacity
-        style={s.favBtn}
-        onPress={() => onToggleFavorite?.(dish.id)}
-        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-      >
-        <Ionicons
-          name={isFavorite ? "heart" : "heart-outline"}
-          size={18}
-          color={isFavorite ? COLORS.PRIMARY : "#FFF"}
-        />
-      </TouchableOpacity>
       <View style={s.dishBody}>
         <Text style={s.dishName} numberOfLines={2}>{dish.ten_mon_an}</Text>
         <Text style={s.dishShop} numberOfLines={1}>{dish.ten_quan_an}</Text>
@@ -93,35 +80,16 @@ const DishCard = memo<DishCardProps>(({ dish, onPress, isFavorite = false, onTog
 const AllDishesOnSale = ({ navigation }: { navigation: any }) => {
   const [dishes, setDishes] = useState<Dish[]>([]);
   const [loading, setLoading] = useState(true);
-  const [favoriteIds, setFavoriteIds] = useState<Set<number>>(new Set());
 
   const loadData = useCallback(async () => {
     try {
-      const [res, favRes] = await Promise.all([
-        apiClient.get("/khach-hang/trang-chu/data"),
-        apiClient.get("/khach-hang/yeu-thich/ids"),
-      ]);
+      const res = await apiClient.get("/khach-hang/trang-chu/data");
       setDishes(res.data.mon_an ?? []);
-      setFavoriteIds(new Set(favRes.data.ids ?? []));
     } catch (error) {
       console.error("Load dishes error:", error);
     } finally {
       setLoading(false);
     }
-  }, []);
-
-  const toggleFavorite = useCallback(async (itemId: number) => {
-    try {
-      const res = await apiClient.post("/khach-hang/yeu-thich/toggle", { id_mon_an: itemId });
-      if (res.data?.status) {
-        setFavoriteIds((prev) => {
-          const next = new Set(prev);
-          if (next.has(itemId)) next.delete(itemId);
-          else next.add(itemId);
-          return next;
-        });
-      }
-    } catch {}
   }, []);
 
   useEffect(() => {
@@ -165,8 +133,6 @@ const AllDishesOnSale = ({ navigation }: { navigation: any }) => {
             <DishCard
               dish={item}
               onPress={() => navigation.navigate("RestaurantDetail", { id: item.id_quan_an })}
-              isFavorite={favoriteIds.has(item.id)}
-              onToggleFavorite={toggleFavorite}
             />
           )}
         />
@@ -238,17 +204,6 @@ const s = StyleSheet.create({
     paddingVertical: 2,
   },
   pctTxt: { color: "#FFF", fontSize: 10, fontWeight: "900" },
-  favBtn: {
-    position: "absolute",
-    top: 8,
-    right: 8,
-    backgroundColor: "rgba(0,0,0,0.35)",
-    borderRadius: 20,
-    width: 30,
-    height: 30,
-    justifyContent: "center",
-    alignItems: "center",
-  },
 
   empty: {
     flex: 1,

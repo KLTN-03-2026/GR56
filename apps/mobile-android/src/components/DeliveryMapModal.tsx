@@ -1,54 +1,47 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Modal, View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import { Modal, View, Text, TouchableOpacity, StyleSheet, Alert, Platform } from "react-native";
 import { WebView } from "react-native-webview";
 import Geolocation from "react-native-geolocation-service";
 import { requestLocationPermission } from "../utils/location";
-// @ts-ignore
 import Ionicons from "react-native-vector-icons/Ionicons";
-import {
-  heightPercentageToDP as hp,
-  widthPercentageToDP as wp,
-} from "react-native-responsive-screen";
+import { widthPercentageToDP as wp, heightPercentageToDP as hp } from "react-native-responsive-screen";
 import { NDA_API_KEY } from "../config/mapbox";
+
+const PRIMARY = "#EE4D2D";
 
 interface Props {
   visible: boolean;
   onClose: () => void;
-  /**
-   * restaurant          : chỉ quán
-   * dual_address        : quán → khách (tinh_trang 0)
-   * three_point         : quán + shipper + khách (tinh_trang 1)
-   * shipper_to_customer : shipper → khách (tinh_trang 2)
-   * shipper_delivery    : GPS thiết bị → khách
-   */
   mode?: "restaurant" | "dual_address" | "three_point" | "shipper_to_customer" | "shipper_delivery";
-  destAddress: string;   // địa chỉ quán (hoặc điểm đến chính)
-  destName: string;
-  destCoord?: [number, number] | null;   // [lng, lat] điểm đến — dùng thẳng, bỏ qua geocode
-  /** Tên POI dùng cho geocode (khác destName khi destName là tên người, không phải quán) */
-  destGeocodeHint?: string;
-  secondAddress?: string; // địa chỉ khách
+  destAddress: string;
+  destName?: string;
+  secondAddress?: string;
   secondName?: string;
-  secondCoord?: [number, number] | null; // [lng, lat] khách — dùng thẳng, bỏ qua geocode
-  shipperAddress?: string; // địa chỉ shipper (geocode)
+  shipperAddress?: string;
   shipperName?: string;
+  destCoord?: [number, number] | null;
+  secondCoord?: [number, number] | null;
+  shipperCoord?: [number, number] | null;
+  restaurantCoord?: [number, number] | null;
 }
-
-const PRIMARY = "#EE4D2D";
 
 const buildHTML = (
   mode: string,
   destAddress: string,
-  destName: string,
+  destName: string = "",
   secondAddress: string,
   secondName: string,
-  shipperAddress: string = "",
-  shipperName: string = "",
+  shipperAddress: string,
+  shipperName: string,
   destCoord: [number, number] | null = null,
   secondCoord: [number, number] | null = null,
-  destGeocodeHint: string = "",
+  shipperCoord: [number, number] | null = null,
+  restaurantCoord: [number, number] | null = null,
 ): string => {
   const safe = (s: string) => (s || "").replace(/\\/g, "\\\\").replace(/`/g, "'");
+  const initShip = shipperCoord ? JSON.stringify(shipperCoord) : "null";
+  const initRestaurant = restaurantCoord ? JSON.stringify(restaurantCoord) : "null";
+  const safeDestName = safe(destName);
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -57,545 +50,684 @@ const buildHTML = (
   <link href="https://unpkg.com/ndamap-gl@latest/dist/ndamap-gl.css" rel="stylesheet"/>
   <style>
     * { margin:0; padding:0; box-sizing:border-box; }
-    html, body, #map { width:100%; height:100%; }
+    html, body, #map { width:100%; height:100%; font-family:-apple-system,sans-serif; }
     #overlay {
       position:fixed; inset:0; background:#f8fafc;
       display:flex; flex-direction:column;
       align-items:center; justify-content:center;
-      gap:14px; z-index:9999; font-family:sans-serif;
+      gap:14px; z-index:9999;
     }
     #overlay.gone { display:none; }
     .spin {
       width:38px; height:38px; border:4px solid #e2e8f0;
-      border-top-color:${PRIMARY}; border-radius:50%;
+      border-top-color:#EE4D2D; border-radius:50%;
       animation: sp 0.8s linear infinite;
     }
     @keyframes sp { to { transform:rotate(360deg); } }
-    #msg { color:#64748b; font-size:14px; text-align:center; padding:0 28px; line-height:1.6; }
-    .maplibregl-popup-content { font-family:sans-serif; font-size:13px; max-width:220px; }
+
+    /* ── Top Navigation Banner (Google Maps style) ── */
+    #nav-banner {
+      position:fixed; top:0; left:0; right:0; z-index:300;
+      background:linear-gradient(135deg,#1a7f37 0%,#2ea043 100%);
+      color:#fff; display:none; flex-direction:column;
+      box-shadow:0 4px 20px rgba(0,0,0,0.3);
+    }
+    #nav-banner.active { display:flex; }
+    #nav-current {
+      display:flex; align-items:center; padding:16px 16px 12px; gap:14px;
+    }
+    #nav-current-icon {
+      font-size:36px; width:56px; height:56px;
+      display:flex; align-items:center; justify-content:center;
+      background:rgba(255,255,255,0.15); border-radius:14px; flex-shrink:0;
+    }
+    #nav-current-info { flex:1; }
+    #nav-current-road { font-size:22px; font-weight:800; line-height:1.2; }
+    #nav-current-detail { font-size:13px; opacity:0.85; margin-top:3px; }
+    #nav-next {
+      display:flex; align-items:center; gap:8px;
+      padding:8px 16px 10px; background:rgba(0,0,0,0.15);
+      font-size:13px; font-weight:600;
+    }
+    #nav-next-label { opacity:0.8; }
+    #nav-next-text { flex:1; }
+
+    /* ── Bottom Info Bar ── */
+    #nav-bottom {
+      position:fixed; bottom:0; left:0; right:0; z-index:300;
+      background:#fff; display:none;
+      box-shadow:0 -4px 20px rgba(0,0,0,0.12);
+      border-radius:20px 20px 0 0;
+    }
+    #nav-bottom.active { display:block; }
+    #nav-eta {
+      display:flex; align-items:center; padding:16px 20px; gap:16px;
+    }
+    #nav-eta-time {
+      font-size:32px; font-weight:900; color:#1a7f37;
+    }
+    #nav-eta-unit { font-size:14px; color:#1a7f37; font-weight:600; }
+    #nav-eta-sep { width:1px; height:36px; background:#e2e8f0; }
+    #nav-eta-dist { font-size:14px; color:#64748b; font-weight:500; }
+    #nav-eta-arrival { font-size:14px; color:#64748b; font-weight:500; }
+
+    /* ── Steps list (expandable) ── */
+    #nav-steps-toggle {
+      display:flex; align-items:center; justify-content:center;
+      padding:8px; border-top:1px solid #f1f5f9; cursor:pointer;
+      font-size:13px; color:#64748b; font-weight:600; gap:4px;
+    }
+    #nav-steps-list {
+      max-height:0; overflow:hidden; transition:max-height 0.3s;
+    }
+    #nav-steps-list.open { max-height:40vh; overflow-y:auto; }
+    .step-item {
+      display:flex; align-items:center; gap:12px;
+      padding:12px 20px; border-top:1px solid #f8fafc;
+    }
+    .step-item:first-child { border-top:none; }
+    .step-icon { font-size:20px; width:32px; text-align:center; flex-shrink:0; }
+    .step-text { flex:1; font-size:14px; color:#334155; font-weight:500; }
+    .step-dist { font-size:12px; color:#94a3b8; font-weight:500; }
+    .step-active { background:#f0fdf4; }
+    .step-active .step-text { color:#15803d; font-weight:700; }
+
+    /* ── Recenter button ── */
+    #recenter-btn {
+      position:fixed; right:16px; z-index:250;
+      width:48px; height:48px; border-radius:50%;
+      background:#fff; border:none; box-shadow:0 2px 12px rgba(0,0,0,0.2);
+      display:flex; align-items:center; justify-content:center;
+      cursor:pointer; font-size:22px;
+    }
+
+    .maplibregl-ctrl-top-right { top:auto !important; }
   </style>
 </head>
 <body>
-  <div id="overlay"><div class="spin"></div><p id="msg">Đang tải bản đồ...</p></div>
+  <div id="overlay"><div class="spin"></div><p id="msg">Đang khởi tạo...</p></div>
   <div id="map"></div>
+
+  <!-- Navigation Banner -->
+  <div id="nav-banner">
+    <div id="nav-current">
+      <div id="nav-current-icon">⬆️</div>
+      <div id="nav-current-info">
+        <div id="nav-current-road">Đang tải...</div>
+        <div id="nav-current-detail"></div>
+      </div>
+    </div>
+    <div id="nav-next">
+      <span id="nav-next-label">Sau đó</span>
+      <span id="nav-next-icon">➡️</span>
+      <span id="nav-next-text">...</span>
+    </div>
+  </div>
+
+  <!-- Recenter -->
+  <button id="recenter-btn" onclick="recenterMap()" style="bottom:200px;">🎯</button>
+
+  <!-- Bottom bar -->
+  <div id="nav-bottom">
+    <div id="nav-eta">
+      <div>
+        <span id="nav-eta-time">--</span>
+        <span id="nav-eta-unit">phút</span>
+      </div>
+      <div id="nav-eta-sep"></div>
+      <div>
+        <div id="nav-eta-dist">-- km</div>
+        <div id="nav-eta-arrival">Đến lúc --:--</div>
+      </div>
+    </div>
+    <div id="nav-steps-toggle" onclick="toggleSteps()">
+      <span>📋</span> Các bước chỉ đường <span id="toggle-arrow">▲</span>
+    </div>
+    <div id="nav-steps-list"></div>
+  </div>
+
   <script src="https://unpkg.com/ndamap-gl@latest/dist/ndamap-gl.js"></script>
   <script>
     var TOKEN = '${NDA_API_KEY}';
-    var PRIMARY = '#EE4D2D';
-    var MODE = '${mode}';
-    var DEST_ADDR = \`${safe(destAddress)}\`;
-    var DEST_NAME = \`${safe(destName)}\`;
-    var SEC_ADDR  = \`${safe(secondAddress)}\`;
-    var SEC_NAME  = \`${safe(secondName)}\`;
-    var SHIP_ADDR = \`${safe(shipperAddress)}\`;
-    var SHIP_NAME = \`${safe(shipperName)}\`;
-    var DEST_COORD        = ${destCoord ? `[${destCoord[0]}, ${destCoord[1]}]` : 'null'};
-    var SEC_COORD          = ${secondCoord ? `[${secondCoord[0]}, ${secondCoord[1]}]` : 'null'};
-    var DEST_GEOCODE_HINT  = \`${safe(destGeocodeHint)}\`;
-
-    function setMsg(t) { document.getElementById('msg').textContent = t; }
-    function hideOverlay() { document.getElementById('overlay').classList.add('gone'); }
+    var DEST_ADDR = '${safe(destAddress)}';
+    var DEST_NAME = '${safeDestName}';
+    var DEST_COORD = ${destCoord ? JSON.stringify(destCoord) : "null"};
+    var INIT_SHIP_COORD = ${initShip};
+    var INIT_RESTAURANT_COORD = ${initRestaurant};
+    var _allSteps = [];
+    var _routeCoords = [];
+    var _following = true;
+    var _prevBearing = 0;
 
     var map = new ndamapgl.Map({
       container: 'map',
-      style: 'https://nda-tiles.openmap.vn/styles/ndamap/style.json',
+      style: 'https://tiles.openmap.vn/styles/day-v1/style.json',
       center: [108.2022, 16.0544],
-      zoom: 12
+      zoom: 16, pitch: 45, bearing: 0
     });
 
-    map.on('error', function(e) {
-      setMsg('Lỗi bản đồ: ' + (e.error ? e.error.message : 'không tải được'));
-    });
+    map.on('dragstart', function() { _following = false; });
 
-    // Kiểm tra tọa độ có nằm trong vùng Đà Nẵng không
-    function isInDanang(lon, lat) {
-      return lon >= 107.85 && lon <= 108.35 && lat >= 15.96 && lat <= 16.22;
+    function hideOverlay() { document.getElementById('overlay').classList.add('gone'); }
+
+    // ── Maneuver helpers ──
+    var TURN_ICONS = {
+      depart:'🚗', arrive:'🏁',
+      'turn-left':'⬅️', 'turn-right':'➡️',
+      'sharp left':'↩️', 'sharp right':'↪️',
+      'slight left':'↖️', 'slight right':'↗️',
+      'straight':'⬆️', 'uturn':'🔄',
+      'rotary':'🔄', 'roundabout':'🔄',
+      'fork':'🔀', 'merge':'🔀',
+      'on ramp':'⬆️', 'off ramp':'↘️',
+      'end of road':'🛑'
+    };
+
+    function getIcon(type, modifier) {
+      if (type === 'arrive') return '🏁';
+      if (type === 'depart') return '🚗';
+      var key = modifier ? type + '-' + modifier : type;
+      if (TURN_ICONS[key]) return TURN_ICONS[key];
+      if (modifier && TURN_ICONS[modifier]) return TURN_ICONS[modifier];
+      if (TURN_ICONS[type]) return TURN_ICONS[type];
+      return '⬆️';
     }
 
-    // Fallback: NDAMaps Forward Geocoding (khi Nominatim không ra kết quả)
+    function getVietnamese(type, modifier, name) {
+      var road = name || '';
+      if (type === 'depart') return 'Bắt đầu' + (road ? ' trên ' + road : '');
+      if (type === 'arrive') return 'Đến nơi — ' + DEST_NAME;
+      var dir = '';
+      if (modifier === 'left' || modifier === 'sharp left' || modifier === 'slight left') dir = 'Rẽ trái';
+      else if (modifier === 'right' || modifier === 'sharp right' || modifier === 'slight right') dir = 'Rẽ phải';
+      else if (modifier === 'uturn') dir = 'Quay đầu';
+      else if (modifier === 'straight') dir = 'Đi thẳng';
+      else dir = 'Tiếp tục';
+      return dir + (road ? ' vào ' + road : '');
+    }
+
+    function formatDist(m) {
+      if (m >= 1000) return (m/1000).toFixed(1) + ' km';
+      return Math.round(m) + ' m';
+    }
+
+    // ── Toggle steps ──
+    function toggleSteps() {
+      var el = document.getElementById('nav-steps-list');
+      var arrow = document.getElementById('toggle-arrow');
+      el.classList.toggle('open');
+      arrow.textContent = el.classList.contains('open') ? '▼' : '▲';
+    }
+
+    // ── Update navigation banner ──
+    function updateNavUI(steps, totalDist, totalDur) {
+      _allSteps = steps;
+      var banner = document.getElementById('nav-banner');
+      var bottom = document.getElementById('nav-bottom');
+
+      if (!steps || steps.length === 0) return;
+
+      banner.classList.add('active');
+      bottom.classList.add('active');
+
+      // Current step
+      var cur = steps[0];
+      document.getElementById('nav-current-icon').textContent = getIcon(cur.type, cur.modifier);
+      document.getElementById('nav-current-road').textContent = cur.name || getVietnamese(cur.type, cur.modifier, cur.name);
+      document.getElementById('nav-current-detail').textContent = formatDist(cur.distance);
+
+      // Next step
+      if (steps.length > 1) {
+        var nxt = steps[1];
+        document.getElementById('nav-next').style.display = 'flex';
+        document.getElementById('nav-next-icon').textContent = getIcon(nxt.type, nxt.modifier);
+        document.getElementById('nav-next-text').textContent = getVietnamese(nxt.type, nxt.modifier, nxt.name);
+      } else {
+        document.getElementById('nav-next').style.display = 'none';
+      }
+
+      // ETA
+      var mins = Math.round(totalDur / 60);
+      document.getElementById('nav-eta-time').textContent = mins;
+      document.getElementById('nav-eta-dist').textContent = formatDist(totalDist);
+      var arrival = new Date(Date.now() + totalDur * 1000);
+      document.getElementById('nav-eta-arrival').textContent =
+        'Đến lúc ' + arrival.getHours().toString().padStart(2,'0') + ':' + arrival.getMinutes().toString().padStart(2,'0');
+
+      // Steps list
+      var html = '';
+      steps.forEach(function(s, i) {
+        var icon = getIcon(s.type, s.modifier);
+        var text = getVietnamese(s.type, s.modifier, s.name);
+        var cls = i === 0 ? ' step-active' : '';
+        html += '<div class="step-item' + cls + '">' +
+          '<span class="step-icon">' + icon + '</span>' +
+          '<span class="step-text">' + text + '</span>' +
+          '<span class="step-dist">' + formatDist(s.distance) + '</span></div>';
+      });
+      document.getElementById('nav-steps-list').innerHTML = html;
+    }
+
+    // ── Recenter ──
+    function recenterMap() {
+      _following = true;
+      if (_ship) {
+        map.flyTo({ center: _ship, zoom: 17, pitch: 45, bearing: _prevBearing, duration: 600 });
+      }
+    }
+
+    // ── Markers ──
+    var _dest = null;
+    var _ship = null;
+    var _destMarker = null;
+    var _shipMarker = null;
+    var _shipEl = null;
+
+    function isValidCoord(c) {
+      if (!c || !Array.isArray(c) || c.length < 2) return false;
+      if (isNaN(c[0]) || isNaN(c[1])) return false;
+      if (c[0] === 0 && c[1] === 0) return false;
+      return c[0] >= -180 && c[0] <= 180 && c[1] >= -90 && c[1] <= 90;
+    }
+
+    function autoFixCoord(c) {
+      if (!c || !Array.isArray(c) || c.length < 2) return c;
+      if (c[1] >= 15.8 && c[1] <= 16.3 && c[0] >= 107.5 && c[0] <= 108.5) return c;
+      if (c[0] >= 15.8 && c[0] <= 16.3 && c[1] >= 107.5 && c[1] <= 108.5) return [c[1], c[0]];
+      return c;
+    }
+
     function geocodeNDA(query, callback) {
       var q = query.toLowerCase().includes('nẵng') ? query : query + ', Đà Nẵng';
-      var url = 'https://mapapis.ndamaps.vn/v1/geocode/forward?text='
-        + encodeURIComponent(q)
-        + '&apikey=' + TOKEN;
-      fetch(url)
-        .then(function(r) { return r.json(); })
-        .then(function(d) {
-          if (d.features && d.features.length > 0) {
-            var c = d.features[0].geometry.coordinates;
-            callback(c[0], c[1]);
-          } else { callback(null, null); }
-        })
-        .catch(function() { callback(null, null); });
+      var url = 'https://mapapis.openmap.vn/v1/geocode/forward?text=' + encodeURIComponent(q) + '&apikey=' + TOKEN;
+      fetch(url).then(function(r){return r.json()}).then(function(d) {
+        if (d.features && d.features.length > 0) {
+          var c = d.features[0].geometry.coordinates;
+          if (isValidCoord(c)) callback(c); else callback(null);
+        } else callback(null);
+      }).catch(function(){ callback(null); });
     }
 
-    // Nominatim free-form fallback
-    function geocodeFreeForm(addr, callback, nameHint) {
-      // Lấy phần "số nhà + tên đường" (trước dấu phẩy đầu tiên)
-      var street = addr.split(',')[0].trim();
-      var query;
-      if (nameHint && nameHint.trim()) {
-        // Format đã test: "Highlands Coffee 240 Trần Phú Đà Nẵng" → đúng vị trí
-        query = nameHint.trim() + ' ' + street + ' Đà Nẵng';
-      } else {
-        query = street + ' Đà Nẵng';
-      }
-      // Thử freeform với địa chỉ đầy đủ trước (có quận/tỉnh → chính xác hơn)
-      var fullQuery = addr.toLowerCase().includes('đà nẵng') ? addr : addr + ', Đà Nẵng';
-      var fullUrl = 'https://nominatim.openstreetmap.org/search?q='
-        + encodeURIComponent(fullQuery + ', Việt Nam')
-        + '&format=json&limit=3&countrycodes=vn'
-        + '&viewbox=107.85,16.22,108.35,15.96&bounded=1'
-        + '&accept-language=vi';
-      fetch(fullUrl)
-        .then(function(r) { return r.json(); })
-        .then(function(d) {
-          var hit = d && d.find(function(x) { return isInDanang(parseFloat(x.lon), parseFloat(x.lat)); });
-          if (hit) {
-            callback(parseFloat(hit.lon), parseFloat(hit.lat));
-            return;
-          }
-          // Fallback: chỉ dùng street + Đà Nẵng
-          var url = 'https://nominatim.openstreetmap.org/search?q='
-            + encodeURIComponent(query + ', Việt Nam')
-            + '&format=json&limit=3&countrycodes=vn'
-            + '&viewbox=107.85,16.22,108.35,15.96&bounded=1'
-            + '&accept-language=vi';
-          fetch(url)
-            .then(function(r) { return r.json(); })
-            .then(function(d2) {
-              var hit2 = d2 && d2.find(function(x) { return isInDanang(parseFloat(x.lon), parseFloat(x.lat)); });
-              if (hit2) {
-                callback(parseFloat(hit2.lon), parseFloat(hit2.lat));
-              } else {
-                geocodeNDA(fullQuery, callback);
-              }
-            })
-            .catch(function() { geocodeNDA(fullQuery, callback); });
-        })
-        .catch(function() { geocodeNDA(fullQuery, callback); });
-    }
-
-    // Geocode chính:
-    // - Nếu có tên quán (nameHint): free-form với tên POI → chính xác nhất (test confirmed)
-    // - Nếu không có tên quán: structured search tách số nhà + tên đường + quận → fallback NDAMaps
-    function geocodeAddr(addr, callback, nameHint) {
-      if (!addr || !addr.trim()) { callback(null, null); return; }
-      if (nameHint && nameHint.trim()) {
-        // Có tên POI → free-form với tên quán cho kết quả tốt nhất
-        geocodeFreeForm(addr, callback, nameHint);
-      } else {
-        // Không có tên quán → structured search, kèm quận đã bỏ tiền tố
-        var parts = addr.split(',');
-        var streetPart = parts[0].trim();
-        var districtRaw = parts.length > 1 ? parts[1].trim() : '';
-        var districtClean = districtRaw.replace(/^(quận|huyện|thị\s+xã|thành\s+phố)\s+/i, '').trim();
-        var structUrl = 'https://nominatim.openstreetmap.org/search?'
-          + 'street=' + encodeURIComponent(streetPart)
-          + (districtClean ? '&county=' + encodeURIComponent(districtClean) : '')
-          + '&city=' + encodeURIComponent('Đà Nẵng')
-          + '&country=Vietnam'
-          + '&format=json&limit=3&accept-language=vi';
-        fetch(structUrl)
-          .then(function(r) { return r.json(); })
-          .then(function(d) {
-            var hit = d && d.find(function(x) { return isInDanang(parseFloat(x.lon), parseFloat(x.lat)); });
-            if (hit) {
-              callback(parseFloat(hit.lon), parseFloat(hit.lat));
-            } else {
-              geocodeFreeForm(addr, callback, '');
-            }
-          })
-          .catch(function() { geocodeFreeForm(addr, callback, ''); });
-      }
-    }
-
-    // Dùng tọa độ sẵn có nếu hợp lệ, không thì geocode
-    function resolvePoint(coord, addr, callback, nameHint) {
-      if (coord && typeof coord[0] === 'number' && typeof coord[1] === 'number') {
-        callback(coord[0], coord[1]);
-      } else {
-        geocodeAddr(addr, callback, nameHint);
-      }
-    }
-
-    // Giải mã Google Polyline encoding → mảng [lng, lat]
-    function decodePoly(enc) {
-      var res = [], i = 0, lat = 0, lng = 0;
-      while (i < enc.length) {
-        var b, s = 0, v = 0;
-        do { b = enc.charCodeAt(i++) - 63; v |= (b & 31) << s; s += 5; } while (b >= 32);
-        lat += (v & 1) ? ~(v >> 1) : (v >> 1);
-        s = 0; v = 0;
-        do { b = enc.charCodeAt(i++) - 63; v |= (b & 31) << s; s += 5; } while (b >= 32);
-        lng += (v & 1) ? ~(v >> 1) : (v >> 1);
-        res.push([lng / 1e5, lat / 1e5]);
-      }
-      return res;
-    }
-
-    // Vẽ tuyến đường NDAMaps Routing API — p1/p2: [lng, lat]
-    var routeIdx = 0;
+    // ── Draw route ──
     function drawRoute(p1, p2) {
-      var url = 'https://mapapis.ndamaps.vn/v1/direction?origin='
-        + p1[1] + ',' + p1[0]
-        + '&destination=' + p2[1] + ',' + p2[0]
-        + '&vehicle=car&apikey=' + TOKEN;
-      fetch(url)
-        .then(function(r) { return r.json(); })
-        .then(function(d) {
-          if (!d.routes || !d.routes[0] || !d.routes[0].overview_polyline) return;
-          var coords = decodePoly(d.routes[0].overview_polyline.points);
-          if (!coords.length) return;
-          var id = 'r' + (routeIdx++);
-          map.addSource(id, { type: 'geojson', data: {
-            type: 'Feature', properties: {},
-            geometry: { type: 'LineString', coordinates: coords }
-          }});
-          map.addLayer({ id: id, type: 'line', source: id,
-            layout: { 'line-join': 'round', 'line-cap': 'round' },
-            paint: { 'line-color': PRIMARY, 'line-width': 5, 'line-opacity': 0.85 } });
-        })
-        .catch(function() {});
-    }
+      if (!p1 || !p2) return;
+      var url = 'https://router.project-osrm.org/route/v1/driving/'+p1[0]+','+p1[1]+';'+p2[0]+','+p2[1]+'?overview=full&geometries=geojson&steps=true&alternatives=3';
+      fetch(url).then(function(r){return r.json()}).then(function(d){
+        var coords = null;
+        var steps = [];
+        var totalDist = 0, totalDur = 0;
+        if (d.code === 'Ok' && d.routes && d.routes.length) {
+          var route = d.routes[0];
+          for (var i = 1; i < d.routes.length; i++) {
+            if (d.routes[i].distance < route.distance) route = d.routes[i];
+          }
+          if (route.geometry && route.geometry.coordinates) coords = route.geometry.coordinates;
+          totalDist = route.distance || 0;
+          totalDur = route.duration || 0;
+          if (route.legs && route.legs[0] && route.legs[0].steps) {
+            steps = route.legs[0].steps.map(function(s) {
+              return {
+                type: s.maneuver ? s.maneuver.type : 'turn',
+                modifier: s.maneuver ? s.maneuver.modifier || '' : '',
+                name: s.name || '',
+                distance: s.distance || 0,
+                duration: s.duration || 0,
+                location: s.maneuver ? s.maneuver.location : null,
+                bearing_after: s.maneuver ? s.maneuver.bearing_after : 0
+              };
+            });
+          }
+        }
+        if (!coords || coords.length < 2) coords = [p1, p2];
+        _routeCoords = coords;
 
-    function fitToPoints(pts) {
-      if (!pts.length) return;
-      if (pts.length === 1) { map.setCenter(pts[0]); map.setZoom(17); return; }
-      var b = new ndamapgl.LngLatBounds(pts[0], pts[0]);
-      pts.forEach(function(p) { b.extend(p); });
-      map.fitBounds(b, { padding: 70, maxZoom: 17 });
-    }
+        // Draw route line with outline
+        if (map.getSource('route-outline')) {
+          map.getSource('route-outline').setData({ type:'Feature', geometry:{ type:'LineString', coordinates:coords }});
+          map.getSource('route').setData({ type:'Feature', geometry:{ type:'LineString', coordinates:coords }});
+        } else {
+          map.addSource('route-outline', { type:'geojson', data:{ type:'Feature', geometry:{ type:'LineString', coordinates:coords }}});
+          map.addLayer({ id:'route-outline-line', type:'line', source:'route-outline',
+            layout:{ 'line-join':'round', 'line-cap':'round' },
+            paint:{ 'line-color':'#fff', 'line-width':9 }});
+          map.addSource('route', { type:'geojson', data:{ type:'Feature', geometry:{ type:'LineString', coordinates:coords }}});
+          map.addLayer({ id:'route-line', type:'line', source:'route',
+            layout:{ 'line-join':'round', 'line-cap':'round' },
+            paint:{ 'line-color':'#2563eb', 'line-width':6, 'line-opacity':0.9 }});
+        }
 
-    function makeMarker(emoji, lngLat, name, addr) {
-      var el = document.createElement('div');
-      el.style.cssText = 'font-size:28px;line-height:1;cursor:pointer;';
-      el.textContent = emoji;
-      new ndamapgl.Marker(el)
-        .setLngLat(lngLat)
-        .setPopup(new ndamapgl.Popup({ offset: 30 }).setHTML(
-          '<b>' + name + '</b>' + (addr ? '<br><span style="color:#64748b;font-size:11px">' + addr + '</span>' : '')
-        ))
-        .addTo(map);
-    }
+        // Fit & update UI
+        if (!_ship) {
+          var b = new ndamapgl.LngLatBounds();
+          coords.forEach(function(c) { b.extend(c); });
+          map.fitBounds(b, { padding:{ top:180, bottom:220, left:40, right:40 } });
+        }
+        updateNavUI(steps, totalDist, totalDur);
 
-    function makeShipperDot(lngLat, name) {
-      var el = document.createElement('div');
-      el.style.cssText = 'background:' + PRIMARY + ';width:16px;height:16px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.5);cursor:pointer;';
-      new ndamapgl.Marker(el)
-        .setLngLat(lngLat)
-        .setPopup(new ndamapgl.Popup({ offset: 12 }).setHTML('<b>' + name + '</b>'))
-        .addTo(map);
-    }
-
-    // ── restaurant ──
-    function initRestaurant() {
-      setMsg('Đang tìm địa chỉ quán...');
-      geocodeAddr(DEST_ADDR, function(lng, lat) {
-        if (lng === null) { setMsg('Không tìm thấy địa chỉ quán.'); return; }
-        hideOverlay();
-        map.setCenter([lng, lat]);
-        map.setZoom(17);
-        makeMarker('🏪', [lng, lat], DEST_NAME, DEST_ADDR);
-      }, DEST_NAME);
-    }
-
-    // ── dual_address ──
-    function initDualAddress() {
-      setMsg('Đang tìm địa chỉ...');
-      resolvePoint(DEST_COORD, DEST_ADDR, function(lng1, lat1) {
-        resolvePoint(SEC_COORD, SEC_ADDR, function(lng2, lat2) {
-          var pts = [];
-          if (lng1 !== null) { pts.push([lng1, lat1]); makeMarker('🏪', [lng1, lat1], DEST_NAME, DEST_ADDR); }
-          if (lng2 !== null) { pts.push([lng2, lat2]); makeMarker('📍', [lng2, lat2], SEC_NAME, SEC_ADDR); }
-          if (!pts.length) { setMsg('Không tìm thấy địa chỉ.'); return; }
-          hideOverlay();
-          if (pts.length === 2) drawRoute(pts[0], pts[1]);
-          fitToPoints(pts);
-        }, '');
-      }, DEST_NAME);
-    }
-
-    // ── three_point ──
-    function initThreePoint() {
-      setMsg('Đang tìm địa chỉ...');
-      resolvePoint(DEST_COORD, DEST_ADDR, function(lng1, lat1) {
-        geocodeAddr(SHIP_ADDR, function(lngS, latS) {
-          resolvePoint(SEC_COORD, SEC_ADDR, function(lng2, lat2) {
-            var pts = [];
-            if (lng1 !== null) { pts.push([lng1, lat1]); makeMarker('🏪', [lng1, lat1], DEST_NAME, DEST_ADDR); }
-            if (lngS !== null) { pts.push([lngS, latS]); makeShipperDot([lngS, latS], SHIP_NAME); }
-            if (lng2 !== null) { pts.push([lng2, lat2]); makeMarker('📍', [lng2, lat2], SEC_NAME, SEC_ADDR); }
-            if (!pts.length) { setMsg('Không tìm thấy địa chỉ.'); return; }
-            hideOverlay();
-            if (lng1 !== null && lngS !== null) drawRoute([lng1, lat1], [lngS, latS]);
-            if (lngS !== null && lng2 !== null) drawRoute([lngS, latS], [lng2, lat2]);
-            fitToPoints(pts);
-          }, '');
-        });
-      }, DEST_NAME);
-    }
-
-    // ── shipper_to_customer ──
-    function initShipperToCustomer() {
-      setMsg('Đang tìm địa chỉ...');
-      geocodeAddr(SHIP_ADDR, function(lngS, latS) {
-        resolvePoint(SEC_COORD, SEC_ADDR, function(lng2, lat2) {
-          var pts = [];
-          if (lngS !== null) { pts.push([lngS, latS]); makeShipperDot([lngS, latS], SHIP_NAME); }
-          if (lng2 !== null) { pts.push([lng2, lat2]); makeMarker('📍', [lng2, lat2], SEC_NAME, SEC_ADDR); }
-          if (!pts.length) { setMsg('Không tìm thấy địa chỉ.'); return; }
-          hideOverlay();
-          if (pts.length === 2) drawRoute(pts[0], pts[1]);
-          fitToPoints(pts);
-        }, '');
+        // Set bearing from first step
+        if (steps.length > 0 && steps[0].bearing_after) {
+          _prevBearing = steps[0].bearing_after;
+          if (_following && _ship) {
+            map.flyTo({ center:_ship, bearing:_prevBearing, zoom:17, pitch:45, duration:800 });
+          }
+        }
+      }).catch(function(){
+        if (!map.getSource('route')) {
+          map.addSource('route', { type:'geojson', data:{ type:'Feature', geometry:{ type:'LineString', coordinates:[p1, p2] }}});
+          map.addLayer({ id:'route-line', type:'line', source:'route',
+            paint:{ 'line-color':'#EE4D2D', 'line-width':4, 'line-dasharray':[2,1] }});
+        }
       });
     }
 
-    // ── shipper_delivery (GPS thiết bị → khách) ──
-    var _destCoords = null;   // [lng, lat] sau khi geocode xong
-    var _pendingShip = null;  // { lng, lat } | 'none' — GPS từ RN, buffered trước geocode
-
-    function drawShipperMap(sLng, sLat, dLng, dLat) {
+    function updateMap() {
+      if (!_dest) return;
+      if (!isValidCoord(_dest)) return;
       hideOverlay();
-      var pts = [[dLng, dLat]];
-      makeMarker('📍', [dLng, dLat], DEST_NAME, DEST_ADDR);
-      if (sLng !== null) {
-        pts.unshift([sLng, sLat]);
-        makeShipperDot([sLng, sLat], '📍 Vị trí của bạn');
-        drawRoute([sLng, sLat], [dLng, dLat]);
+
+      if (!_destMarker) {
+        var el1 = document.createElement('div');
+        el1.style.cssText = 'width:40px;height:40px;background:#EE4D2D;border-radius:50% 50% 50% 0;transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;border:3px solid #fff;box-shadow:0 3px 12px rgba(0,0,0,0.3);';
+        el1.innerHTML = '<span style="transform:rotate(45deg);font-size:18px;">📍</span>';
+        _destMarker = new ndamapgl.Marker({ element:el1, anchor:'bottom' }).setLngLat(_dest).addTo(map);
       }
-      fitToPoints(pts);
+
+      if (_ship) {
+        if (!_shipMarker) {
+          _shipEl = document.createElement('div');
+          _shipEl.style.cssText = 'width:24px;height:24px;position:relative;';
+          _shipEl.innerHTML =
+            '<div style="width:24px;height:24px;background:#2563eb;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 8px rgba(37,99,235,0.5);position:relative;z-index:2;"></div>' +
+            '<div style="position:absolute;width:44px;height:44px;border-radius:50%;background:rgba(37,99,235,0.15);top:50%;left:50%;transform:translate(-50%,-50%);z-index:1;animation:pulse 2s infinite;"></div>';
+          var style = document.createElement('style');
+          style.textContent = '@keyframes pulse{0%,100%{transform:translate(-50%,-50%) scale(1);opacity:0.6}50%{transform:translate(-50%,-50%) scale(1.6);opacity:0.15}}';
+          document.head.appendChild(style);
+          _shipMarker = new ndamapgl.Marker({ element:_shipEl, anchor:'center' }).setLngLat(_ship).addTo(map);
+        } else {
+          _shipMarker.setLngLat(_ship);
+        }
+
+        // Calculate bearing
+        if (_routeCoords.length > 1) {
+          var closest = 0, minD = 99999;
+          for (var i = 0; i < _routeCoords.length; i++) {
+            var dx = _routeCoords[i][0] - _ship[0], dy = _routeCoords[i][1] - _ship[1];
+            var dd = dx*dx + dy*dy;
+            if (dd < minD) { minD = dd; closest = i; }
+          }
+          if (closest < _routeCoords.length - 1) {
+            var next = _routeCoords[closest + 1];
+            var dLng = next[0] - _ship[0], dLat = next[1] - _ship[1];
+            _prevBearing = Math.atan2(dLng, dLat) * 180 / Math.PI;
+          }
+        }
+
+        if (_following) {
+          map.flyTo({ center:_ship, bearing:_prevBearing, zoom:17, pitch:45, duration:800 });
+        }
+        drawRoute(_ship, _dest);
+      } else {
+        // Không có GPS shipper → vẽ route quán → khách nếu có tọa độ quán
+        var restCoord = INIT_RESTAURANT_COORD ? autoFixCoord(INIT_RESTAURANT_COORD) : null;
+        if (restCoord && isValidCoord(restCoord)) {
+          // Hiện marker quán
+          if (!document.getElementById('rest-marker-added')) {
+            var elR = document.createElement('div');
+            elR.id = 'rest-marker-added';
+            elR.style.cssText = 'width:36px;height:36px;background:#22c55e;border-radius:50% 50% 50% 0;transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;border:3px solid #fff;box-shadow:0 3px 12px rgba(0,0,0,0.3);';
+            elR.innerHTML = '<span style="transform:rotate(45deg);font-size:16px;">🏪</span>';
+            new ndamapgl.Marker({ element:elR, anchor:'bottom' }).setLngLat(restCoord).addTo(map);
+          }
+          drawRoute(restCoord, _dest);
+          var b = new ndamapgl.LngLatBounds();
+          b.extend(restCoord);
+          b.extend(_dest);
+          map.fitBounds(b, { padding:{ top:100, bottom:100, left:40, right:40 } });
+        } else {
+          map.flyTo({ center:_dest, zoom:15, pitch:0 });
+        }
+        // Hiện thông báo chờ GPS
+        var gpsMsg = document.getElementById('gps-waiting');
+        if (!gpsMsg) {
+          gpsMsg = document.createElement('div');
+          gpsMsg.id = 'gps-waiting';
+          gpsMsg.style.cssText = 'position:fixed;top:80px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.75);color:#fff;padding:10px 20px;border-radius:20px;font-size:13px;z-index:400;font-family:sans-serif;';
+          gpsMsg.textContent = '📡 Đang lấy vị trí GPS...';
+          document.body.appendChild(gpsMsg);
+        }
+      }
     }
 
-    // RN inject: window.onShipperLocation(lat, lng)
     window.onShipperLocation = function(lat, lng) {
-      if (_destCoords) {
-        drawShipperMap(lng, lat, _destCoords[0], _destCoords[1]);
-      } else {
-        _pendingShip = { lng: lng, lat: lat };
-      }
+      var coord = [lng, lat];
+      if (!isValidCoord(coord)) return;
+      _ship = coord;
+      var gpsMsg = document.getElementById('gps-waiting');
+      if (gpsMsg) gpsMsg.remove();
+      updateMap();
     };
-
-    window.onNoLocation = function() {
-      if (_destCoords) {
-        drawShipperMap(null, null, _destCoords[0], _destCoords[1]);
-      } else {
-        _pendingShip = 'none';
-      }
-    };
-
-    function startShipperDelivery() {
-      // Nếu đã có tọa độ sẵn thì dùng luôn, không cần geocode
-      if (DEST_COORD && typeof DEST_COORD[0] === 'number') {
-        _destCoords = DEST_COORD;
-        if (_pendingShip === 'none') {
-          drawShipperMap(null, null, DEST_COORD[0], DEST_COORD[1]);
-        } else if (_pendingShip) {
-          drawShipperMap(_pendingShip.lng, _pendingShip.lat, DEST_COORD[0], DEST_COORD[1]);
-        }
-        return;
-      }
-      setMsg('Đang tìm địa chỉ giao hàng...');
-      geocodeAddr(DEST_ADDR, function(dLng, dLat) {
-        if (dLng === null) { setMsg('Không tìm thấy địa chỉ.'); return; }
-        _destCoords = [dLng, dLat];
-        if (_pendingShip === 'none') {
-          drawShipperMap(null, null, dLng, dLat);
-        } else if (_pendingShip) {
-          drawShipperMap(_pendingShip.lng, _pendingShip.lat, dLng, dLat);
-        }
-      }, DEST_GEOCODE_HINT);
-    }
 
     map.on('load', function() {
-      if (MODE === 'restaurant')              { initRestaurant(); }
-      else if (MODE === 'dual_address')        { initDualAddress(); }
-      else if (MODE === 'three_point')         { initThreePoint(); }
-      else if (MODE === 'shipper_to_customer') { initShipperToCustomer(); }
-      else                                     { startShipperDelivery(); }
+      if (INIT_SHIP_COORD) {
+        var fixed = autoFixCoord(INIT_SHIP_COORD);
+        if (isValidCoord(fixed)) _ship = fixed;
+      }
+      if (DEST_COORD && DEST_COORD[0]) {
+        var fixedD = autoFixCoord(DEST_COORD);
+        if (isValidCoord(fixedD)) { _dest = fixedD; updateMap(); }
+        else { geocodeNDA(DEST_ADDR, function(c) { _dest = c || [108.2022,16.0544]; updateMap(); }); }
+      } else {
+        geocodeNDA(DEST_ADDR, function(c) { _dest = c || [108.2022,16.0544]; updateMap(); });
+      }
     });
   <\/script>
 </body>
 </html>`;
 };
 
-const DeliveryMapModal: React.FC<Props> = ({
-  visible,
-  onClose,
-  mode = "shipper_delivery",
-  destAddress,
-  destName,
-  destCoord = null,
-  destGeocodeHint = "",
-  secondAddress = "",
-  secondName = "",
-  secondCoord = null,
-  shipperAddress = "",
-  shipperName = "",
-}) => {
+const DeliveryMapModal: React.FC<Props> = ({ visible, onClose, destAddress, destName, destCoord, shipperCoord, restaurantCoord }) => {
   const webviewRef = useRef<WebView>(null);
   const [ready, setReady] = useState(false);
-  const sent = useRef(false);
+  const [hasError, setHasError] = useState(false);
+
+  useEffect(() => { if (visible) { setReady(false); setHasError(false); } }, [visible]);
+
+  const handleRefresh = () => {
+    Geolocation.getCurrentPosition(
+      (pos) => {
+        webviewRef.current?.injectJavaScript(`window.onShipperLocation(${pos.coords.latitude},${pos.coords.longitude}); true;`);
+      },
+      (err) => {
+        if (err.code === 1) Alert.alert("GPS", "Vui lòng bật quyền truy cập vị trí trong cài đặt iPhone.");
+        else console.warn(err);
+      },
+      { enableHighAccuracy: true }
+    );
+  };
 
   useEffect(() => {
-    if (!visible) { setReady(false); sent.current = false; }
-  }, [visible]);
+    if (!visible || !ready) return;
+    let watchId: number;
+    let gpsFailed = false;
+    let gpsSucceeded = false;
 
-  useEffect(() => {
-    if (!ready || sent.current) return;
-    sent.current = true;
+    // Kiểm tra tọa độ có nằm trong Việt Nam không (tránh Simulator trả về vị trí sai)
+    const isInVietnam = (lat: number, lng: number): boolean => {
+      return lat >= 8.0 && lat <= 23.5 && lng >= 102.0 && lng <= 110.0;
+    };
 
-    // các mode tự khởi tạo không cần GPS
-    if (mode === 'restaurant' || mode === 'dual_address' || mode === 'three_point' || mode === 'shipper_to_customer') return;
-
-    // shipper_delivery: cần GPS thiết bị
-    (async () => {
-      try {
-        const granted = await requestLocationPermission();
-        if (!granted) {
-          webviewRef.current?.injectJavaScript("window.onNoLocation(); true;");
-          return;
-        }
-        Geolocation.getCurrentPosition(
-          (pos) => {
-            const { latitude: lat, longitude: lng } = pos.coords;
-            webviewRef.current?.injectJavaScript(`window.onShipperLocation(${lat},${lng}); true;`);
-          },
-          () => webviewRef.current?.injectJavaScript("window.onNoLocation(); true;"),
-          { enableHighAccuracy: true, timeout: 8000, maximumAge: 5000 }
+    const injectFromBE = () => {
+      if (shipperCoord) {
+        webviewRef.current?.injectJavaScript(
+          `window.onShipperLocation(${shipperCoord[1]}, ${shipperCoord[0]}); true;`
         );
-      } catch {
-        webviewRef.current?.injectJavaScript("window.onNoLocation(); true;");
+      } else {
+        // Không có cả GPS lẫn server coord → hiện thông báo
+        webviewRef.current?.injectJavaScript(`
+          var gpsMsg = document.getElementById('gps-waiting');
+          if (gpsMsg) gpsMsg.textContent = '⚠️ Không lấy được vị trí GPS';
+          true;
+        `);
       }
-    })();
-  }, [ready, mode]);
+    };
+
+    // BƯỚC 1: Inject ngay tọa độ từ server nếu có (không chờ GPS)
+    if (shipperCoord) {
+      webviewRef.current?.injectJavaScript(
+        `window.onShipperLocation(${shipperCoord[1]}, ${shipperCoord[0]}); true;`
+      );
+    }
+
+    const startGPS = async () => {
+      const hasPermission = await requestLocationPermission();
+      if (!hasPermission) {
+        injectFromBE();
+        webviewRef.current?.injectJavaScript(`
+          var gpsMsg = document.getElementById('gps-waiting');
+          if (gpsMsg) gpsMsg.textContent = '📡 Dùng vị trí từ server';
+          true;
+        `);
+        return;
+      }
+
+      // BƯỚC 2: Thử lấy GPS thật (timeout 5s, nếu fail hoặc ngoài VN → dùng server coord)
+      Geolocation.getCurrentPosition(
+        (pos) => {
+          const { latitude, longitude } = pos.coords;
+          if (!isInVietnam(latitude, longitude)) {
+            // Tọa độ ngoài Việt Nam (Simulator default location) → bỏ qua, dùng server
+            console.log(`GPS ngoài VN: ${latitude}, ${longitude} → dùng server coord`);
+            if (!gpsFailed) { gpsFailed = true; injectFromBE(); }
+            return;
+          }
+          gpsSucceeded = true;
+          webviewRef.current?.injectJavaScript(
+            `window.onShipperLocation(${latitude},${longitude}); true;`
+          );
+        },
+        (err) => {
+          console.log("GPS getCurrentPosition Error:", err.code, err.message);
+          if (!gpsFailed) { gpsFailed = true; injectFromBE(); }
+        },
+        { enableHighAccuracy: true, timeout: 5000, maximumAge: 30000 }
+      );
+
+      // BƯỚC 3: Watch GPS liên tục (cập nhật vị trí real-time)
+      watchId = Geolocation.watchPosition(
+        (pos) => {
+          const { latitude, longitude } = pos.coords;
+          if (!isInVietnam(latitude, longitude)) {
+            // Tọa độ ngoài Việt Nam → bỏ qua
+            console.log(`GPS Watch ngoài VN: ${latitude}, ${longitude} → bỏ qua`);
+            return;
+          }
+          gpsSucceeded = true;
+          gpsFailed = false;
+          webviewRef.current?.injectJavaScript(
+            `window.onShipperLocation(${latitude},${longitude}); true;`
+          );
+        },
+        (err) => {
+          console.log("GPS Watch Error:", err.code, err.message);
+          if (!gpsSucceeded && !gpsFailed) { gpsFailed = true; injectFromBE(); }
+        },
+        { enableHighAccuracy: true, distanceFilter: 5, interval: 3000, fastestInterval: 2000 }
+      );
+    };
+    startGPS();
+    return () => { if (watchId !== undefined) Geolocation.clearWatch(watchId); };
+  }, [visible, ready]);
+
+  // Inject shipper coord từ WebSocket vào WebView khi prop thay đổi (real-time)
+  useEffect(() => {
+    if (!ready || !shipperCoord) return;
+    const script = `window.onShipperLocation(${shipperCoord[1]}, ${shipperCoord[0]}); true;`;
+    webviewRef.current?.injectJavaScript(script);
+  }, [ready, shipperCoord?.[0], shipperCoord?.[1]]);
 
   return (
-    <Modal visible={visible} animationType="slide" statusBarTranslucent onRequestClose={onClose}>
-      <View style={S.root}>
-        {/* Header */}
+    <Modal visible={visible} animationType="slide">
+      <View style={S.container}>
         <View style={S.header}>
-          <View style={S.row}>
-            <Ionicons name="navigate" size={20} color="#FFF" />
-            <Text style={S.title}>Chỉ đường giao hàng</Text>
+          <Text style={S.title}>Chỉ đường giao hàng</Text>
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <TouchableOpacity onPress={handleRefresh} style={S.headerIconBtn}>
+              <Ionicons name="refresh" size={20} color="#FFF" />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={onClose} style={S.closeBtn}>
+              <Ionicons name="close" size={24} color="#FFF" />
+            </TouchableOpacity>
           </View>
-          <TouchableOpacity onPress={onClose} style={S.closeBtn} activeOpacity={0.8}>
-            <Ionicons name="close" size={22} color="#FFF" />
-          </TouchableOpacity>
         </View>
-
-        {/* Address bar */}
-        <View style={S.addrBar}>
-          {mode === 'restaurant' ? (
-            <View style={S.addrRow}>
-              <View style={[S.dot, { backgroundColor: PRIMARY }]} />
-              <Text style={S.addrText} numberOfLines={2}>🏪 {destName}{destAddress ? ` — ${destAddress}` : ''}</Text>
-            </View>
-          ) : mode === 'dual_address' ? (
-            <>
-              <View style={S.addrRow}>
-                <View style={[S.dot, { backgroundColor: PRIMARY }]} />
-                <Text style={S.addrText} numberOfLines={1}>{destName}: {destAddress}</Text>
-              </View>
-              <View style={S.divider} />
-              <View style={S.addrRow}>
-                <View style={[S.dot, { backgroundColor: '#10B981' }]} />
-                <Text style={S.addrText} numberOfLines={2}>{secondName}: {secondAddress}</Text>
-              </View>
-            </>
-          ) : mode === 'three_point' ? (
-            <>
-              <View style={S.addrRow}>
-                <View style={[S.dot, { backgroundColor: PRIMARY }]} />
-                <Text style={S.addrText} numberOfLines={1}>🏪 {destName}: {destAddress}</Text>
-              </View>
-              <View style={S.divider} />
-              <View style={S.addrRow}>
-                <View style={[S.dot, { backgroundColor: '#F59E0B' }]} />
-                <Text style={S.addrText} numberOfLines={1}>🛵 {shipperName || 'Shipper'}</Text>
-              </View>
-              <View style={S.divider} />
-              <View style={S.addrRow}>
-                <View style={[S.dot, { backgroundColor: '#10B981' }]} />
-                <Text style={S.addrText} numberOfLines={2}>{secondName}: {secondAddress}</Text>
-              </View>
-            </>
-          ) : mode === 'shipper_to_customer' ? (
-            <>
-              <View style={S.addrRow}>
-                <View style={[S.dot, { backgroundColor: '#F59E0B' }]} />
-                <Text style={S.addrText} numberOfLines={1}>🛵 {shipperName || 'Shipper'}</Text>
-              </View>
-              <View style={S.divider} />
-              <View style={S.addrRow}>
-                <View style={[S.dot, { backgroundColor: '#10B981' }]} />
-                <Text style={S.addrText} numberOfLines={2}>{secondName}: {secondAddress}</Text>
-              </View>
-            </>
-          ) : (
-            <>
-              <View style={S.addrRow}>
-                <View style={[S.dot, { backgroundColor: PRIMARY }]} />
-                <Text style={S.addrText}>Vị trí của bạn</Text>
-              </View>
-              <View style={S.divider} />
-              <View style={S.addrRow}>
-                <View style={[S.dot, { backgroundColor: '#10B981' }]} />
-                <Text style={S.addrText} numberOfLines={2}>{destName ? `${destName} — ` : ''}{destAddress}</Text>
-              </View>
-            </>
-          )}
-        </View>
-
-        {/* Map WebView */}
-        <WebView
-          ref={webviewRef}
-          source={{ html: buildHTML(mode, destAddress, destName, secondAddress, secondName, shipperAddress, shipperName, destCoord, secondCoord, destGeocodeHint), baseUrl: 'https://mapapis.ndamaps.vn' }}
-          style={{ flex: 1 }}
-          javaScriptEnabled
-          domStorageEnabled
-          mixedContentMode="always"
-          originWhitelist={["*"]}
-          allowUniversalAccessFromFileURLs
-          allowFileAccess
-          allowFileAccessFromFileURLs
-          onLoadEnd={() => setReady(true)}
-        />
+        {hasError ? (
+          <View style={S.errorContainer}>
+            <Ionicons name="map-outline" size={48} color="#CBD5E1" />
+            <Text style={S.errorText}>Không thể tải bản đồ</Text>
+            <Text style={S.errorSubText}>Vui lòng kiểm tra kết nối internet</Text>
+            <TouchableOpacity style={S.retryButton} onPress={() => setHasError(false)}>
+              <Text style={S.retryButtonText}>Thử lại</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <WebView
+            ref={webviewRef}
+            source={{ html: buildHTML("shipper_delivery", destAddress, destName ?? "", "", "", "", "", destCoord, null, shipperCoord ?? null, restaurantCoord ?? null), baseUrl: 'https://mapapis.openmap.vn' }}
+            style={{ flex: 1 }}
+            onLoadEnd={() => setReady(true)}
+            onError={() => setHasError(true)}
+            onHttpError={() => setHasError(true)}
+            javaScriptEnabled
+            domStorageEnabled
+            mixedContentMode="always"
+            originWhitelist={["*"]}
+            allowUniversalAccessFromFileURLs
+            allowFileAccess
+            allowFileAccessFromFileURLs
+          />
+        )}
       </View>
     </Modal>
   );
 };
 
 const S = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#1E293B" },
+  container: { flex: 1, backgroundColor: "#FFF" },
   header: {
-    backgroundColor: PRIMARY,
-    flexDirection: "row",
+    paddingTop: hp("5%"), paddingBottom: 15, paddingHorizontal: 20,
+    backgroundColor: PRIMARY, flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+  },
+  title: { color: "#FFF", fontSize: 18, fontWeight: "700" },
+  headerIconBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: "rgba(255,255,255,0.2)", justifyContent: "center", alignItems: "center" },
+  closeBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: "rgba(255,255,255,0.2)", justifyContent: "center", alignItems: "center" },
+  errorContainer: {
+    flex: 1,
+    justifyContent: "center",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: wp("4%"),
-    paddingTop: hp("5%"),
-    paddingBottom: hp("1.5%"),
+    padding: 20,
   },
-  row: { flexDirection: "row", alignItems: "center", gap: 8 },
-  title: { color: "#FFF", fontSize: wp("4.2%"), fontWeight: "700" },
-  closeBtn: {
-    width: 36, height: 36, borderRadius: 18,
-    backgroundColor: "rgba(255,255,255,0.2)",
-    justifyContent: "center", alignItems: "center",
+  errorText: {
+    marginTop: 12,
+    color: "#64748B",
+    fontSize: 16,
+    fontWeight: "600",
   },
-  addrBar: {
-    backgroundColor: "#FFF",
-    paddingHorizontal: wp("4%"),
-    paddingVertical: hp("1.5%"),
-    borderBottomWidth: 1,
-    borderBottomColor: "#E2E8F0",
+  errorSubText: {
+    marginTop: 4,
+    color: "#94A3B8",
+    fontSize: 14,
   },
-  addrRow: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
-  dot: { width: 10, height: 10, borderRadius: 5, marginTop: 4, flexShrink: 0 },
-  addrText: { flex: 1, fontSize: wp("3.4%"), color: "#334155", lineHeight: 20 },
-  divider: { height: 7, width: 1, backgroundColor: "#CBD5E1", marginLeft: 4.5, marginVertical: 2 },
+  retryButton: {
+    marginTop: 20,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    backgroundColor: PRIMARY,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: "#FFF",
+    fontSize: 14,
+    fontWeight: "600",
+  },
 });
 
 export default DeliveryMapModal;
