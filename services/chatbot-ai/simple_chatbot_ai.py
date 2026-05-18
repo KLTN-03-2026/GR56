@@ -852,6 +852,7 @@ def q_restaurants(keyword: str, limit: int = 6) -> list:
     try:
         conn = get_conn()
         cur = conn.cursor(dictionary=True)
+        keyword = (keyword or '').strip()
         like_kw = f"%{keyword}%"
         cur.execute("""
             SELECT
@@ -905,6 +906,46 @@ def q_restaurants(keyword: str, limit: int = 6) -> list:
                 LIMIT %s
             """, (like_kw, limit))
             rows = [_to_serializable(r) for r in cur.fetchall()]
+
+        if not rows and keyword:
+            tokens = [
+                t for t in re.split(r"\s+", keyword.lower())
+                if len(t) >= 2 and t not in {
+                    'tôi', 'muốn', 'xem', 'thêm', 'menu', 'quán', 'của',
+                    'cho', 'bạn', 'mình', 'này', 'đó',
+                }
+            ]
+            if tokens:
+                where_parts = []
+                params = []
+                for token in tokens:
+                    where_parts.append("LOWER(qa.ten_quan_an) LIKE %s")
+                    params.append(f"%{token}%")
+                cur.execute(f"""
+                    SELECT
+                        qa.id                          AS id,
+                        qa.ten_quan_an                 AS name,
+                        qa.hinh_anh                    AS image,
+                        qa.dia_chi                     AS address,
+                        qa.so_dien_thoai              AS phone,
+                        CAST(qa.gio_mo_cua AS CHAR)  AS open_time,
+                        CAST(qa.gio_dong_cua AS CHAR) AS close_time,
+                        ROUND(AVG(dg.sao_quan_an), 1) AS rating,
+                        COUNT(DISTINCT dg.id)          AS so_danh_gia,
+                        COUNT(DISTINCT m.id)           AS so_mon,
+                        MIN(COALESCE(NULLIF(m.gia_khuyen_mai,0), m.gia_ban)) AS min_price,
+                        MAX(COALESCE(NULLIF(m.gia_khuyen_mai,0), m.gia_ban)) AS max_price
+                    FROM quan_ans qa
+                    LEFT JOIN mon_ans m ON m.id_quan_an = qa.id AND m.tinh_trang = 1
+                    LEFT JOIN danh_gias dg ON dg.id_quan_an = qa.id
+                    WHERE qa.tinh_trang = 1 AND qa.is_active = 1
+                      AND {' AND '.join(where_parts)}
+                    GROUP BY qa.id, qa.ten_quan_an, qa.hinh_anh, qa.dia_chi,
+                             qa.so_dien_thoai, qa.gio_mo_cua, qa.gio_dong_cua
+                    ORDER BY rating DESC, so_danh_gia DESC
+                    LIMIT %s
+                """, (*params, limit))
+                rows = [_to_serializable(r) for r in cur.fetchall()]
 
         conn.close()
         logger.info(f"q_restaurants('{keyword}') → {len(rows)} restaurants")
@@ -1198,10 +1239,109 @@ def _contextual_recommendation_response(context: dict, foods: list) -> str:
         lines.append(f"{i}. {title}{suffix} — {price:,.0f}đ tại {restaurant}")
     sample = "\n".join(lines)
     if sample:
-        sample = "\n\nBee lọc từ món thật trong database:\n" + sample
+        sample = "\n\nBee tìm được vài món phù hợp:\n" + sample
     return (
         f"{context.get('advice', 'Bee chọn vài món hợp với nhu cầu của bạn.')}"
         f"{sample}\n\nBạn có thể bấm món bên dưới để đặt, hoặc nói rõ hơn như: dưới 50k, ít cay, gần Hải Châu."
+    )
+
+
+def _is_general_personal_advice_query(query: str) -> bool:
+    """General advice should use user profile/order/search history, not stale chat mood."""
+    q = (query or '').lower().strip()
+    if not q:
+        return False
+    if _is_wellness_recommendation_intent(q):
+        return False
+    ask_words = [
+        'tư vấn', 'tu van', 'gợi ý', 'goi y', 'recommend', 'đề xuất', 'de xuat',
+        'món nào', 'mon nao', 'ăn gì', 'an gi', 'uống gì', 'uong gi',
+        'vài món', 'vai mon', 'món ngon', 'mon ngon', 'chọn giúp', 'chon giup',
+    ]
+    return any(w in q for w in ask_words)
+
+
+def q_personalized_recommendation_foods(profile: dict, limit: int = 8) -> tuple:
+    """Recommend foods from favorite orders/searches first, then platform best sellers."""
+    foods, seen = [], set()
+    reasons = []
+
+    def add_items(items: list):
+        for item in items or []:
+            fid = item.get('id')
+            if fid in seen:
+                continue
+            seen.add(fid)
+            foods.append(item)
+            if len(foods) >= limit:
+                return True
+        return False
+
+    fav_foods = profile.get('favorite_foods', []) if profile else []
+    if isinstance(fav_foods, list) and fav_foods:
+        top_favs = sorted(fav_foods, key=lambda x: x.get('count', 0), reverse=True)[:4]
+        fav_names = [f.get('name') for f in top_favs if f.get('name')]
+        for name in fav_names:
+            if add_items(q_foods(name, limit=3)):
+                break
+        if fav_names:
+            reasons.append(f"món bạn hay đặt: {', '.join(fav_names[:3])}")
+
+    recent = profile.get('recent_interactions', []) if profile else []
+    recent_queries = []
+    for item in recent:
+        query_text = (item.get('query_text') or '').strip()
+        if not query_text:
+            continue
+        q_lower = query_text.lower()
+        if _is_wellness_recommendation_intent(q_lower):
+            continue
+        if any(k in q_lower for k in ['thanh toán', 'payos', 'tiền mặt', 'xong', 'sửa']):
+            continue
+        recent_queries.append(query_text)
+        if len(recent_queries) >= 4:
+            break
+    for query_text in recent_queries:
+        keyword = _extract_food_after_prefix(query_text) or query_text
+        keyword = re.sub(r'^(tôi muốn|cho tôi|xem|tìm|kiếm|menu|món)\s+', '', keyword, flags=re.IGNORECASE).strip()
+        if len(keyword) >= 2 and add_items(q_foods(keyword, limit=2)):
+            break
+    if recent_queries:
+        reasons.append("những món/quán bạn vừa quan tâm gần đây")
+
+    if len(foods) < limit:
+        top_foods = q_top_foods(days=30, limit=limit)
+        if add_items(top_foods):
+            pass
+        if top_foods:
+            reasons.append("lượt đặt nổi bật gần đây")
+
+    if len(foods) < limit:
+        add_items(q_random(limit))
+
+    return foods[:limit], reasons
+
+
+def _personalized_recommendation_response(profile: dict, foods: list, reasons: list) -> str:
+    if not reasons:
+        reasons = ["món đang được đặt nhiều trên FoodBee"]
+
+    lines = []
+    for i, food in enumerate((foods or [])[:3], 1):
+        title = food.get('title', '')
+        price = float(food.get('price', 0))
+        restaurant = food.get('restaurant', '')
+        lines.append(f"{i}. {title} — {price:,.0f}đ tại {restaurant}")
+
+    total_orders = int((profile or {}).get('total_orders') or 0)
+    order_note = f" Bạn đã có {total_orders} đơn nên Bee ưu tiên gu đặt món của bạn." if total_orders > 0 else ""
+    sample = "\n".join(lines)
+    if sample:
+        sample = "\n\nBee chọn thử vài món:\n" + sample
+
+    return (
+        f"Bee sẽ tư vấn dựa trên {', '.join(reasons[:3])}.{order_note}"
+        f"{sample}\n\nBạn bấm món bên dưới để xem size/topping và thêm vào giỏ nhé."
     )
 
 
@@ -1227,7 +1367,7 @@ def _quick_action_result(query: str) -> dict:
         return {
             'kind': 'foods',
             'action_type': 'quick:under_50k',
-            'response': "💰 Bee lọc các món dưới 50,000đ từ database nè. Vừa túi tiền mà vẫn dễ đặt.",
+            'response': "💰 Bee lọc được vài món dưới 50,000đ nè. Vừa túi tiền mà vẫn dễ đặt.",
             'foods': foods,
         }
 
@@ -1235,7 +1375,7 @@ def _quick_action_result(query: str) -> dict:
         ctx = {
             'key': 'quick_cold_drinks',
             'keywords': ['trà đào', 'trà chanh', 'nước ép', 'sinh tố', 'trà sữa', 'chè'],
-            'advice': '🧊 Bee chọn các món mát/dễ uống từ database, hợp lúc trời nóng hoặc muốn giải nhiệt.',
+            'advice': '🧊 Bee chọn vài món mát/dễ uống, hợp lúc trời nóng hoặc muốn giải nhiệt.',
         }
         foods = q_contextual_foods(ctx, limit=8)
         return {'kind': 'foods', 'action_type': 'quick:cold', 'response': _contextual_recommendation_response(ctx, foods), 'foods': foods}
@@ -1252,7 +1392,7 @@ def _quick_action_result(query: str) -> dict:
         return {
             'kind': 'foods',
             'action_type': 'quick:noodles',
-            'response': "🍜 Bee tìm các món bún/phở đang bán trong database. Món nước nóng, dễ ăn nè.",
+            'response': "🍜 Bee tìm được vài món bún/phở hợp ý bạn. Món nước nóng, dễ ăn nè.",
             'foods': foods[:8],
         }
 
@@ -1261,7 +1401,7 @@ def _quick_action_result(query: str) -> dict:
         return {
             'kind': 'foods',
             'action_type': 'quick:rice',
-            'response': "🍚 Đây là các món cơm Bee tìm được từ database. Hợp khi bạn muốn ăn no chắc bụng.",
+            'response': "🍚 Đây là vài món cơm Bee tìm được. Hợp khi bạn muốn ăn no chắc bụng.",
             'foods': foods,
         }
 
@@ -1269,7 +1409,7 @@ def _quick_action_result(query: str) -> dict:
         ctx = {
             'key': 'quick_drinks',
             'keywords': ['cà phê', 'trà sữa', 'trà đào', 'trà chanh', 'nước ép', 'sinh tố'],
-            'advice': '☕ Bee lọc các món đồ uống thật trong database cho bạn.',
+            'advice': '☕ Bee lọc vài món đồ uống phù hợp cho bạn.',
         }
         foods = q_contextual_foods(ctx, limit=8)
         return {'kind': 'foods', 'action_type': 'quick:drinks', 'response': _contextual_recommendation_response(ctx, foods), 'foods': foods}
@@ -1298,6 +1438,83 @@ def q_vouchers(limit: int = 5) -> list:
         return rows
     except Exception as e:
         logger.error(f"q_vouchers error: {e}")
+        return []
+
+
+def q_best_vouchers_for_order(khach_hang_id: int, id_quan_an: int, tong_tien_hang: int, limit: int = 3) -> list:
+    """Find usable vouchers directly from MySQL and rank by actual discount."""
+    if not khach_hang_id or not id_quan_an:
+        return []
+    try:
+        conn = get_conn()
+        cur = conn.cursor(dictionary=True)
+        cur.execute("""
+            SELECT
+                v.id, v.ma_code, v.ten_voucher, v.mo_ta, v.loai_giam,
+                v.so_giam_gia, v.so_tien_toi_da, v.don_hang_toi_thieu,
+                v.id_quan_an, v.loai_voucher, v.id_khach_hang_rieng,
+                v.so_luot_moi_nguoi,
+                COALESCE(u.used_count, 0) AS used_count
+            FROM vouchers v
+            LEFT JOIN (
+                SELECT id_voucher, COUNT(*) AS used_count
+                FROM voucher_usages
+                WHERE id_khach_hang = %s
+                GROUP BY id_voucher
+            ) u ON u.id_voucher = v.id
+            WHERE v.tinh_trang = 1
+              AND v.thoi_gian_bat_dau <= CURDATE()
+              AND v.thoi_gian_ket_thuc >= CURDATE()
+              AND v.don_hang_toi_thieu <= %s
+              AND (v.id_quan_an = 0 OR v.id_quan_an = %s)
+              AND (v.so_luot_toi_da IS NULL OR v.so_luot_da_dung < v.so_luot_toi_da)
+              AND (v.loai_voucher != 'private' OR v.id_khach_hang_rieng = %s)
+              AND (v.so_luot_moi_nguoi IS NULL OR COALESCE(u.used_count, 0) < v.so_luot_moi_nguoi)
+        """, (khach_hang_id, tong_tien_hang, id_quan_an, khach_hang_id))
+        rows = [_to_serializable(r) for r in cur.fetchall()]
+        conn.close()
+
+        vouchers = []
+        for v in rows:
+            discount = 0
+            raw_discount = float(v.get('so_giam_gia') or 0)
+            max_discount = v.get('so_tien_toi_da')
+            if int(v.get('loai_giam') or 0) == 1:
+                discount = int(tong_tien_hang * raw_discount / 100)
+                if max_discount not in (None, '', 0):
+                    discount = min(discount, int(float(max_discount)))
+            else:
+                discount = int(raw_discount)
+                if max_discount not in (None, '', 0):
+                    discount = min(discount, int(float(max_discount)))
+            discount = max(0, min(discount, int(tong_tien_hang)))
+            if discount <= 0:
+                continue
+
+            voucher_type = v.get('loai_voucher') or 'public'
+            priority = discount
+            if voucher_type == 'private' and int(v.get('id_khach_hang_rieng') or 0) == int(khach_hang_id):
+                priority += 100000
+            elif voucher_type == 'system':
+                priority += 50000
+
+            vouchers.append({
+                'id': v.get('id'),
+                'ma_code': (v.get('ma_code') or '').upper(),
+                'ten_voucher': v.get('ten_voucher') or '',
+                'so_tien_giam': discount,
+                'tong_tien_sau_giam': max(0, int(tong_tien_hang) - discount),
+                'priority': priority,
+            })
+
+        vouchers.sort(key=lambda item: (item.get('so_tien_giam', 0), item.get('priority', 0)), reverse=True)
+        logger.info(
+            f"q_best_vouchers_for_order(kh={khach_hang_id}, rest={id_quan_an}, subtotal={tong_tien_hang}) "
+            f"→ {len(vouchers)} usable"
+        )
+        return vouchers[:limit]
+    except Exception as e:
+        logger.error(f"q_best_vouchers_for_order error: {e}")
         return []
 
 
@@ -1533,6 +1750,54 @@ def _options_response(reply: str, pf: dict, pending_sizes: list, pending_topping
         ],
         'current_total': current_total,
     }
+
+
+def _start_options_selection(sess: dict, pf: dict, sizes: list, toppings: list) -> dict:
+    """Start size/topping flow. Skip empty steps so FE does not show a useless card."""
+    food_title = pf.get('title', '')
+    food_price = float(pf.get('price', 0))
+    has_sizes = bool(sizes)
+    has_toppings = bool(toppings)
+
+    sess['pending_food'] = pf
+    sess['pending_size'] = None
+    sess['pending_toppings'] = []
+    sess['available_toppings'] = toppings
+    sess['pending_sizes'] = sizes if has_sizes else []
+    sess['trang_thai'] = STATE_SELECTING_OPTIONS
+    sess['options_step'] = 'select_size' if has_sizes else 'select_topping'
+
+    if has_sizes:
+        reply = (
+            f"🍽️ Món bạn chọn: **{food_title}** — {food_price:,.0f}đ\n\n"
+            f"📏 **CHỌN SIZE** (nhắn số 1, 2, 3...):\n{_build_options_lines(sizes)}\n"
+        )
+        if has_toppings:
+            reply += (
+                f"\n🍯 Topping có sẵn:\n{_build_topping_lines(toppings)}\n\n"
+                f"(Không cần topping thì nhấn **\"Xong\"** để bỏ qua)"
+            )
+        else:
+            reply += "\nMón này không có topping, Bee sẽ thêm vào giỏ sau khi bạn chọn size."
+    else:
+        reply = (
+            f"🍽️ Món bạn chọn: **{food_title}** — {food_price:,.0f}đ\n\n"
+            f"🍯 **CHỌN TOPPING** (nhắn số, nhiều số cách nhau bằng dấu phẩy):\n"
+            f"{_build_topping_lines(toppings)}\n\n"
+            f"Nhấn **\"Xong\"** để bỏ qua topping và thêm vào giỏ."
+        )
+
+    return _options_response(
+        reply,
+        pf,
+        sizes if has_sizes else [],
+        toppings,
+        None,
+        [],
+        sess['options_step'],
+        food_price,
+        skip_size_step=not has_sizes,
+    )
 
 
 def _parse_topping_numbers(q: str, all_toppings: list) -> list:
@@ -1838,10 +2103,14 @@ def call_be_api(path: str, method: str = "GET", json_data: dict = None) -> dict:
     import urllib.request
     import urllib.error
     try:
-        be_url = os.getenv('BE_API_URL', 'https://be.foodbee.io.vn')
+        be_url = os.getenv('BE_API_URL', 'https://be.foodbee.io.vn').rstrip('/')
+        if be_url.endswith('/api'):
+            normalized_path = path[4:] if path.startswith('/api/') else (path if path.startswith('/') else '/' + path)
+        else:
+            normalized_path = path if path.startswith('/api/') else f"/api{path if path.startswith('/') else '/' + path}"
         payload = json.dumps(json_data or {}).encode('utf-8') if json_data else None
         req = urllib.request.Request(
-            f"{be_url}{path}",
+            f"{be_url}{normalized_path}",
             data=payload,
             headers={'Content-Type': 'application/json'},
             method=method
@@ -1869,7 +2138,7 @@ def tao_don_hang_moi(
     mon_an_list: list,
     phuong_thuc_thanh_toan: str = 'tien_mat',
     xu_su_dung: int = 0,
-    id_voucher: int = None,
+    ma_code: str = '',
 ) -> dict:
     """
     Tạo đơn hàng qua BE API.
@@ -1879,7 +2148,7 @@ def tao_don_hang_moi(
     import urllib.request
     import urllib.error
     try:
-        be_url = os.getenv('BE_API_URL', 'https://be.foodbee.io.vn')
+        be_url = os.getenv('BE_API_URL', 'https://be.foodbee.io.vn').rstrip('/')
         payload = {
             'id_khach_hang': khach_hang_id,
             'id_quan_an': id_quan_an,
@@ -1891,6 +2160,10 @@ def tao_don_hang_moi(
                     'id_mon_an': m['id_mon_an'],
                     'so_luong': int(m.get('so_luong', 1)),
                     'gia': float(m.get('gia', 0)),
+                    'id_size': m.get('id_size'),
+                    'ten_size': m.get('ten_size'),
+                    'topping_ids': m.get('topping_ids', ''),
+                    'topping_names': m.get('topping_names', ''),
                 }
                 for m in mon_an_list
             ],
@@ -1898,12 +2171,13 @@ def tao_don_hang_moi(
         }
         if xu_su_dung > 0:
             payload['xu_su_dung'] = xu_su_dung
-        if id_voucher:
-            payload['id_voucher'] = id_voucher
+        if ma_code:
+            payload['ma_code'] = ma_code
 
         req_data = json.dumps(payload).encode('utf-8')
+        endpoint = '/api/chatbot/dat-hang-voucher' if (ma_code or xu_su_dung > 0) else '/api/chatbot/dat-hang'
         req = urllib.request.Request(
-            f"{be_url}/api/chatbot/dat-hang",
+            f"{be_url}{endpoint}",
             data=req_data,
             headers={'Content-Type': 'application/json'},
             method='POST'
@@ -1928,6 +2202,8 @@ def tao_don_hang_moi(
                 'tien_hang': data['tien_hang'],
                 'phi_ship': data['phi_ship'],
                 'tong_tien': data['tong_tien'],
+                'voucher_giam': data.get('voucher_giam', 0),
+                'xu_su_dung': data.get('xu_su_dung', 0),
                 'message': f"Đơn hàng #{data['ma_don_hang']} đã được tạo thành công!",
             }
             if data.get('checkout_url'):
@@ -2693,7 +2969,7 @@ def execute_tool(name: str, args: dict, khach_hang_id: int = None):
 
             if phuong_thuc == 'online' and result.get('checkout_url'):
                 msg += f"\n\n💳 Thanh toán online — quét QR hoặc bấm nút bên dưới để thanh toán!"
-                return [], msg + f"\n__PAYMENT__{json.dumps({'checkout_url': result['checkout_url'], 'qr_code': result.get('qr_code',''), 'tong_tien': result['tong_tien'], 'ma_don_hang': result['ma_don_hang']})}"
+                return [], msg + f"\n__PAYMENT__{json.dumps({'don_hang_id': result.get('don_hang_id'), 'checkout_url': result['checkout_url'], 'qr_code': result.get('qr_code',''), 'tong_tien': result['tong_tien'], 'ma_don_hang': result['ma_don_hang']})}"
             else:
                 msg += "\n💵 Thanh toán tiền mặt khi nhận hàng."
                 return [], msg
@@ -3349,6 +3625,8 @@ def run_agent(query: str, history: list, user_context: dict, sess: dict = None,
     # ═══════════════════════════════════════════════════════════════
     import re
     view_menu_patterns = [
+        re.compile(r'^(?:tôi|mình|bạn|cho tôi|cho mình|cho bạn)?\s*muốn\s+xem\s+thêm\s+menu\s+(?:củ[ae]\s+)?(?:quán\s+)?(.+)', re.IGNORECASE),
+        re.compile(r'^xem\s+thêm\s+menu\s+(?:củ[ae]\s+)?(?:quán\s+)?(.+)', re.IGNORECASE),
         re.compile(r'^(?:tôi|bạn|cho tôi|cho bạn)?\s*muốn\s+(?:xem\s+)?(?:menu\s+)?(?:quán\s+)?(.+)', re.IGNORECASE),
         re.compile(r'^(?:cho\s+(?:tôi|bạn)\s+)?xem\s+menu\s+(?:củ[ae]\s+)?(.+)', re.IGNORECASE),
         re.compile(r'^menu\s+(?:củ[ae]\s+)?(.+)', re.IGNORECASE),
@@ -3375,7 +3653,11 @@ def run_agent(query: str, history: list, user_context: dict, sess: dict = None,
             candidate = m.group(1).strip() if m.lastindex >= 1 else ''
             if not candidate:
                 continue
-            stopwords = {'của', 'tôi', 'bạn', 'quán', 'này', 'đó', 'mình', 'menu', 'bán', 'gì', 'có', 'xem', 'muốn', 'cho'}
+            stopwords = {
+                'của', 'tôi', 'bạn', 'quán', 'này', 'đó', 'mình', 'menu',
+                'bán', 'gì', 'có', 'xem', 'muốn', 'cho', 'thêm', 'coi',
+                'hiện', 'mở', 'lấy',
+            }
             matched_rests = []
             for rest in known_restaurants:
                 if rest in candidate.lower():
@@ -3385,7 +3667,7 @@ def run_agent(query: str, history: list, user_context: dict, sess: dict = None,
                 menu_rest_name = best_match
                 menu_search_keyword = restaurant_aliases.get(best_match, best_match)
                 break
-            tokens = [t for t in candidate.split() if t not in stopwords and len(t) >= 2]
+            tokens = [t for t in candidate.split() if t.lower() not in stopwords and len(t) >= 2]
             if tokens:
                 menu_rest_name = ' '.join(tokens)
                 menu_search_keyword = menu_rest_name
@@ -3972,6 +4254,40 @@ def chat():
                 'ai_powered': False,
             })
 
+        # ── Personalized general recommendation guard ───────────────
+        # Generic requests like "tư vấn vài món" should use order/search
+        # history + recent best sellers, instead of letting old chat history
+        # steer the answer toward an unrelated mood/context.
+        if (
+            query
+            and _is_general_personal_advice_query(query)
+            and state not in (STATE_SELECTING_OPTIONS, STATE_CONFIRMING_ORDER, STATE_SELECTING_PAYMENT)
+        ):
+            foods, reasons = q_personalized_recommendation_foods(user_profile, limit=8)
+            sess['last_foods'] = foods
+            sess['trang_thai'] = STATE_FOOD_CARD if foods else STATE_SEARCHING_FOOD
+            response_text = _personalized_recommendation_response(user_profile, foods, reasons)
+            save_chatbot_interaction(
+                khach_hang_id=kh_id,
+                session_id=sess_id,
+                action_type='personalized_recommendation',
+                query_text=query,
+                response_text=response_text,
+                foods_shown=foods,
+                restaurants_shown=[],
+                restaurant_name=sess.get('restaurant_name', ''),
+                cart=sess.get('cart', []),
+                state_before=state,
+                state_after=sess.get('trang_thai', state),
+                ai_powered=False,
+            )
+            return _flask_jsonify({
+                'response': response_text,
+                'foods': foods,
+                'restaurants': [],
+                'ai_powered': False,
+            })
+
         # ── Smart contextual recommendation guard ───────────────────
         # Handles common advisory questions with DB-backed results:
         # hot weather, rainy day, breakfast/lunch/dinner, healthy,
@@ -4184,25 +4500,8 @@ def chat():
                             sess['options_step'] = 'select_size'
 
                             if has_options:
-                                sess['pending_sizes'] = sizes
-                                sess['trang_thai'] = STATE_SELECTING_OPTIONS
-                                sess['options_step'] = 'select_size'
-                                sizes_lines = _build_options_lines(sizes)
-                                reply = (
-                                    f"🍽️ Món bạn chọn: **{food_title}** — {food_price:,.0f}đ\n\n"
-                                    f"📏 **CHỌN SIZE** (nhắn số 1, 2, 3...):\n{sizes_lines}\n\n"
-                                    f"🍯 Topping có sẵn:\n{_build_topping_lines(toppings)}\n\n"
-                                    f"(Không cần topping thì nhấn **\"Xong\"** để bỏ qua)"
-                                )
-                                logger.info(f"✅ [PRESERVE CTX] '{food_title}' → size/topping options | state → SELECTING_OPTIONS")
-                                return _flask_jsonify({
-                                    'response': reply, 'foods': [], 'restaurants': [], 'ai_powered': False,
-                                    # ── Structured data cho frontend interactive UI ──
-                                    'size_options': [{'id': s.get('id'), 'title': s.get('title'), 'extra_price': float(s.get('extra_price', 0))} for s in sizes],
-                                    'topping_options': [{'id': t.get('id'), 'title': t.get('title'), 'price': float(t.get('price', 0))} for t in toppings],
-                                    'options_step': 'select_size',
-                                    'pending_food': {'id': food_id, 'title': food_title, 'price': float(food_price)},
-                                })
+                                logger.info(f"✅ [PRESERVE CTX] '{food_title}' → options | sizes={len(sizes)} toppings={len(toppings)}")
+                                return _flask_jsonify(_start_options_selection(sess, sess['pending_food'], sizes, toppings))
 
                             # Không có size/topping → add trực tiếp
                             sess['cart'].append({
@@ -4314,23 +4613,8 @@ def chat():
                 }]
 
             if has_options:
-                sess['pending_sizes'] = sizes
-                sess['trang_thai'] = STATE_SELECTING_OPTIONS
-                sizes_lines = _build_options_lines(sizes)
-                reply = (
-                    f"🍽️ Món bạn chọn: **{food_title}** — {food_price:,.0f}đ\n\n"
-                    f"📏 **CHỌN SIZE** (nhắn số 1, 2, 3...):\n{sizes_lines}\n\n"
-                    f"🍯 Topping có sẵn:\n{_build_topping_lines(toppings)}\n\n"
-                    f"(Không cần topping thì nhấn **\"Xong\"** để bỏ qua)"
-                )
-                logger.info(f"✅ Food card click → size/topping options shown | state → SELECTING_OPTIONS | sizes={len(sizes)} toppings={len(toppings)}")
-                return _flask_jsonify({
-                    'response': reply, 'foods': [], 'restaurants': [], 'ai_powered': False,
-                    'size_options': [{'id': s.get('id'), 'title': s.get('title'), 'extra_price': float(s.get('extra_price', 0))} for s in sizes],
-                    'topping_options': [{'id': t.get('id'), 'title': t.get('title'), 'price': float(t.get('price', 0))} for t in toppings],
-                    'options_step': 'select_size',
-                    'pending_food': {'id': food_id, 'title': food_title, 'price': float(food_price)},
-                })
+                logger.info(f"✅ Food card click → options | sizes={len(sizes)} toppings={len(toppings)}")
+                return _flask_jsonify(_start_options_selection(sess, sess['pending_food'], sizes, toppings))
 
             # Không có size/topping → add trực tiếp vào giỏ
             sess['cart'].append({
@@ -4608,23 +4892,8 @@ def chat():
                 sess['options_step'] = 'select_size'
 
                 if has_options:
-                    sess['pending_sizes'] = sizes
-                    sess['trang_thai'] = STATE_SELECTING_OPTIONS
-                    sizes_lines = _build_options_lines(sizes)
-                    reply = (
-                        f"🍽️ Món bạn chọn: **{food_title}** — {food_price:,.0f}đ\n\n"
-                        f"📏 **CHỌN SIZE** (nhắn số 1, 2, 3...):\n{sizes_lines}\n\n"
-                        f"🍯 Topping có sẵn:\n{_build_topping_lines(toppings)}\n\n"
-                        f"(Không cần topping thì nhấn **\"Xong\"** để bỏ qua)"
-                    )
-                    logger.info(f"✅ Menu item selected → size/topping options | state → SELECTING_OPTIONS")
-                    return _flask_jsonify({
-                        'response': reply, 'foods': [], 'restaurants': [], 'ai_powered': False,
-                        'size_options': [{'id': s.get('id'), 'title': s.get('title'), 'extra_price': float(s.get('extra_price', 0))} for s in sizes],
-                        'topping_options': [{'id': t.get('id'), 'title': t.get('title'), 'price': float(t.get('price', 0))} for t in toppings],
-                        'options_step': 'select_size',
-                        'pending_food': {'id': food_id, 'title': food_title, 'price': float(food_price)},
-                    })
+                    logger.info(f"✅ Menu item selected → options | sizes={len(sizes)} toppings={len(toppings)}")
+                    return _flask_jsonify(_start_options_selection(sess, sess['pending_food'], sizes, toppings))
 
                 # Không có size/topping → add trực tiếp
                 sess['cart'].append({
@@ -4854,23 +5123,8 @@ def chat():
                 sess['options_step'] = 'select_size'
 
                 if has_options:
-                    sess['pending_sizes'] = sizes
-                    sess['trang_thai'] = STATE_SELECTING_OPTIONS
-                    sizes_lines = _build_options_lines(sizes)
-                    reply = (
-                        f"🍽️ Món bạn chọn: **{food_title}** — {food_price:,.0f}đ\n\n"
-                        f"📏 **CHỌN SIZE** (nhắn số 1, 2, 3...):\n{sizes_lines}\n\n"
-                        f"🍯 Topping có sẵn:\n{_build_topping_lines(toppings)}\n\n"
-                        f"(Không cần topping thì nhấn **\"Xong\"** để bỏ qua)"
-                    )
-                    logger.info(f"✅ [FOOD_CARD] food selected → size/topping options | state → SELECTING_OPTIONS")
-                    return _flask_jsonify({
-                        'response': reply, 'foods': [], 'restaurants': [], 'ai_powered': False,
-                        'size_options': [{'id': s.get('id'), 'title': s.get('title'), 'extra_price': float(s.get('extra_price', 0))} for s in sizes],
-                        'topping_options': [{'id': t.get('id'), 'title': t.get('title'), 'price': float(t.get('price', 0))} for t in toppings],
-                        'options_step': 'select_size',
-                        'pending_food': {'id': food_id, 'title': food_title, 'price': float(food_price)},
-                    })
+                    logger.info(f"✅ [FOOD_CARD] food selected → options | sizes={len(sizes)} toppings={len(toppings)}")
+                    return _flask_jsonify(_start_options_selection(sess, sess['pending_food'], sizes, toppings))
 
                 # Không có size/topping → add trực tiếp
                 sess['cart'].append({
@@ -5086,26 +5340,7 @@ def chat():
                                 sess['options_step'] = 'select_size'
 
                                 if has_options:
-                                    sess['pending_sizes'] = sizes
-                                    sess['trang_thai'] = STATE_SELECTING_OPTIONS
-                                    sizes_lines = _build_options_lines(sizes)
-                                    reply = (
-                                        f"🍽️ Món bạn chọn: **{food_title}** — {food_price:,.0f}đ\n\n"
-                                        f"📏 **CHỌN SIZE** (nhắn số 1, 2, 3...):\n{sizes_lines}\n\n"
-                                        f"🍯 Topping có sẵn:\n{_build_topping_lines(toppings)}\n\n"
-                                        f"(Không cần topping thì nhấn **\"Xong\"** để bỏ qua)"
-                                    )
-                                    return _flask_jsonify({
-                                        'response': reply, 'foods': [], 'restaurants': [], 'ai_powered': False,
-                                        'size_options': [{'id': s.get('id'), 'title': s.get('title'), 'extra_price': float(s.get('extra_price', 0))} for s in sizes],
-                                        'topping_options': [{'id': t.get('id'), 'title': t.get('title'), 'price': float(t.get('price', 0))} for t in toppings],
-                                        'options_step': 'select_size',
-                                        'skip_size_step': False,
-                                        'pending_food': {'id': food_id, 'title': food_title, 'price': float(food_price)},
-                                        'selected_size': None,
-                                        'chosen_toppings': [],
-                                        'current_total': float(food_price),
-                                    })
+                                    return _flask_jsonify(_start_options_selection(sess, sess['pending_food'], sizes, toppings))
                                 else:
                                     sess['cart'].append({
                                         'id': food_id, 'title': food_title,
@@ -6906,8 +7141,43 @@ def _best_valid_vouchers(sess: dict, kh_id=None, limit: int = 3) -> list:
     cart = sess.get('cart', [])
     if not cart:
         return []
-    rest_id = sess.get('restaurant_id')
+    rest_id = sess.get('restaurant_id') or (cart[0].get('id_quan_an') if cart else None)
+    if not rest_id:
+        return []
     tong_tien = int(sum(float(c.get('price', 0)) * c.get('so_luong', 1) for c in cart))
+
+    suggested = call_be_api(
+        "/chatbot/de-xuat-voucher",
+        method="POST",
+        json_data={
+            "id_quan_an": rest_id,
+            "khach_hang_id": kh_id,
+            "id_khach_hang": kh_id,
+            "tong_tien_hang": tong_tien,
+            "limit": 5,
+        }
+    )
+    if suggested and suggested.get('status') and isinstance(suggested.get('data'), list):
+        vouchers = []
+        for v in suggested['data']:
+            ma_code = (v.get('ma_code') or '').strip().upper()
+            if not ma_code:
+                continue
+            vouchers.append({
+                'id': v.get('id'),
+                'ma_code': ma_code,
+                'ten_voucher': v.get('ten_voucher') or '',
+                'so_tien_giam': float(v.get('so_tien_giam') or 0),
+                'tong_tien_sau_giam': max(0, tong_tien - float(v.get('so_tien_giam') or 0)),
+            })
+        if vouchers:
+            vouchers.sort(key=lambda item: item.get('so_tien_giam', 0), reverse=True)
+            return vouchers[:limit]
+
+    direct_vouchers = q_best_vouchers_for_order(kh_id, int(rest_id), tong_tien, limit=limit)
+    if direct_vouchers:
+        return direct_vouchers[:limit]
+
     valid = []
     for v in q_vouchers(limit=20):
         ma_code = (v.get('ma_code') or '').strip().upper()
@@ -7004,6 +7274,8 @@ def _build_payment_prompt(sess: dict, kh_id=None, is_logged: bool = False) -> st
                 for v in vouchers
             ]
             promo_text += "🎟️ Voucher dùng được tốt nhất:\n" + "\n".join(voucher_lines) + "\n"
+        else:
+            promo_text += "🎟️ Hiện chưa có voucher phù hợp với đơn này.\n"
     else:
         promo_text = "💡 Đăng nhập FoodBee để dùng voucher và XU giảm giá nhé!\n"
 
@@ -7096,7 +7368,7 @@ def _confirm_and_create_order(sess: dict, kh_id, phuong_thuc: str):
         mon_an_list=mon_an_list,
         phuong_thuc_thanh_toan=phuong_thuc,
         xu_su_dung=sess.get('xu_su_dung') or 0,
-        id_voucher=(sess.get('voucher') or {}).get('id'),
+        ma_code=(sess.get('voucher') or {}).get('ma_code') or '',
     )
 
     # Lưu trước khi clear session
@@ -7159,6 +7431,7 @@ def _confirm_and_create_order(sess: dict, kh_id, phuong_thuc: str):
             reply += (f"\n💳 Thanh toán PayOS — quét QR hoặc bấm nút bên dưới.\n"
                       f"Sau khi thanh toán thành công, đơn sẽ được xác nhận ngay!")
             return (reply + f"\n__PAYMENT__" + json.dumps({
+                'don_hang_id': result.get('don_hang_id'),
                 'checkout_url': result['checkout_url'],
                 'qr_code': result.get('qr_code', ''),
                 'tong_tien': tong_tien,
@@ -7225,10 +7498,27 @@ def clear_session():
         data = request.json or {}
         kh_id = data.get('khach_hang_id')
         client_session_id = data.get('session_id') or ''
-        sess_id = str(kh_id or client_session_id) if (kh_id or client_session_id) else 'guest'
-        clear_order_session(sess_id)
-        logger.info(f"🗑️ [SESSION] cleared | sess_id={sess_id[:20]}")
-        return _flask_jsonify({'ok': True, 'message': 'Session cleared'})
+        session_token = data.get('session_token') or ''
+
+        targets = []
+        if kh_id:
+            targets.append(str(kh_id))
+        if client_session_id:
+            targets.append(str(client_session_id))
+        if session_token:
+            targets.append(str(session_token))
+        targets.append('guest')
+
+        unique_targets = list(dict.fromkeys(targets))
+        for sess_id in unique_targets:
+            clear_order_session(sess_id)
+
+        logger.info(f"🗑️ [SESSION] cleared | targets={unique_targets}")
+        return _flask_jsonify({
+            'ok': True,
+            'message': 'Session cleared',
+            'cleared': unique_targets,
+        })
     except Exception as e:
         logger.error(f"❌ clear_session error: {e}")
         return _flask_jsonify({'ok': False, 'message': str(e)}), 500
