@@ -1,0 +1,29 @@
+{
+  "1": {
+    "khach_hang_id": null,
+    "ho_ten": "",
+    "sdt": "",
+    "dia_chi": "",
+    "id_quan_an": null,
+    "ten_quan_an": "",
+    "mon_an_list": [],
+    "trang_thai": "SEARCHING_FOOD",
+    "cart": [],
+    "restaurant_id": null,
+    "restaurant_name": null,
+    "customer_name": null,
+    "phone": null,
+    "address": null,
+    "total_amount": 0,
+    "restaurant_list": [],
+    "menu_items": [],
+    "voucher": null,
+    "xu_su_dung": 0,
+    "pending_food": null,
+    "pending_toppings": [],
+    "available_toppings": [],
+    "pending_size": null,
+    "pending_sizes": [],
+    "options_step": "select_size"
+  }
+}
