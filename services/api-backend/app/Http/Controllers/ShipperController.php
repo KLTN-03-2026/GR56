@@ -269,13 +269,22 @@ class ShipperController extends Controller
                 'message' => "bạn không có quyền thực hiện chức năng này!"
             ]);
         }
-        Shipper::where('id', $request->id)->update([
+        $shipper = Shipper::find($request->id);
+
+        if (!$shipper) {
+            return response()->json([
+                'status'  => 0,
+                'message' => 'Shipper cần cập nhật không tồn tại.'
+            ]);
+        }
+
+        $shipper->update([
             'ho_va_ten'     => $request->ho_va_ten,
             'email'         => $request->email,
             'cccd'          => $request->cccd,
             'so_dien_thoai' => $request->so_dien_thoai,
-            'is_active'     => $request->is_active,
-            'is_open'      => $request->is_open,
+            'is_active'     => $request->is_active ?? $shipper->is_active,
+            'is_open'      => $request->is_open ?? $shipper->is_open,
             'is_block'     => $request->is_block ?? $shipper->is_block,
         ]);
         return response()->json([
