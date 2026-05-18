@@ -15,14 +15,14 @@ class PhanQuyenSeeder extends Seeder
 
         // === CEO/TỔNG GIÁM ĐỐC (ID: 1) - TOÀN QUYỀN ===
         $ceoPermissions = [];
-        for ($i = 1; $i <= 55; $i++) {
+        foreach (array_merge(range(1, 97), range(99, 108)) as $i) {
             $ceoPermissions[] = ['id_chuc_vu' => 1, 'id_chuc_nang' => $i];
         }
         DB::table('phan_quyens')->insert($ceoPermissions);
 
         // === COO - GIÁM ĐỐC VẬN HÀNH (ID: 2) - TOÀN QUYỀN (full như CEO) ===
         $cooPermissions = [];
-        for ($i = 1; $i <= 55; $i++) {
+        foreach (array_merge(range(1, 97), range(99, 108)) as $i) {
             $cooPermissions[] = ['id_chuc_vu' => 2, 'id_chuc_nang' => $i];
         }
         DB::table('phan_quyens')->insert($cooPermissions);
@@ -43,6 +43,8 @@ class PhanQuyenSeeder extends Seeder
             ['id_chuc_vu' => 3, 'id_chuc_nang' => 39],
             ['id_chuc_vu' => 3, 'id_chuc_nang' => 40],
             ['id_chuc_vu' => 3, 'id_chuc_nang' => 41],
+            ['id_chuc_vu' => 3, 'id_chuc_nang' => 56],
+            ['id_chuc_vu' => 3, 'id_chuc_nang' => 57],
             ['id_chuc_vu' => 3, 'id_chuc_nang' => 42],
             ['id_chuc_vu' => 3, 'id_chuc_nang' => 43],
             ['id_chuc_vu' => 3, 'id_chuc_nang' => 44],
@@ -101,6 +103,8 @@ class PhanQuyenSeeder extends Seeder
             ['id_chuc_vu' => 6, 'id_chuc_nang' => 39],
             ['id_chuc_vu' => 6, 'id_chuc_nang' => 40],
             ['id_chuc_vu' => 6, 'id_chuc_nang' => 41],
+            ['id_chuc_vu' => 6, 'id_chuc_nang' => 56],
+            ['id_chuc_vu' => 6, 'id_chuc_nang' => 57],
             ['id_chuc_vu' => 6, 'id_chuc_nang' => 46],
             ['id_chuc_vu' => 6, 'id_chuc_nang' => 47],
             ['id_chuc_vu' => 6, 'id_chuc_nang' => 48],
@@ -168,6 +172,10 @@ class PhanQuyenSeeder extends Seeder
             ['id_chuc_vu' => 10, 'id_chuc_nang' => 37],
             ['id_chuc_vu' => 10, 'id_chuc_nang' => 38],
             ['id_chuc_vu' => 10, 'id_chuc_nang' => 39],
+            ['id_chuc_vu' => 10, 'id_chuc_nang' => 40],
+            ['id_chuc_vu' => 10, 'id_chuc_nang' => 41],
+            ['id_chuc_vu' => 10, 'id_chuc_nang' => 56],
+            ['id_chuc_vu' => 10, 'id_chuc_nang' => 57],
         ]);
 
         // === TRƯỞNG PHÒNG KẾ TOÁN (ID: 11) ===

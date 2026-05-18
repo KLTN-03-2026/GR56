@@ -71,6 +71,74 @@ class ChucNangSeeder extends Seeder
 
             // === QUẢN LÝ PHÂN QUYỀN (41) ===
             ['id' => 41, 'ten_chuc_nang' => 'Xem danh sách phân quyền'],
+            ['id' => 56, 'ten_chuc_nang' => 'Cấp quyền cho chức vụ'],
+            ['id' => 57, 'ten_chuc_nang' => 'Xóa quyền khỏi chức vụ'],
+
+            // === DASHBOARD & ĐƠN HÀNG ADMIN (58-63) ===
+            ['id' => 58, 'ten_chuc_nang' => 'Xem dashboard admin'],
+            ['id' => 59, 'ten_chuc_nang' => 'Xem danh sách đơn hàng admin'],
+            ['id' => 60, 'ten_chuc_nang' => 'Xem chi tiết đơn hàng admin'],
+            ['id' => 61, 'ten_chuc_nang' => 'Hủy đơn hàng admin'],
+            ['id' => 62, 'ten_chuc_nang' => 'Theo dõi đơn hàng admin'],
+            ['id' => 63, 'ten_chuc_nang' => 'Xem đơn hàng chatbot'],
+
+            // === QUẢN LÝ MÓN ĂN ADMIN (64-69) ===
+            ['id' => 64, 'ten_chuc_nang' => 'Xem danh sách món ăn admin'],
+            ['id' => 65, 'ten_chuc_nang' => 'Tạo mới món ăn admin'],
+            ['id' => 66, 'ten_chuc_nang' => 'Cập nhật món ăn admin'],
+            ['id' => 67, 'ten_chuc_nang' => 'Xóa món ăn admin'],
+            ['id' => 68, 'ten_chuc_nang' => 'Thay đổi trạng thái món ăn admin'],
+            ['id' => 69, 'ten_chuc_nang' => 'Tìm kiếm món ăn admin'],
+
+            // === MENU GIAO DIỆN CLIENT (70-75) ===
+            ['id' => 70, 'ten_chuc_nang' => 'Xem menu giao diện'],
+            ['id' => 71, 'ten_chuc_nang' => 'Tạo menu giao diện'],
+            ['id' => 72, 'ten_chuc_nang' => 'Cập nhật menu giao diện'],
+            ['id' => 73, 'ten_chuc_nang' => 'Xóa menu giao diện'],
+            ['id' => 74, 'ten_chuc_nang' => 'Thay đổi trạng thái menu giao diện'],
+            ['id' => 75, 'ten_chuc_nang' => 'Sắp xếp menu giao diện'],
+
+            // === TOPPING ADMIN (76-80) ===
+            ['id' => 76, 'ten_chuc_nang' => 'Xem topping admin'],
+            ['id' => 77, 'ten_chuc_nang' => 'Tạo topping admin'],
+            ['id' => 78, 'ten_chuc_nang' => 'Cập nhật topping admin'],
+            ['id' => 79, 'ten_chuc_nang' => 'Xóa topping admin'],
+            ['id' => 80, 'ten_chuc_nang' => 'Thay đổi trạng thái topping admin'],
+
+            // === VÍ, RÚT TIỀN, HOÀN TIỀN (81-84) ===
+            ['id' => 81, 'ten_chuc_nang' => 'Xem ví tài chính admin'],
+            ['id' => 82, 'ten_chuc_nang' => 'Đối soát và hoàn tiền admin'],
+            ['id' => 83, 'ten_chuc_nang' => 'Nạp tiền cho shipper'],
+            ['id' => 84, 'ten_chuc_nang' => 'Duyệt yêu cầu rút tiền'],
+
+            // === BÁO CÁO, ĐÁNH GIÁ, THÔNG BÁO, AI (85-95) ===
+            ['id' => 85, 'ten_chuc_nang' => 'Xem báo cáo khiếu nại'],
+            ['id' => 86, 'ten_chuc_nang' => 'Cập nhật báo cáo khiếu nại'],
+            ['id' => 87, 'ten_chuc_nang' => 'Duyệt yêu cầu hủy đơn'],
+            ['id' => 88, 'ten_chuc_nang' => 'Xem đánh giá admin'],
+            ['id' => 89, 'ten_chuc_nang' => 'Xóa đánh giá admin'],
+            ['id' => 90, 'ten_chuc_nang' => 'Ẩn hiện đánh giá admin'],
+            ['id' => 91, 'ten_chuc_nang' => 'Xem thông báo hệ thống'],
+            ['id' => 92, 'ten_chuc_nang' => 'Gửi thông báo hệ thống'],
+            ['id' => 93, 'ten_chuc_nang' => 'Xóa thông báo hệ thống'],
+            ['id' => 94, 'ten_chuc_nang' => 'Xem AI chatbot analytics'],
+            ['id' => 95, 'ten_chuc_nang' => 'Cập nhật AI chatbot analytics'],
+
+            // === THỐNG KÊ CHUYÊN TRANG (96-97) ===
+            ['id' => 96, 'ten_chuc_nang' => 'Xem thống kê khách hàng'],
+            ['id' => 97, 'ten_chuc_nang' => 'Xem thống kê quán ăn'],
+
+            // === ĐỊA LÝ ADMIN (99-108) ===
+            ['id' => 99, 'ten_chuc_nang' => 'Xem tỉnh thành'],
+            ['id' => 100, 'ten_chuc_nang' => 'Tạo tỉnh thành'],
+            ['id' => 101, 'ten_chuc_nang' => 'Cập nhật tỉnh thành'],
+            ['id' => 102, 'ten_chuc_nang' => 'Xóa tỉnh thành'],
+            ['id' => 103, 'ten_chuc_nang' => 'Thay đổi trạng thái tỉnh thành'],
+            ['id' => 104, 'ten_chuc_nang' => 'Xem quận huyện'],
+            ['id' => 105, 'ten_chuc_nang' => 'Tạo quận huyện'],
+            ['id' => 106, 'ten_chuc_nang' => 'Cập nhật quận huyện'],
+            ['id' => 107, 'ten_chuc_nang' => 'Xóa quận huyện'],
+            ['id' => 108, 'ten_chuc_nang' => 'Thay đổi trạng thái quận huyện'],
 
             // === BÁO CÁO & THỐNG KÊ (42-45) ===
             ['id' => 42, 'ten_chuc_nang' => 'Xem báo cáo doanh thu'],

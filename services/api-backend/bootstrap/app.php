@@ -18,6 +18,7 @@ return Application::configure(basePath: dirname(__DIR__))
             "khachHangMiddle"   => \App\Http\Middleware\KhachHangMiddleware::class,
             "quanAnMiddle"      => \App\Http\Middleware\QuanAnMiddleware::class,
             "masterMiddle"      => \App\Http\Middleware\MasterMiddleware::class,
+            "permissionMiddle"  => \App\Http\Middleware\AdminPermissionMiddleware::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

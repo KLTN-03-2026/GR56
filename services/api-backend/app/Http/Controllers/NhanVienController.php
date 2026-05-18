@@ -11,6 +11,7 @@ use App\Http\Requests\NhanVien\NhanVienUpdateProfileRequest;
 use App\Http\Requests\NhanVien\updateNhanVienRequest;
 use App\Models\NhanVien;
 use App\Models\PhanQuyen;
+use App\Support\AdminPermission;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -96,6 +97,7 @@ class NhanVienController extends Controller
         $user_login = Auth::guard('sanctum')->user();
         if ($user_login) {
             $nhanVien = NhanVien::where('id', $user_login->id)->first();
+            $nhanVien->phan_quyen_ids = AdminPermission::idsFor($nhanVien);
             return response()->json([
                 'status'    => 1,
                 'data'      => $nhanVien
