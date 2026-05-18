@@ -121,7 +121,7 @@ export default function AdminDashboard() {
         data: {
           labels: d.doanh_thu_theo_ngay.list_ngay || [],
           datasets: [{
-            label: 'Doanh thu', data: d.doanh_thu_theo_ngay.list_tong_tien_hang || [],
+            label: 'Tiền lời admin', data: d.doanh_thu_theo_ngay.list_tong_tien_hang || [],
             backgroundColor: 'rgba(99,102,241,.12)', borderColor: '#6366f1',
             borderWidth: 2.5, tension: 0.4, pointRadius: 3, pointBackgroundColor: '#6366f1',
             pointBorderColor: '#fff', pointBorderWidth: 2, fill: true,
@@ -129,7 +129,7 @@ export default function AdminDashboard() {
         },
         options: {
           responsive: true, maintainAspectRatio: false,
-          plugins: { legend: { display: false }, tooltip: { backgroundColor: 'rgba(0,0,0,.85)', callbacks: { label: (c) => `Doanh thu: ${formatVND(c.raw)}` } } },
+          plugins: { legend: { display: false }, tooltip: { backgroundColor: 'rgba(0,0,0,.85)', callbacks: { label: (c) => `Tiền lời admin: ${formatVND(c.raw)}` } } },
           scales: {
             y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,.05)' }, ticks: { callback: (v) => formatVND(v), font: { size: 10 } } },
             x: { grid: { display: false }, ticks: { font: { size: 10 } } },
@@ -145,13 +145,13 @@ export default function AdminDashboard() {
         data: {
           labels: d.doanh_thu_theo_thang.map(x => x.ten_thang),
           datasets: [{
-            label: 'Doanh thu', data: d.doanh_thu_theo_thang.map(x => x.doanh_thu),
+            label: 'Tiền lời admin', data: d.doanh_thu_theo_thang.map(x => x.doanh_thu),
             backgroundColor: 'rgba(16,185,129,.7)', borderColor: '#10b981', borderWidth: 1.5, borderRadius: 6,
           }],
         },
         options: {
           responsive: true, maintainAspectRatio: false,
-          plugins: { legend: { display: false }, tooltip: { backgroundColor: 'rgba(0,0,0,.85)', callbacks: { label: (c) => `Doanh thu: ${formatVND(c.raw)}` } } },
+          plugins: { legend: { display: false }, tooltip: { backgroundColor: 'rgba(0,0,0,.85)', callbacks: { label: (c) => `Tiền lời admin: ${formatVND(c.raw)}` } } },
           scales: {
             y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,.05)' }, ticks: { callback: (v) => formatVND(v), font: { size: 10 } } },
             x: { grid: { display: false }, ticks: { font: { size: 10 } } },
@@ -227,27 +227,17 @@ export default function AdminDashboard() {
         <StatCard label="Quán ăn" value={tq.tong_quan_an} icon="fa-store" color="orange" sub={<><i className="fa-solid fa-circle text-xs text-orange-400" />Toàn hệ thống</>} />
         <StatCard label="Khách hàng" value={tq.tong_khach_hang} icon="fa-users" color="blue" sub={growth(tq.growth_khach_hang)} />
         <StatCard label="Món ăn" value={tq.tong_mon_an} icon="fa-bowl-food" color="cyan" sub={<><i className="fa-solid fa-circle text-xs text-cyan-400" />Sản phẩm</>} />
-        <StatCard label="Tổng doanh thu" value={tq.tong_doanh_thu} icon="fa-sack-dollar" color="green" isVND sub={<><i className="fa-solid fa-circle text-xs text-green-400" />Tổng tiền hàng</>} />
+        <StatCard label="Tổng tiền lời admin" value={tq.tong_doanh_thu} icon="fa-sack-dollar" color="green" isVND sub={<><i className="fa-solid fa-circle text-xs text-green-400" />Hoa hồng + vận hành ship</>} />
       </div>
 
-      {/* Row 2: Profit + Cost */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div className="bg-gradient-to-br from-emerald-50 to-green-100/40 border border-green-200 rounded-2xl p-5">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-semibold text-green-600 uppercase tracking-wider mb-1">Tiền Lời Hệ Thống</p>
-              <p className="text-2xl font-extrabold text-green-700">{formatVND(tq.tong_tien_loi)}</p>
-              <p className="text-xs text-green-500 mt-1"><i className="fa-solid fa-circle-info mr-1" />Hoa hồng QA (15%) + Vận hành ship (10%)</p>
-            </div>
-            <div className="w-14 h-14 bg-green-500 rounded-2xl flex items-center justify-center shadow-lg"><i className="fa-solid fa-piggy-bank text-white text-xl" /></div>
-          </div>
-        </div>
+      {/* Row 2: Discount */}
+      <div className="grid grid-cols-1 gap-4">
         <div className="bg-gradient-to-br from-red-50 to-red-100/40 border border-red-200 rounded-2xl p-5">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs font-semibold text-red-600 uppercase tracking-wider mb-1">Tổng Chi Phí</p>
+              <p className="text-xs font-semibold text-red-600 uppercase tracking-wider mb-1">Tổng Giảm Giá</p>
               <p className="text-2xl font-extrabold text-red-600">{formatVND(tq.tong_tien_chi_phi)}</p>
-              <p className="text-xs text-red-400 mt-1"><i className="fa-solid fa-tags mr-1" />Voucher hệ thống + Tiền xu đã dùng</p>
+              <p className="text-xs text-red-400 mt-1"><i className="fa-solid fa-tags mr-1" />Voucher + Tiền xu trừ vào tiền quán</p>
             </div>
             <div className="w-14 h-14 bg-red-500 rounded-2xl flex items-center justify-center shadow-lg"><i className="fa-solid fa-cart-minus text-white text-xl" /></div>
           </div>
@@ -256,14 +246,14 @@ export default function AdminDashboard() {
 
       {/* Row 3: Time-based revenue */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <StatCard label="Doanh thu hôm nay" value={tq.doanh_thu_hom_nay} icon="fa-calendar-day" color="green" isVND sub={growth(tq.growth_hom_nay)} />
-        <StatCard label="Doanh thu tuần này" value={tq.doanh_thu_tuan_nay} icon="fa-calendar-week" color="blue" isVND sub={growth(tq.growth_tuan_nay)} />
-        <StatCard label="Doanh thu tháng này" value={tq.doanh_thu_thang_nay} icon="fa-calendar" color="purple" isVND sub={growth(tq.growth_thang_nay)} />
+        <StatCard label="Tiền lời hôm nay" value={tq.doanh_thu_hom_nay} icon="fa-calendar-day" color="green" isVND sub={growth(tq.growth_hom_nay)} />
+        <StatCard label="Tiền lời tuần này" value={tq.doanh_thu_tuan_nay} icon="fa-calendar-week" color="blue" isVND sub={growth(tq.growth_tuan_nay)} />
+        <StatCard label="Tiền lời tháng này" value={tq.doanh_thu_thang_nay} icon="fa-calendar" color="purple" isVND sub={growth(tq.growth_thang_nay)} />
       </div>
 
       {/* Row 4: Other KPIs */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <StatCard label="Giá trị đơn trung bình" value={tq.avg_order_value} icon="fa-receipt" color="orange" isVND sub="Trung bình hệ thống" />
+        <StatCard label="Tiền lời TB / đơn" value={tq.avg_order_value} icon="fa-receipt" color="orange" isVND sub="Trung bình admin nhận" />
         <StatCard label="Đơn đang xử lý" value={tq.don_hang_dang_xu_ly} icon="fa-hourglass-half" color="cyan" sub="Đang chờ & giao" />
         <StatCard label="Tỷ lệ hoàn thành" value={`${tq.completion_rate || 0}%`} icon="fa-circle-check" color="green" sub="Đơn thành công" />
       </div>
@@ -272,7 +262,7 @@ export default function AdminDashboard() {
       <div className="grid lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
           <h3 className="font-bold text-gray-800 mb-4 text-sm flex items-center gap-2">
-            <i className="fa-solid fa-chart-line text-indigo-500" />Doanh thu 30 ngày gần nhất
+            <i className="fa-solid fa-chart-line text-indigo-500" />Tiền lời admin 30 ngày gần nhất
           </h3>
           <div className="h-72"><canvas ref={dailyRef} /></div>
         </div>
@@ -287,7 +277,7 @@ export default function AdminDashboard() {
       {/* Charts Row 2: Monthly Bar */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
         <h3 className="font-bold text-gray-800 mb-4 text-sm flex items-center gap-2">
-          <i className="fa-solid fa-chart-column text-green-500" />Doanh thu theo tháng ({new Date().getFullYear()})
+          <i className="fa-solid fa-chart-column text-green-500" />Tiền lời admin theo tháng ({new Date().getFullYear()})
         </h3>
         <div className="h-72"><canvas ref={monthlyRef} /></div>
       </div>
@@ -297,9 +287,9 @@ export default function AdminDashboard() {
         {/* Top Restaurants */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
           <h3 className="font-bold text-gray-800 mb-1 text-sm flex items-center gap-2">
-            <i className="fa-solid fa-trophy text-yellow-500" />Top 10 Quán Ăn theo doanh thu
+            <i className="fa-solid fa-trophy text-yellow-500" />Top 10 Quán Ăn theo tiền lời admin
           </h3>
-          <p className="text-xs text-gray-400 mb-4">Xếp hạng dựa theo tổng tiền đơn hàng</p>
+          <p className="text-xs text-gray-400 mb-4">Xếp hạng dựa theo phần admin nhận từ đơn hoàn tất</p>
           {!data?.top_quan_an?.length
             ? <div className="text-center py-10 text-gray-300"><i className="fa-solid fa-store text-5xl mb-3 block" /><p>Không có dữ liệu</p></div>
             : <div className="divide-y divide-gray-100">
@@ -313,7 +303,7 @@ export default function AdminDashboard() {
                     </div>
                     <div className="text-right flex-shrink-0">
                       <div className="font-bold text-sm text-green-600">{formatVND(q.tong_doanh_thu)}</div>
-                      <div className="text-xs text-gray-400">TB: {formatVND(q.doanh_thu_trung_binh)}</div>
+                      <div className="text-xs text-gray-400">Lời TB: {formatVND(q.doanh_thu_trung_binh)}</div>
                     </div>
                   </div>
                 ))}
@@ -399,7 +389,7 @@ export default function AdminDashboard() {
                     <th className="px-3 py-2 text-left font-semibold">Mã đơn</th>
                     <th className="px-3 py-2 text-left font-semibold">Khách hàng</th>
                     <th className="px-3 py-2 text-left font-semibold">Quán ăn</th>
-                    <th className="px-3 py-2 text-right font-semibold">Giá trị</th>
+                    <th className="px-3 py-2 text-right font-semibold">Lời admin</th>
                     <th className="px-3 py-2 text-center font-semibold">Trạng thái</th>
                     <th className="px-3 py-2 text-right font-semibold">Thời gian</th>
                   </tr></thead>
@@ -411,7 +401,7 @@ export default function AdminDashboard() {
                           <td className="px-3 py-2.5 font-bold text-gray-800">#{o.ma_don_hang}</td>
                           <td className="px-3 py-2.5 text-gray-600 text-xs">{o.ten_khach_hang}</td>
                           <td className="px-3 py-2.5 text-gray-600 text-xs truncate max-w-28">{o.ten_quan_an}</td>
-                          <td className="px-3 py-2.5 text-right font-bold text-green-600">{formatVND(o.tong_tien)}</td>
+                          <td className="px-3 py-2.5 text-right font-bold text-green-600">{formatVND(o.tien_loi_admin)}</td>
                           <td className="px-3 py-2.5 text-center"><span className={`px-2 py-0.5 rounded-full text-xs font-bold ${st.cls}`}>{st.label}</span></td>
                           <td className="px-3 py-2.5 text-right text-xs text-gray-400">{fDT(o.created_at)}</td>
                         </tr>

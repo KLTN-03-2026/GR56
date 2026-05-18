@@ -8,6 +8,8 @@ const adm = (url, method='get', data=null) => {
   const cfg = { headers: { Authorization: `Bearer ${localStorage.getItem('nhan_vien_login')}` } };
   return method==='get' ? api.get(url,cfg) : (method==='get_params' ? api.get(url,{...cfg,params:data}) : api.post(url,data,cfg));
 };
+const getProfile = () => adm('/api/admin/profile');
+
 const INPUT = 'w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100 transition-all';
 const LABEL = 'block text-sm font-semibold text-gray-700 mb-1.5';
 
@@ -408,21 +410,53 @@ function TabTopping() {
 
 // ======== MAIN ========
 export default function AdminMonAn() {
-  const [tab, setTab] = useState('mon_an');
+  const [tab, setTab] = useState(null);
+  const [admin, setAdmin] = useState(null);
+
+  useEffect(() => {
+    getProfile().then(r => {
+      if (r.data.status) {
+        const u = r.data.data;
+        setAdmin(u);
+        const isMaster = Number(u.is_master) === 1;
+        const ids = u.phan_quyen_ids || [];
+        if (isMaster || ids.includes(64)) setTab('mon_an');
+        else if (isMaster || ids.includes(76)) setTab('topping');
+      }
+    }).catch(() => {});
+  }, []);
+
+  const can = (perm) => {
+    if (!admin) return false;
+    if (Number(admin.is_master) === 1) return true;
+    return (admin.phan_quyen_ids || []).includes(perm);
+  };
+
+  if (!admin) return <div className="min-h-[60vh] flex items-center justify-center"><div className="w-8 h-8 border-4 border-red-100 border-t-red-500 rounded-full animate-spin"/></div>;
+  if (!tab) return (
+    <div className="min-h-[60vh] flex items-center justify-center p-6">
+      <div className="bg-white border border-red-100 rounded-2xl shadow-sm p-8 text-center max-w-md">
+        <i className="fa-solid fa-lock text-4xl text-red-400 mb-4" />
+        <h2 className="text-xl font-bold text-gray-800 mb-2">Không có quyền truy cập</h2>
+        <p className="text-sm text-gray-500">Tài khoản chưa được cấp quyền xem chức năng này.</p>
+      </div>
+    </div>
+  );
+
   return (
     <div className="p-6">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900"><i className="fa-solid fa-utensils mr-3 text-red-500"/>Quản Lý Món Ăn & Topping</h1>
       </div>
       <div className="flex gap-1 mb-6 bg-gray-100 rounded-2xl p-1 w-fit">
-        <button onClick={()=>setTab('mon_an')} className={`px-5 py-2 rounded-xl text-sm font-bold transition-all ${tab==='mon_an'?'bg-white text-red-600 shadow-sm':'text-gray-500 hover:text-gray-700'}`}>
+        {can(64) && <button onClick={()=>setTab('mon_an')} className={`px-5 py-2 rounded-xl text-sm font-bold transition-all ${tab==='mon_an'?'bg-white text-red-600 shadow-sm':'text-gray-500 hover:text-gray-700'}`}>
           <i className="fa-solid fa-utensils mr-2"/>Món Ăn
-        </button>
-        <button onClick={()=>setTab('topping')} className={`px-5 py-2 rounded-xl text-sm font-bold transition-all ${tab==='topping'?'bg-white text-orange-600 shadow-sm':'text-gray-500 hover:text-gray-700'}`}>
+        </button>}
+        {can(76) && <button onClick={()=>setTab('topping')} className={`px-5 py-2 rounded-xl text-sm font-bold transition-all ${tab==='topping'?'bg-white text-orange-600 shadow-sm':'text-gray-500 hover:text-gray-700'}`}>
           <i className="fa-solid fa-star mr-2 text-yellow-400"/>Topping
-        </button>
+        </button>}
       </div>
-      {tab==='mon_an' ? <TabMonAn/> : <TabTopping/>}
+      {tab==='mon_an' && can(64) ? <TabMonAn/> : tab==='topping' && can(76) ? <TabTopping/> : null}
     </div>
   );
 }

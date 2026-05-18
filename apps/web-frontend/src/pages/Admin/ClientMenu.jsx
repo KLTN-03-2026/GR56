@@ -62,6 +62,18 @@ function SortableRow({ d, changeStatus, setShowEdit, setEditForm, setShowDel, se
   );
 }
 
+// Form thêm/sửa menu — PHẢI định nghĩa NGOÀI component cha để tránh mất focus khi gõ
+function MenuForm({ form, onChange }) {
+  return (
+    <div className="space-y-3">
+      <div><label className={LABEL}>Tên Menu</label><input value={form.ten_menu||''} onChange={e=>onChange({...form,ten_menu:e.target.value})} className={INPUT}/></div>
+      <div><label className={LABEL}>Link</label><input value={form.link||''} onChange={e=>onChange({...form,link:e.target.value})} className={INPUT} placeholder="/khach-hang/..."/></div>
+      <div><label className={LABEL}>Icon Class</label><input value={form.icon||''} onChange={e=>onChange({...form,icon:e.target.value})} className={INPUT} placeholder="fa-solid fa-home"/></div>
+      <div><label className={LABEL}>Tình Trạng</label><select value={form.tinh_trang??'1'} onChange={e=>onChange({...form,tinh_trang:e.target.value})} className={INPUT}><option value="1">Hiển Thị</option><option value="0">Tắt</option></select></div>
+    </div>
+  );
+}
+
 export default function AdminClientMenu() {
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -112,14 +124,6 @@ export default function AdminClientMenu() {
     }
   };
 
-  const MenuForm = ({ form, onChange }) => (
-    <div className="space-y-3">
-      <div><label className={LABEL}>Tên Menu</label><input value={form.ten_menu||''} onChange={e=>onChange({...form,ten_menu:e.target.value})} className={INPUT}/></div>
-      <div><label className={LABEL}>Link</label><input value={form.link||''} onChange={e=>onChange({...form,link:e.target.value})} className={INPUT} placeholder="/khach-hang/..."/></div>
-      <div><label className={LABEL}>Icon Class</label><input value={form.icon||''} onChange={e=>onChange({...form,icon:e.target.value})} className={INPUT} placeholder="fa-solid fa-home"/></div>
-      <div><label className={LABEL}>Tình Trạng</label><select value={form.tinh_trang??'1'} onChange={e=>onChange({...form,tinh_trang:e.target.value})} className={INPUT}><option value="1">Hiển Thị</option><option value="0">Tắt</option></select></div>
-    </div>
-  );
 
   return (
     <div className="p-6">

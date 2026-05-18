@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import api from '../../utils/api';
 import { formatVND } from '../../utils/helpers';
@@ -20,6 +20,16 @@ export default function ChatbotPaymentReturn() {
   const code = searchParams.get('code');
   const isCancel = searchParams.get('cancel') === 'true';
   const isOnCancelPath = window.location.pathname.includes('/cancel');
+
+  const openFoodBeeApp = useCallback((targetStatus = status) => {
+    const path = targetStatus === 'cancel' ? 'cancel' : 'success';
+    const params = new URLSearchParams({
+      source: 'chatbot',
+      ...(orderCode ? { orderCode } : {}),
+      ...(orderInfo?.amount ? { amount: String(orderInfo.amount) } : {}),
+    });
+    window.location.href = `foodbee://payos/${path}?${params.toString()}`;
+  }, [orderCode, orderInfo, status]);
 
   useEffect(() => {
     const detect = async () => {
@@ -64,19 +74,25 @@ export default function ChatbotPaymentReturn() {
     };
 
     detect();
-  }, []);
+  }, [code, isCancel, isOnCancelPath, orderCode, payosStatus]);
 
   // Auto-close sau 5s (mobile-friendly)
   useEffect(() => {
     if (status !== 'loading') {
+      const openAppTimer = setTimeout(() => {
+        openFoodBeeApp(status);
+      }, 700);
       const t = setTimeout(() => {
         // Mở chatbot widget & quay về trang chủ
         window.sessionStorage.removeItem('chatbot_pay_result');
         window.location.href = '/';
       }, status === 'success' ? 5000 : 8000);
-      return () => clearTimeout(t);
+      return () => {
+        clearTimeout(openAppTimer);
+        clearTimeout(t);
+      };
     }
-  }, [status]);
+  }, [openFoodBeeApp, status]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 via-emerald-50 to-teal-50 flex items-center justify-center p-4">
@@ -127,11 +143,12 @@ export default function ChatbotPaymentReturn() {
               <p className="text-xs text-gray-400 text-center">
                 <i className="fa-solid fa-clock mr-1"/>Tự động quay về trang chính sau 5s...
               </p>
-              <Link to="/"
+              <button type="button"
+                onClick={() => openFoodBeeApp('success')}
                 className="block w-full py-3 rounded-2xl text-center text-white font-bold hover:opacity-90 transition-all"
                 style={{background:'linear-gradient(135deg,#059669,#10b981)'}}>
                 <i className="fa-solid fa-robot mr-2"/>Quay lại chat với Bee 🐝
-              </Link>
+              </button>
             </div>
           </>
         )}
@@ -160,11 +177,12 @@ export default function ChatbotPaymentReturn() {
                   className="block py-3 rounded-2xl text-center bg-gray-100 text-gray-700 font-semibold hover:bg-gray-200 transition-all">
                   <i className="fa-solid fa-home mr-2"/>Trang chủ
                 </Link>
-                <Link to="/"
+                <button type="button"
+                  onClick={() => openFoodBeeApp('cancel')}
                   className="block py-3 rounded-2xl text-center text-white font-bold hover:opacity-90 transition-all"
                   style={{background:'linear-gradient(135deg,#7c3aed,#4f46e5)'}}>
                   <i className="fa-solid fa-robot mr-2"/>Chat Bee
-                </Link>
+                </button>
               </div>
             </div>
           </>
