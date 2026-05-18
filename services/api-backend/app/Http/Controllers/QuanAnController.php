@@ -202,6 +202,136 @@ class QuanAnController extends Controller
         ]);
     }
 
+    public function getMapData(Request $request)
+    {
+        $lat = $request->float('lat');
+        $lng = $request->float('lng');
+        $radius = $request->float('radius', 10); // km, default 10km
+        $danh_muc = $request->input('danh_muc');
+        $rating_min = $request->float('rating_min', 0);
+        $keyword = $request->input('keyword');
+
+        \Log::info('[getMapData] params', [
+            'lat' => $lat, 'lng' => $lng, 'radius' => $radius,
+            'danh_muc' => $danh_muc, 'rating_min' => $rating_min, 'keyword' => $keyword,
+        ]);
+
+        $query = QuanAn::leftJoin('quan_huyens', 'quan_ans.id_quan_huyen', 'quan_huyens.id')
+            ->leftJoin('tinh_thanhs', 'tinh_thanhs.id', 'quan_huyens.id_tinh_thanh')
+            ->select(
+                'quan_ans.id',
+                'quan_ans.ten_quan_an',
+                'quan_ans.hinh_anh',
+                'quan_ans.dia_chi',
+                'quan_ans.toa_do_x',
+                'quan_ans.toa_do_y',
+                'quan_ans.gio_mo_cua',
+                'quan_ans.gio_dong_cua',
+                'quan_ans.so_dien_thoai',
+                'quan_huyens.ten_quan_huyen',
+                'tinh_thanhs.ten_tinh_thanh'
+            )
+            ->where('quan_ans.tinh_trang', 1)
+            ->whereNotNull('quan_ans.toa_do_x')
+            ->whereNotNull('quan_ans.toa_do_y');
+
+        if ($keyword) {
+            $query->where('quan_ans.ten_quan_an', 'like', '%' . $keyword . '%');
+        }
+
+        $quan_ans = $query->get();
+        \Log::info('[getMapData] raw query count', ['count' => $quan_ans->count()]);
+
+        $earthRadius = 6371;
+        $now = now();
+        $result = [];
+
+        foreach ($quan_ans as $qa) {
+            $qLng = floatval($qa->toa_do_x); // toa_do_x = longitude (kinh do)
+            $qLat = floatval($qa->toa_do_y); // toa_do_y = latitude (vi do)
+
+            // Auto-correct swapped coordinates
+            if ($qLng < $qLat) {
+                $temp = $qLng;
+                $qLng = $qLat;
+                $qLat = $temp;
+            }
+
+            $latFrom = deg2rad($lat);
+            $latTo = deg2rad($qLat);
+            $lonFrom = deg2rad($lng);
+            $lonTo = deg2rad($qLng);
+
+            $latDelta = $latTo - $latFrom;
+            $lonDelta = $lonTo - $lonFrom;
+
+            $angle = 2 * asin(sqrt(
+                pow(sin($latDelta / 2), 2) +
+                cos($latFrom) * cos($latTo) * pow(sin($lonDelta / 2), 2)
+            ));
+
+            $khoang_cach = $angle * $earthRadius;
+
+            if ($khoang_cach > $radius) {
+                continue;
+            }
+
+            $avgRating = DanhGia::where('id_quan_an', $qa->id)->avg('sao_quan_an') ?? 0;
+
+            if ($avgRating < $rating_min) {
+                continue;
+            }
+
+            // Filter by danh muc
+            if ($danh_muc) {
+                $hasDanhMuc = ChiTietDanhMucQuanAn::join('danh_mucs', 'chi_tiet_danh_muc_quan_ans.id_danh_muc', 'danh_mucs.id')
+                    ->where('chi_tiet_danh_muc_quan_ans.id_quan_an', $qa->id)
+                    ->where('danh_mucs.ten_danh_muc', 'like', '%' . $danh_muc . '%')
+                    ->exists();
+                if (!$hasDanhMuc) {
+                    continue;
+                }
+            }
+
+            // Kiem tra dang mo
+            $dang_mo = false;
+            if ($qa->gio_mo_cua && $qa->gio_dong_cua) {
+                $gio_mo = (int) substr($qa->gio_mo_cua, 0, 2);
+                $gio_dong = (int) substr($qa->gio_dong_cua, 0, 2);
+                $gio_hien_tai = (int) $now->format('H');
+                $dang_mo = $gio_hien_tai >= $gio_mo && $gio_hien_tai < $gio_dong;
+            }
+
+            $so_mon = MonAn::where('id_quan_an', $qa->id)->where('tinh_trang', 1)->count();
+
+            $result[] = [
+                'id' => $qa->id,
+                'ten_quan_an' => $qa->ten_quan_an,
+                'hinh_anh' => $qa->hinh_anh,
+                'dia_chi' => $qa->dia_chi,
+                'ten_quan_huyen' => $qa->ten_quan_huyen,
+                'ten_tinh_thanh' => $qa->ten_tinh_thanh,
+                'toa_do_x' => $qLat, // lat (vi do) - FE doc
+                'toa_do_y' => $qLng, // lng (kinh do) - FE doc
+                'rating' => round($avgRating, 1),
+                'so_danh_gia' => DanhGia::where('id_quan_an', $qa->id)->count(),
+                'so_mon' => $so_mon,
+                'khoang_cach_km' => round($khoang_cach, 2),
+                'gio_mo_cua' => $qa->gio_mo_cua ? substr($qa->gio_mo_cua, 0, 5) : null,
+                'gio_dong_cua' => $qa->gio_dong_cua ? substr($qa->gio_dong_cua, 0, 5) : null,
+                'dang_mo' => $dang_mo,
+            ];
+        }
+
+        // Sort by distance
+        usort($result, fn($a, $b) => $a['khoang_cach_km'] <=> $b['khoang_cach_km']);
+
+        return response()->json([
+            'data' => $result,
+            'total' => count($result),
+        ]);
+    }
+
     public function store(QuanAnThemMoiRequest $request)
     {
         $id_chuc_nang = 29;

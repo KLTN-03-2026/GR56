@@ -28,6 +28,7 @@ class ClientMenuController extends Controller
     {
         $data = $request->all();
         \App\Models\ClientMenu::create($data);
+        event(new \App\Events\ClientMenuUpdatedEvent());
         return response()->json([
             'status'  => true,
             'message' => 'Đã thêm mới menu thành công!',
@@ -39,6 +40,7 @@ class ClientMenuController extends Controller
         $clientMenu = \App\Models\ClientMenu::find($request->id);
         if ($clientMenu) {
             $clientMenu->delete();
+            event(new \App\Events\ClientMenuUpdatedEvent());
             return response()->json([
                 'status'  => true,
                 'message' => 'Đã xóa menu thành công!',
@@ -55,6 +57,7 @@ class ClientMenuController extends Controller
         $clientMenu = \App\Models\ClientMenu::find($request->id);
         if ($clientMenu) {
             $clientMenu->update($request->all());
+            event(new \App\Events\ClientMenuUpdatedEvent());
             return response()->json([
                 'status'  => true,
                 'message' => 'Đã cập nhật menu thành công!',
@@ -72,6 +75,7 @@ class ClientMenuController extends Controller
         if ($clientMenu) {
             $clientMenu->tinh_trang = !$clientMenu->tinh_trang;
             $clientMenu->save();
+            event(new \App\Events\ClientMenuUpdatedEvent());
             return response()->json([
                 'status'  => true,
                 'message' => 'Đã đổi trạng thái thành công!',
@@ -93,6 +97,7 @@ class ClientMenuController extends Controller
                 $clientMenu->save();
             }
         }
+        event(new \App\Events\ClientMenuUpdatedEvent());
         return response()->json([
             'status'  => true,
             'message' => 'Đã cập nhật thứ tự thành công!',

@@ -238,4 +238,47 @@ class TransactionController extends Controller
             'huong_dan'     => "Chuyển khoản với nội dung chính xác: <b>{$noi_dung}</b> để hệ thống tự động nạp tiền vào ví.",
         ]);
     }
+
+    /**
+     * Proxy VietQR — fetch ảnh QR về server rồi trả base64
+     * Tránh CORS/browser block khi embed trực tiếp từ img.vietqr.io
+     *
+     * GET /api/transaction/viet-qr-image?amount=...&addInfo=...
+     */
+    public function vietQrImage(Request $request)
+    {
+        $amount   = intval($request->get('amount', 0));
+        $addInfo  = $request->get('addInfo', '');
+        $bankCode = $request->get('bank', 'MBBank');
+        $account  = $request->get('account', self::MB_NUMBER);
+
+        $qrUrl = "https://img.vietqr.io/image/{$bankCode}-{$account}-qr_only.png"
+            . "?amount={$amount}&addInfo=" . urlencode($addInfo);
+
+        try {
+            $client = new \GuzzleHttp\Client(['timeout' => 10]);
+            $res = $client->get($qrUrl, [
+                'headers' => [
+                    'User-Agent' => 'Mozilla/5.0 (compatible; FoodBee/1.0)',
+                ],
+            ]);
+            $contentType = $res->getHeaderLine('Content-Type');
+            $body = $res->getBody()->getContents();
+            $base64 = base64_encode($body);
+            $dataUri = "data:{$contentType};base64,{$base64}";
+
+            return response()->json([
+                'status'    => true,
+                'qr_image'  => $dataUri,
+                'qr_url'    => $qrUrl,
+            ]);
+        } catch (\Exception $e) {
+            Log::error("VietQR proxy error: " . $e->getMessage());
+            return response()->json([
+                'status'   => false,
+                'message'  => 'Không lấy được ảnh QR',
+                'qr_url'   => $qrUrl,
+            ], 500);
+        }
+    }
 }

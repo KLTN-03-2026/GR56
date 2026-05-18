@@ -15,7 +15,8 @@ class MonAnController extends Controller
     public function searchNguoiDung(Request $request)
     {
         $noi_dung_tim = '%' . $request->noi_dung_tim . '%';
-        $data_mon_an   =  MonAn::where('ten_mon_an', 'like', $noi_dung_tim)
+        $data_mon_an   =  MonAn::where('mon_ans.tinh_trang', 1)
+            ->where('ten_mon_an', 'like', $noi_dung_tim)
             ->join('quan_ans', 'quan_ans.id', 'mon_ans.id_quan_an')
             ->select('mon_ans.*', 'quan_ans.ten_quan_an')
             ->orderBy('mon_ans.gia_khuyen_mai')
@@ -109,6 +110,30 @@ class MonAnController extends Controller
         return response()->json([
             'status'  => 1,
             'message' => 'Cập nhật trạng thái thành công'
+        ]);
+    }
+
+    public function search(Request $request)
+    {
+        $id_quan_an = $request->id_quan_an;
+        $query = MonAn::leftJoin('quan_ans', 'mon_ans.id_quan_an', '=', 'quan_ans.id')
+            ->leftJoin('danh_mucs', 'mon_ans.id_danh_muc', '=', 'danh_mucs.id')
+            ->select(
+                'mon_ans.*',
+                'quan_ans.ten_quan_an',
+                'quan_ans.dia_chi as dia_chi_quan_an',
+                'danh_mucs.ten_danh_muc'
+            );
+
+        if ($id_quan_an) {
+            $query->where('mon_ans.id_quan_an', $id_quan_an);
+        }
+
+        $data = $query->get();
+
+        return response()->json([
+            'status' => 1,
+            'data'   => $data,
         ]);
     }
 }

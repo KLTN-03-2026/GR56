@@ -72,6 +72,7 @@ Route::post('/chat',                         [ChatbotController::class, 'proxyCh
 Route::post('/chatbot/dat-hang',             [ChatbotController::class, 'datHangTuChatbot']);
 Route::post('/chatbot/dat-hang-voucher',     [ChatbotController::class, 'datHangVoiVoucher']);
 Route::post('/chatbot/validate-voucher',     [ChatbotController::class, 'validateVoucherChatbot']);
+Route::post('/chatbot/de-xuat-voucher',      [ChatbotController::class, 'deXuatVoucherChatbot']);
 Route::post('/chatbot/danh-gia',            [DanhGiaController::class, 'guiDanhGiaChatbot']);
 
 
@@ -232,6 +233,7 @@ Route::group(['prefix' => '/admin', 'middleware' => 'nhanVienMiddle'], function 
 
     Route::post('/thong-ke/thong-ke-tien-khach-hang', [ThongKeAdminController::class, 'thongKeTienKhachHang']);
     Route::post('/thong-ke/thong-ke-tien-quan-an', [ThongKeAdminController::class, 'thongKeTienQuanAn']);
+    Route::post('/thong-ke/thong-ke-tien-shipper', [ThongKeAdminController::class, 'thongKeTienShipper']);
     Route::get('/thong-ke/dashboard', [ThongKeAdminController::class, 'dashboard']);
     Route::post('/thong-ke/huy-don', [ThongKeAdminController::class, 'thongKeHuyDon']);
 

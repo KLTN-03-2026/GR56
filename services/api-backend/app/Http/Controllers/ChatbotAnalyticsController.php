@@ -23,10 +23,15 @@ class ChatbotAnalyticsController extends Controller
             $limit = min((int) $request->input('limit', 20), 100);
             $categoryId = $request->input('id_danh_muc');
 
-            $dateFrom = now()->subDays($period)->toDateString();
+            // Use the same date as CLI: now()->toDateString() (end of period = today)
+            // Fallback to most recent record if today hasn't been computed yet
+            $periodDate = now()->toDateString();
+            $periodDateFallback = AiTrendingDish::where('period_date', '<=', $periodDate)
+                ->orderByDesc('period_date')
+                ->value('period_date');
 
             $query = AiTrendingDish::with(['monAn:id,ten_mon_an,gia_ban,gia_khuyen_mai,hinh_anh', 'quanAn:id,ten_quan_an'])
-                ->where('period_date', $dateFrom)
+                ->where('period_date', $periodDateFallback ?? $periodDate)
                 ->where('id_mon_an', '>', 0)
                 ->where('id_quan_an', '>', 0)
                 ->orderByDesc('score')
@@ -61,7 +66,7 @@ class ChatbotAnalyticsController extends Controller
             return response()->json([
                 'status' => true,
                 'period' => $period,
-                'period_date' => $dateFrom,
+                'period_date' => $periodDateFallback ?? $periodDate,
                 'hot_count' => $hotCount,
                 'avg_score' => round($avgScore, 1),
                 'dishes' => $dishes,

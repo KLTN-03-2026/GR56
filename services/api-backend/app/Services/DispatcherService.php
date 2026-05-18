@@ -206,6 +206,15 @@ class DispatcherService
             return $this->tryNextShipper($order, $candidateIds, $index + 1);
         }
 
+        // Bỏ qua shipper đang giao đơn — chỉ nhận shipper chưa có đơn active
+        $activeDelivering = DonHang::where('id_shipper', $shipperId)
+            ->where('tinh_trang', DonHang::TINH_TRANG_DANG_GIAO)
+            ->exists();
+        if ($activeDelivering) {
+            Log::info("[Dispatcher] Shipper #{$shipperId} đang giao đơn, bỏ qua → thử shipper #" . ($index + 2));
+            return $this->tryNextShipper($order, $candidateIds, $index + 1);
+        }
+
         // Kiểm tra đơn vẫn còn chưa được nhận
         $order->refresh();
         if ($order->id_shipper != 0 || $order->tinh_trang == DonHang::TINH_TRANG_DA_HUY) {
