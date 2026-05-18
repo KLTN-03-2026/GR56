@@ -189,15 +189,15 @@ Mọi thắc mắc và hỗ trợ kỹ thuật, vui lòng liên hệ:
     <div style="text-align: center;">
       <img src="static/qrapp/qrandroid.png" alt="QR Code Download Android" width="200" style="border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.2);"/>
       <br/>
-      <a href="https://foodbee.io.vn/">
+      <a href="https://play.google.com/store/apps/details?id=com.shoppefood">
         <img src="https://img.shields.io/badge/Download-Android-000000?style=for-the-badge&logo=android&logoColor=white" alt="android App"/>
       </a>
     </div>
     <div style="text-align: center;">
-      <img src="static/qrapp/qrandroid.png" alt="QR Code Download Ios" width="200" style="border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.2);"/>
+      <img src="static/qrapp/soon.png" alt="QR Code Download Ios" width="200" style="border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.2);"/>
       <br/>
-      <a href="https://foodbee.io.vn/">
-        <img src="https://img.shields.io/badge/Download-iOS-000000?style=for-the-badge&logo=apple&logoColor=white" alt="iOS App"/>
+      <a href="">
+        <img src="https://img.shields.io/badge/Download-SOON-000000?style=for-the-badge&logo=apple&logoColor=white" alt="iOS App"/>
       </a>
     </div>
   </div>
