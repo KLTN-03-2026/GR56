@@ -71,22 +71,22 @@ class ThongBaoHeThongController extends Controller
             }
         }
 
-        // Đếm số KH trước (đã kích hoạt và không bị khóa)
-        $soKhachHang = KhachHang::where('is_active', 1)->where('is_block', 0)->count();
+        // Đếm số KH trước (đã kích hoạt)
+        $soKhachHang = KhachHang::where('is_active', 1)->count();
 
         // Tạo bản ghi
         $thongBao = ThongBaoHeThong::create([
-            'tieu_de' => $request->tieu_de,
-            'noi_dung' => $request->noi_dung,
-            'loai' => $request->loai,
-            'duong_dan' => $request->duong_dan,
-            'hinh_anh' => $hinhAnh,
+            'tieu_de'       => $request->tieu_de,
+            'noi_dung'      => $request->noi_dung,
+            'loai'          => $request->loai,
+            'duong_dan'     => $request->duong_dan,
+            'hinh_anh'      => $hinhAnh,
             'so_nguoi_nhan' => $soKhachHang,
-            'created_by' => $this->adminId(),
+            'created_by'    => $this->adminId(),
         ]);
 
-        // Gửi notification đến TẤT CẢ KhachHang (qua queue)
-        $khachHangs = KhachHang::where('is_active', 1)->where('is_block', 0)->get();
+        // Gửi notification đến TẤT CẢ KhachHang đã kích hoạt (kể cả bị block - họ vẫn có thể mở khóa sau)
+        $khachHangs = KhachHang::where('is_active', 1)->get();
         try {
             Notification::send($khachHangs, new AdminBroadcastNotification($thongBao));
         } catch (\Exception $e) {

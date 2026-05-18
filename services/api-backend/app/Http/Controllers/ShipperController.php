@@ -17,7 +17,9 @@ use App\Http\Requests\Shipper\XoaShipperRequest;
 use App\Http\Requests\Shipper\UpdateShipperLocationRequest;
 use App\Jobs\SendMailJob;
 use App\Events\DonHangHoanThanhEvent;
+use App\Events\DonHangDaNhanEvent;
 use App\Jobs\UpdateShipperStatusJob;
+use App\Services\ShipperLocationService;
 use App\Jobs\CalculateRevenueJob;
 use App\Jobs\SendNotificationJob;
 
@@ -36,7 +38,25 @@ class ShipperController extends Controller
     public function search(Request $request)
     {
         $noi_dung_tim = '%' . $request->noi_dung_tim . '%';
-        $data   =  Shipper::where('ho_va_ten', 'like', $noi_dung_tim)
+        $data = Shipper::withCount(['donHangs as tong_chuyen' => function ($query) {
+                $query->where('tinh_trang', 4);
+            }])
+            ->leftJoin('dia_chis', 'shippers.id_dia_chi', '=', 'dia_chis.id')
+            ->leftJoin('quan_huyens', 'dia_chis.id_quan_huyen', '=', 'quan_huyens.id')
+            ->leftJoin('tinh_thanhs', 'quan_huyens.id_tinh_thanh', '=', 'tinh_thanhs.id')
+            ->select(
+                'shippers.*',
+                'dia_chis.dia_chi',
+                'dia_chis.id_quan_huyen',
+                'quan_huyens.ten_quan_huyen',
+                'tinh_thanhs.ten_tinh_thanh'
+            )
+            ->where(function ($query) use ($noi_dung_tim) {
+                $query->where('shippers.ho_va_ten', 'like', $noi_dung_tim)
+                      ->orWhere('shippers.email', 'like', $noi_dung_tim)
+                      ->orWhere('shippers.so_dien_thoai', 'like', $noi_dung_tim)
+                      ->orWhere('shippers.cccd', 'like', $noi_dung_tim);
+            })
             ->get();
         return response()->json([
             'data'  => $data
@@ -107,6 +127,12 @@ class ShipperController extends Controller
                     'message' => 'Tài khoản của bạn đang chờ admin duyệt. Vui lòng chờ xác nhận!',
                 ]);
             }
+            if ($check->is_block == 1) {
+                return response()->json([
+                    'status'  => 0,
+                    'message' => 'Tài khoản của bạn đã bị chặn. Vui lòng liên hệ Admin!',
+                ]);
+            }
             return response()->json([
                 'status' => 1,
                 'message' => "Đăng nhập thành công!",
@@ -145,7 +171,10 @@ class ShipperController extends Controller
                 'message' => "bạn không có quyền thực hiện chức năng này!"
             ]);
         }
-        $shipper = Shipper::leftJoin('dia_chis', 'shippers.id_dia_chi', '=', 'dia_chis.id')
+        $shipper = Shipper::withCount(['donHangs as tong_chuyen' => function ($query) {
+                $query->where('tinh_trang', 4);
+            }])
+            ->leftJoin('dia_chis', 'shippers.id_dia_chi', '=', 'dia_chis.id')
             ->leftJoin('quan_huyens', 'dia_chis.id_quan_huyen', '=', 'quan_huyens.id')
             ->leftJoin('tinh_thanhs', 'quan_huyens.id_tinh_thanh', '=', 'tinh_thanhs.id')
             ->select(
@@ -183,6 +212,7 @@ class ShipperController extends Controller
             'cccd'          => $request->cccd,
             'is_active'     => $request->is_active ?? 1,
             'is_open'       => $request->is_open ?? 0,
+            'is_block'      => $request->is_block ?? 0,
         ]);
 
         // Tạo địa chỉ nếu có
@@ -246,6 +276,7 @@ class ShipperController extends Controller
             'so_dien_thoai' => $request->so_dien_thoai,
             'is_active'     => $request->is_active,
             'is_open'      => $request->is_open,
+            'is_block'     => $request->is_block ?? $shipper->is_block,
         ]);
         return response()->json([
             'status'  => 1,
@@ -269,11 +300,15 @@ class ShipperController extends Controller
         }
         $shipper = Shipper::where('id', $request->id)->first();
 
-        if ($shipper->is_open == 1) {
-            UpdateShipperStatusJob::dispatch($shipper->id, 0);
+        if ($shipper->is_block == 1) {
+            $shipper->is_block = 0;
         } else {
-            UpdateShipperStatusJob::dispatch($shipper->id, 1);
+            $shipper->is_block = 1;
+            // Nếu bị chặn thì tự động tắt online luôn
+            $shipper->is_open = 0;
         }
+        $shipper->save();
+
         return response()->json([
             'status'    =>  true,
             'message'   =>  'Bạn đã cập nhật trạng thái ' . $request->ho_va_ten . ' thành công'
@@ -324,9 +359,25 @@ class ShipperController extends Controller
                 ->where('shippers.id', $user_login->id)
                 ->select('shippers.*', 'dia_chis.dia_chi')
                 ->first();
+
+            // Tính tổng số chuyến giao thành công (tinh_trang = 4)
+            $tong_chuyen = \App\Models\DonHang::where('id_shipper', $user_login->id)
+                ->where('tinh_trang', 4)
+                ->count();
+
+            // Xác định hạng dựa trên tổng chuyến
+            if ($tong_chuyen < 50) $hang = 'Đồng';
+            elseif ($tong_chuyen < 200) $hang = 'Bạc';
+            elseif ($tong_chuyen < 500) $hang = 'Vàng';
+            else $hang = 'Kim Cương';
+
+            $data = $shipper->toArray();
+            $data['tong_chuyen'] = $tong_chuyen;
+            $data['hang_shipper'] = $hang;
+
             return response()->json([
                 'status'    => 1,
-                'data'      => $shipper
+                'data'      => $data
             ]);
         } else {
             return response()->json([
@@ -376,6 +427,46 @@ class ShipperController extends Controller
             ]);
         }
     }
+
+    public function toggleStatus(Request $request)
+    {
+        $user = Auth::guard('sanctum')->user();
+        if ($user) {
+            $shipper = Shipper::find($user->id);
+            if ($shipper) {
+                // Check if trying to go offline with ongoing orders
+                if ($shipper->is_open == 1) {
+                    $ongoingOrders = \App\Models\DonHang::where('id_shipper', $shipper->id)
+                        ->whereIn('tinh_trang', [1, 2, 3])
+                        ->count();
+                    if ($ongoingOrders > 0) {
+                        return response()->json([
+                            'status'  => 0,
+                            'message' => 'Bạn không thể tắt hoạt động khi đang có đơn hàng chưa hoàn thành!'
+                        ]);
+                    }
+                }
+
+                // Toggle is_open
+                $shipper->is_open = $shipper->is_open == 1 ? 0 : 1;
+                $shipper->save();
+                
+                // If the system has a job to update status (like changeStatus does), we could dispatch it
+                // \App\Jobs\UpdateShipperStatusJob::dispatch($shipper->id, $shipper->is_open);
+                
+                return response()->json([
+                    'status'  => 1,
+                    'message' => $shipper->is_open == 1 ? 'Đã BẬT hoạt động!' : 'Đã TẮT hoạt động!',
+                    'is_open' => $shipper->is_open
+                ]);
+            }
+        }
+        return response()->json([
+            'status'  => 0,
+            'message' => 'Bạn cần đăng nhập hệ thống!'
+        ]);
+    }
+
     public function updatePassword(updatePasswordShipperRequest $request)
     {
         $user_login = Auth::guard('sanctum')->user();
@@ -406,10 +497,20 @@ class ShipperController extends Controller
         $data = DonHang::join('khach_hangs', 'don_hangs.id_khach_hang', '=', 'khach_hangs.id')
             ->join('quan_ans', 'quan_ans.id', '=', 'don_hangs.id_quan_an')
             ->leftJoin('shippers', 'shippers.id', '=', 'don_hangs.id_shipper')
+            ->leftJoin('dia_chis', 'dia_chis.id', '=', 'don_hangs.id_dia_chi_nhan')
             ->where('don_hangs.id_shipper', $user->id)
             ->whereIn('don_hangs.tinh_trang', [1, 2, 3])
             ->orderBy('don_hangs.created_at', 'desc')
-            ->select('don_hangs.*', 'khach_hangs.ho_va_ten', 'quan_ans.ten_quan_an', 'shippers.ho_va_ten')
+            ->select(
+                'don_hangs.*',
+                'khach_hangs.ho_va_ten',
+                'quan_ans.ten_quan_an',
+                'shippers.ho_va_ten',
+                'quan_ans.toa_do_y as restaurant_lat',
+                'quan_ans.toa_do_x as restaurant_lng',
+                'dia_chis.toa_do_y as customer_lat',
+                'dia_chis.toa_do_x as customer_lng'
+            )
             ->get();
 
         return response()->json([
@@ -438,8 +539,17 @@ class ShipperController extends Controller
     }
     public function nhanDonHang(Request $request)
     {
+        \Illuminate\Support\Facades\Log::info('[DEBUG-SHIPPER] === ShipperController::nhanDonHang ĐƯỢC GỌI, order_id=' . ($request->id ?? 'null') . ' ===');
         $user = Auth::guard('sanctum')->user();
         if ($user) {
+            $shipper = Shipper::find($user->id);
+            if ($shipper && $shipper->is_open == 0) {
+                return response()->json([
+                    'status'    => 0,
+                    'message'   => 'Bạn phải BẬT HOẠT ĐỘNG để nhận đơn hàng!'
+                ]);
+            }
+
             $donHang = DonHang::find($request->id);
             if ($donHang) {
                 if ($donHang->id_shipper == $user->id) {
@@ -454,7 +564,17 @@ class ShipperController extends Controller
                     ]);
                 }
                 $donHang->id_shipper = $user->id;
+                $donHang->tinh_trang = 1; // Cập nhật trạng thái: chờ quán nhận
                 $donHang->save();
+
+                // ── Broadcast: thông báo shipper đã nhận đơn cho KH & quán ──
+                \Illuminate\Support\Facades\Log::info('[DEBUG-SHIPPER] Đang fire DonHangDaNhanEvent cho đơn #' . $donHang->ma_don_hang);
+                try {
+                    event(new \App\Events\DonHangDaNhanEvent($donHang->fresh()));
+                } catch (\Exception $e) {
+                    \Illuminate\Support\Facades\Log::error('[DEBUG-SHIPPER] Lỗi DonHangDaNhanEvent: ' . $e->getMessage());
+                }
+
                 return response()->json([
                     'status'    => 1,
                     'message'   => 'Nhận đơn hàng thành công!'
@@ -602,32 +722,33 @@ class ShipperController extends Controller
     public function capNhatViTri(Request $request)
     {
         $user = Auth::guard('sanctum')->user();
-
         if (!$user) {
-            return response()->json([
-                'status' => false,
-                'message' => 'Vui lòng đăng nhập'
-            ], 401);
+            return response()->json(['status' => false, 'message' => 'Vui lòng đăng nhập'], 401);
         }
 
-        // Validate
         $validated = $request->validate([
-            'lat' => 'required|numeric|between:-90,90',
-            'lng' => 'required|numeric|between:-180,180'
+            'lat'      => 'required|numeric|between:-90,90',
+            'lng'      => 'required|numeric|between:-180,180',
+            'accuracy' => 'nullable|numeric|min:0',
         ]);
 
-        // Update vị trí shipper
-        DB::table('shippers')
-            ->where('id', $user->id)
-            ->update([
-                'lat' => $validated['lat'],
-                'lng' => $validated['lng'],
-                'last_location_update' => now()
-            ]);
+        $shipper = Shipper::find($user->id);
+        $locationService = new ShipperLocationService();
+        $result = $locationService->updateLocation(
+            $shipper,
+            floatval($validated['lat']),
+            floatval($validated['lng']),
+            isset($validated['accuracy']) ? floatval($validated['accuracy']) : null,
+        );
 
         return response()->json([
-            'status' => true,
-            'message' => 'Đã cập nhật vị trí thành công'
+            'status'  => $result['flagged'] ? 0 : 1,
+            'message' => $result['flagged']
+                ? 'Vị trí không hợp lệ và đã được ghi nhận.'
+                : 'Đã cập nhật vị trí thành công',
+            'flagged' => $result['flagged'],
+            'lat'     => $result['lat']  ?? floatval($validated['lat']),
+            'lng'     => $result['lng']  ?? floatval($validated['lng']),
         ]);
     }
     public function guiMaQuenMatKhau(Request $request)

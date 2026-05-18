@@ -17,22 +17,36 @@ class NotificationController extends Controller
             return response()->json(['status' => false, 'message' => 'Unauthorized'], 401);
         }
 
-        // Lấy 20 thông báo gần nhất
-        $notifications = $user->notifications()->take(20)->get();
-        // format cho FE dễ dùng
+        // Dùng class name thực tế của model để tránh lỗi morph alias
+        $notifiableType = get_class($user);
+        $notifiableId   = $user->id;
+
+        $notifications = \Illuminate\Support\Facades\DB::table('notifications')
+            ->where('notifiable_type', $notifiableType)
+            ->where('notifiable_id', $notifiableId)
+            ->orderByDesc('created_at')
+            ->take(20)
+            ->get();
+
         $formatted = $notifications->map(function ($notif) {
             return [
-                'id' => $notif->id,
-                'data' => $notif->data,
-                'read_at' => $notif->read_at,
+                'id'         => $notif->id,
+                'data'       => json_decode($notif->data, true),
+                'read_at'    => $notif->read_at,
                 'created_at' => $notif->created_at,
             ];
         });
 
+        $unreadCount = \Illuminate\Support\Facades\DB::table('notifications')
+            ->where('notifiable_type', $notifiableType)
+            ->where('notifiable_id', $notifiableId)
+            ->whereNull('read_at')
+            ->count();
+
         return response()->json([
-            'status' => true,
-            'data' => $formatted,
-            'unread_count' => $user->unreadNotifications()->count()
+            'status'       => true,
+            'data'         => $formatted,
+            'unread_count' => $unreadCount,
         ]);
     }
 

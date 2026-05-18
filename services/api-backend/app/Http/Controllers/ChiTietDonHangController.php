@@ -8,6 +8,7 @@ use App\Http\Requests\DonHang\TinhPhiShipRequest;
 use App\Http\Requests\GioHang\UpdateGioHangRequest;
 use App\Events\DonHangMoiEvent;
 use App\Jobs\SendMailJob;
+use App\Jobs\FindShipperJob;
 use App\Mail\MasterMail;
 use App\Models\ChiTietDonHang;
 use App\Models\DiaChi;
@@ -88,6 +89,7 @@ class ChiTietDonHangController extends Controller
             ->where('id_khach_hang', $khachHang->id)
             ->where('chi_tiet_don_hangs.id_quan_an', $id_quan_an)
             ->join('mon_ans', 'mon_ans.id', '=', 'chi_tiet_don_hangs.id_mon_an')
+            ->where('mon_ans.tinh_trang', 1) // Chỉ lấy món đang bán
             ->select('chi_tiet_don_hangs.*', 'mon_ans.ten_mon_an')
             ->get();
 
@@ -264,7 +266,13 @@ class ChiTietDonHangController extends Controller
         ]);
 
         $khachHang = Auth::guard('sanctum')->user();
-        $monAn     = MonAn::where('id', $request->id)->first();
+        $monAn     = MonAn::where('id', $request->id)->where('tinh_trang', 1)->first();
+        if (!$monAn) {
+            return response()->json([
+                'status'  => 0,
+                'message' => 'Món ăn không tồn tại hoặc đã ngừng kinh doanh!'
+            ]);
+        }
         $ghi_chu   = $request->ghi_chu ?? "";
         $id_size   = $request->id_size ?? null;
         $ten_size  = $request->ten_size ?? null;
@@ -651,19 +659,20 @@ class ChiTietDonHangController extends Controller
             VoucherService::ghiNhanDaDung($id_voucher, $khachHang->id, $donHang->id, (int) $so_tien_giam);
         }
 
-        // Trigger Broadcasting Event: Thông báo đơn hàng mới đến Quán ăn và Shipper
+        // Trigger Broadcasting Event: Thông báo đơn hàng mới đến Quán ăn và Khách hàng
+        \Illuminate\Support\Facades\Log::info('[DEBUG] === DonHangMoiEvent: BẮT ĐẦU ===');
         try {
             event(new DonHangMoiEvent($donHang));
-            
-            // THÊM: Gửi notification qua Queue
-            SendNotificationJob::dispatch(
-                $donHang->id_quan_an, 
-                'quan_an', 
-                'Đơn hàng mới', 
-                'Bạn có một đơn hàng mới từ ' . $donHang->ten_nguoi_nhan
-            );
+            \Illuminate\Support\Facades\Log::info('[DEBUG] DonHangMoiEvent: event() gọi thành công');
         } catch (\Exception $e) {
-            Log::error('Lỗi khi phát sự kiện DonHangMoiEvent: ' . $e->getMessage());
+            \Illuminate\Support\Facades\Log::error('[DEBUG] DonHangMoiEvent LỖI: ' . $e->getMessage());
+        }
+
+        // ── DISPATCH: Tự động tìm và gửi đơn ưu tiên cho shipper gần nhất ──
+        try {
+            FindShipperJob::dispatchSync($donHang->fresh());
+        } catch (\Exception $e) {
+            Log::error('Lỗi khi dispatch FindShipperJob: ' . $e->getMessage());
         }
 
         // Lấy lại danh sách món ăn trong đơn hàng để trả về cho modal

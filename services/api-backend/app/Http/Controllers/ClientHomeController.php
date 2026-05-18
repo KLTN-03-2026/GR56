@@ -22,6 +22,8 @@ class ClientHomeController extends Controller
             ->where('mon_ans.ten_mon_an', 'not like', 'Ly %')
             ->where('mon_ans.ten_mon_an', 'not like', 'Nước Ép%')
             ->join('quan_ans', 'quan_ans.id', 'mon_ans.id_quan_an')
+            ->where('quan_ans.tinh_trang', 1) // Quán đang mở
+            ->where('quan_ans.is_active', 1)  // Quán không bị khóa
             ->select('mon_ans.*', 'quan_ans.ten_quan_an')
             ->orderBy('mon_ans.gia_khuyen_mai')
             ->get();
@@ -41,7 +43,10 @@ class ClientHomeController extends Controller
 
         $phan_loai = DanhMuc::where('danh_mucs.tinh_trang', 1)
             ->join('mon_ans', 'mon_ans.id_danh_muc', 'danh_mucs.id')
+            ->join('quan_ans', 'quan_ans.id', 'mon_ans.id_quan_an')
             ->where('mon_ans.tinh_trang', 1)
+            ->where('quan_ans.tinh_trang', 1)
+            ->where('quan_ans.is_active', 1)
             ->select('danh_mucs.id', 'danh_mucs.ten_danh_muc', 'danh_mucs.slug_danh_muc', 'danh_mucs.hinh_anh', 'danh_mucs.id_danh_muc_cha')
             ->distinct()
             ->get();

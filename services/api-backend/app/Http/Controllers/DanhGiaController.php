@@ -158,4 +158,85 @@ class DanhGiaController extends Controller
             'shippers' => $shippers,
         ]);
     }
+
+    /**
+     * Chatbot: Gửi đánh giá món ăn + quán ăn sau khi nhận hàng
+     * POST /api/chatbot/danh-gia
+     *
+     * Body:
+     * {
+     *   "id_khach_hang": 1,
+     *   "id_don_hang": 123,
+     *   "sao_quan_an": 5,
+     *   "nhan_xet_quan_an": "Món ăn rất ngon, giao nhanh!",
+     *   "sao_shipper": 5,
+     *   "nhan_xet_shipper": "Shipper thân thiện"
+     * }
+     */
+    public function guiDanhGiaChatbot(Request $request)
+    {
+        $validated = $request->validate([
+            'id_khach_hang'     => 'required|integer|exists:khach_hangs,id',
+            'id_don_hang'       => 'required|integer|exists:don_hangs,id',
+            'sao_quan_an'       => 'nullable|integer|min:1|max:5',
+            'nhan_xet_quan_an'  => 'nullable|string|max:1000',
+            'sao_shipper'       => 'nullable|integer|min:1|max:5',
+            'nhan_xet_shipper'  => 'nullable|string|max:1000',
+        ]);
+
+        $donHang = \App\Models\DonHang::find($validated['id_don_hang']);
+
+        // Kiểm tra đơn hàng thuộc về khách hàng
+        if ($donHang->id_khach_hang != $validated['id_khach_hang']) {
+            return response()->json([
+                'status'  => false,
+                'message' => 'Bạn không có quyền đánh giá đơn hàng này',
+            ], 403);
+        }
+
+        // Kiểm tra đơn đã được đánh giá chưa
+        $daDanhGia = \App\Models\DanhGia::where('id_don_hang', $validated['id_don_hang'])->first();
+        if ($daDanhGia) {
+            return response()->json([
+                'status'  => false,
+                'message' => 'Bạn đã đánh giá đơn hàng này rồi!',
+            ], 409);
+        }
+
+        $danhGia = \App\Models\DanhGia::create([
+            'id_don_hang'         => $validated['id_don_hang'],
+            'id_khach_hang'       => $validated['id_khach_hang'],
+            'id_quan_an'          => $donHang->id_quan_an,
+            'id_shipper'          => $donHang->id_shipper ?: 0,
+            'sao_quan_an'         => $validated['sao_quan_an'] ?? null,
+            'nhan_xet_quan_an'    => $validated['nhan_xet_quan_an'] ?? null,
+            'sao_shipper'         => $validated['sao_shipper'] ?? null,
+            'nhan_xet_shipper'    => $validated['nhan_xet_shipper'] ?? null,
+            'is_hidden'           => false,
+        ]);
+
+        // Cập nhật điểm XU cho khách hàng (thưởng 10 XU khi đánh giá)
+        try {
+            $kh = \App\Models\KhachHang::find($validated['id_khach_hang']);
+            if ($kh) {
+                $kh->diem_xu = ($kh->diem_xu ?? 0) + 10;
+                $kh->save();
+
+                \App\Models\LichSuXu::create([
+                    'id_khach_hang'    => $validated['id_khach_hang'],
+                    'so_xu'            => 10,
+                    'loai_giao_dich'  => 1, // cộng điểm
+                    'mo_ta'           => "Thưởng 10 XU khi đánh giá đơn hàng #{$donHang->ma_don_hang}",
+                ]);
+            }
+        } catch (\Exception $e) {
+            Log::warning("Thưởng XU đánh giá thất bại: " . $e->getMessage());
+        }
+
+        return response()->json([
+            'status'  => true,
+            'message' => "Cảm ơn bạn đã đánh giá! Đã tặng bạn 10 XU 💰",
+            'danh_gia_id' => $danhGia->id,
+        ]);
+    }
 }

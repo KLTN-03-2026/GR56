@@ -18,10 +18,15 @@ use Carbon\Carbon;
 use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use App\Services\WalletService;
+use App\Services\ShipperLocationService;
+use App\Services\DispatcherService;
+use App\Events\DispatchCancelledEvent;
 use App\Jobs\RefundPayOSJob;
+use App\Jobs\FindShipperJob;
 use App\Models\CauHinh;
 
 class DonHangController extends Controller
@@ -228,8 +233,12 @@ class DonHangController extends Controller
                 'quan_ans.ten_quan_an',
                 'quan_ans.hinh_anh',
                 'quan_ans.dia_chi as dia_chi_quan',
+                'quan_ans.toa_do_y as restaurant_lat',
+                'quan_ans.toa_do_x as restaurant_lng',
                 'khach_hangs.avatar',
                 'dia_chis.dia_chi as dia_chi_khach',
+                'dia_chis.toa_do_y as customer_lat',
+                'dia_chis.toa_do_x as customer_lng',
                 'quan_huyens.ten_quan_huyen',
                 'tinh_thanhs.ten_tinh_thanh',
                 'vouchers.ten_voucher',
@@ -282,6 +291,16 @@ class DonHangController extends Controller
 
     public function getDonHangShipper()
     {
+        $user = Auth::guard('sanctum')->user();
+        if ($user) {
+            $shipper = \App\Models\Shipper::find($user->id);
+            if ($shipper && $shipper->is_open == 0) {
+                return response()->json([
+                    'list_don_hang_co_the_nhan' => [],
+                ]);
+            }
+        }
+
         $list_don_hang_co_the_nhan = DonHang::where('don_hangs.id_shipper', 0)
             ->where('don_hangs.tinh_trang', 0)
             ->where(function ($query) {
@@ -295,9 +314,9 @@ class DonHangController extends Controller
             })
             ->join('quan_ans', 'quan_ans.id', 'don_hangs.id_quan_an')
             ->join('khach_hangs', 'khach_hangs.id', 'don_hangs.id_khach_hang')
-            ->join('dia_chis', 'dia_chis.id', 'don_hangs.id_dia_chi_nhan')
-            ->join('quan_huyens', 'quan_huyens.id', 'dia_chis.id_quan_huyen')
-            ->join('tinh_thanhs', 'tinh_thanhs.id', 'quan_huyens.id_tinh_thanh')
+            ->leftJoin('dia_chis', 'dia_chis.id', 'don_hangs.id_dia_chi_nhan')
+            ->leftJoin('quan_huyens', 'quan_huyens.id', 'dia_chis.id_quan_huyen')
+            ->leftJoin('tinh_thanhs', 'tinh_thanhs.id', 'quan_huyens.id_tinh_thanh')
             ->select(
                 'don_hangs.id',
                 'don_hangs.ma_don_hang',
@@ -308,9 +327,9 @@ class DonHangController extends Controller
                 'quan_ans.dia_chi as dia_chi_quan',
                 'don_hangs.ten_nguoi_nhan',
                 'khach_hangs.avatar',
-                'dia_chis.dia_chi as dia_chi_khach',
-                'quan_huyens.ten_quan_huyen',
-                'tinh_thanhs.ten_tinh_thanh',
+                DB::raw("COALESCE(dia_chis.dia_chi, '') as dia_chi_khach"),
+                DB::raw("COALESCE(quan_huyens.ten_quan_huyen, '') as ten_quan_huyen"),
+                DB::raw("COALESCE(tinh_thanhs.ten_tinh_thanh, '') as ten_tinh_thanh"),
                 'don_hangs.tong_tien',
                 'don_hangs.phi_ship',
                 'don_hangs.created_at',
@@ -341,9 +360,13 @@ class DonHangController extends Controller
                 'quan_ans.ten_quan_an',
                 'quan_ans.hinh_anh',
                 'quan_ans.dia_chi as dia_chi_quan',
+                'quan_ans.toa_do_y as restaurant_lat',
+                'quan_ans.toa_do_x as restaurant_lng',
                 'don_hangs.ten_nguoi_nhan',
                 'khach_hangs.avatar',
                 'dia_chis.dia_chi as dia_chi_khach',
+                'dia_chis.toa_do_y as customer_lat',
+                'dia_chis.toa_do_x as customer_lng',
                 'quan_huyens.ten_quan_huyen',
                 'tinh_thanhs.ten_tinh_thanh',
                 'don_hangs.tong_tien',
@@ -398,9 +421,13 @@ class DonHangController extends Controller
                 'quan_ans.ten_quan_an',
                 'quan_ans.hinh_anh',
                 'quan_ans.dia_chi as dia_chi_quan',
+                'quan_ans.toa_do_y as restaurant_lat',
+                'quan_ans.toa_do_x as restaurant_lng',
                 'don_hangs.ten_nguoi_nhan',
                 'khach_hangs.avatar',
                 'dia_chis.dia_chi as dia_chi_khach',
+                'dia_chis.toa_do_y as customer_lat',
+                'dia_chis.toa_do_x as customer_lng',
                 'quan_huyens.ten_quan_huyen',
                 'tinh_thanhs.ten_tinh_thanh',
                 'don_hangs.tong_tien',
@@ -576,6 +603,10 @@ class DonHangController extends Controller
             } catch (Exception $e) {
                 \Illuminate\Support\Facades\Log::error('Lỗi khi phát sự kiện DonHangDaXongEvent: ' . $e->getMessage());
             }
+
+            // ── AUTO-DISPATCH: Tìm & gán shipper tự động ─────────────────────────
+            FindShipperJob::dispatchSync($donHang->fresh());
+
             return response()->json(['status' => 1, 'message' => 'Đã chuẩn bị xong, mời shipper đến lấy!']);
         }
         return response()->json(['status' => 0, 'message' => 'Lỗi cập nhật']);
@@ -583,7 +614,17 @@ class DonHangController extends Controller
 
     public function nhanDonDonHangShipper(ShipperNhanDonHangRequest $request)
     {
+        \Illuminate\Support\Facades\Log::info('[DEBUG] === nhanDonDonHangShipper ĐƯỢC GỌI, order_id=' . $request->id . ' ===');
+
         $user = Auth::guard('sanctum')->user();
+        
+        $shipper = Shipper::find($user->id);
+        if ($shipper && $shipper->is_open == 0) {
+            return response()->json([
+                'status'    => 0,
+                'message'   => 'Bạn phải BẬT HOẠT ĐỘNG để nhận đơn hàng!'
+            ]);
+        }
 
         $check = DonHang::where('id', $request->id)
             ->where('id_shipper', 0)
@@ -609,29 +650,152 @@ class DonHangController extends Controller
         }
 
         $check->update([
-            'id_shipper' => $user->id,
-            'tinh_trang' => 1,
+            'id_shipper'         => $user->id,
+            'tinh_trang'         => 1,
+            'cascade_shipper_id' => 0, // Xóa sau khi shipper nhận thành công
         ]);
 
-        $check->refresh(); // Đảm bảo dữ liệu mới nhất (bao gồm cả id_shipper và tinh_trang)
+        $check->refresh();
 
-        \Illuminate\Support\Facades\Log::info("Shipper {$user->id} đã nhận đơn #{$check->ma_don_hang}. Phương thức: " . ($check->phuong_thuc_thanh_toan == 1 ? 'COD' : 'Online'));
+        Log::info("Shipper {$user->id} đã nhận đơn #{$check->ma_don_hang}.");
 
-        // Trigger Broadcasting Event: Thông báo shipper đã nhận đơn
+        // Trigger event thông báo shipper đã nhận đơn (cho KH + QA)
         try {
-            \Illuminate\Support\Facades\Log::info("Đang phát sự kiện DonHangDaNhanEvent cho đơn #{$check->ma_don_hang}...");
             event(new DonHangDaNhanEvent($check));
-            \Illuminate\Support\Facades\Log::info("Đã phát xong sự kiện DonHangDaNhanEvent.");
         } catch (Exception $e) {
-            \Illuminate\Support\Facades\Log::error('Lỗi khi phát sự kiện DonHangDaNhanEvent: ' . $e->getMessage());
+            Log::error('Lỗi DonHangDaNhanEvent: ' . $e->getMessage());
+        }
+
+        // Dọn cascade state
+        try {
+            \Illuminate\Support\Facades\Cache::forget("order:{$check->id}:cascade");
+        } catch (\Exception $e) {
+            Log::warning('Lỗi xóa cascade Cache: ' . $e->getMessage());
         }
 
         return response()->json([
             'status'  => 1,
             'message' => $check->phuong_thuc_thanh_toan == DonHang::thanh_toan_tien_mat
-                ? 'Đã nhận đơn! Bạn đã thanh toán tiền hàng cho quán & phí hệ thống. Hãy thu ' . number_format($check->tong_tien, 0, ',', '.') . 'đ tiền mặt từ khách khi giao xong.'
+                ? 'Đã nhận đơn! Hãy thu ' . number_format($check->tong_tien, 0, ',', '.') . 'đ tiền mặt từ khách khi giao xong.'
                 : 'Đã nhận đơn hàng thành công!',
         ]);
+    }
+
+    /**
+     * Shipper từ chối nhận đơn → cascade sang shipper tiếp theo
+     * POST /shipper/don-hang/tu-choi
+     */
+    public function tuChoiDonHangShipper(Request $request)
+    {
+        $request->validate(['id' => 'required|integer']);
+
+        $shipper = Auth::guard('sanctum')->user();
+        $orderId = $request->id;
+
+        $order = DonHang::find($orderId);
+        if (!$order) {
+            return response()->json(['status' => 0, 'message' => 'Không tìm thấy đơn hàng']);
+        }
+
+        // Chỉ shipper đang được assign MỚI được từ chối
+        // Điều kiện: id_shipper == shipper->id (đã assign) HOẶC (id_shipper==0 + sequential cascade đang chờ)
+        // Nếu id_shipper != 0 và != shipper->id → đơn đã bị shipper khác nhận → không được từ chối
+        if ($order->id_shipper != 0 && $order->id_shipper != $shipper->id) {
+            return response()->json(['status' => 0, 'message' => 'Đơn đã có shipper khác nhận rồi.']);
+        }
+
+        // Reset cascade_shipper_id trước khi cascade để shipper này không thấy đơn nữa
+        $order->update([
+            'cascade_shipper_id' => 0,
+        ]);
+
+        \Illuminate\Support\Facades\Log::info("Shipper #{$shipper->id} từ chối đơn #{$order->ma_don_hang} → cascade sang shipper tiếp theo");
+
+        // Cascade ngay sang shipper tiếp theo theo rule
+        try {
+            $dispatcher = app(DispatcherService::class);
+            $result = $dispatcher->cascadeNext($order->id);
+
+            if (!$result['ok']) {
+                // Không còn shipper nào → hủy đơn
+                \Illuminate\Support\Facades\Log::warning("cascadeNext: không còn shipper cho đơn #{$order->ma_don_hang}: {$result['reason']}");
+                if (in_array($result['reason'], ['no_more_shippers', 'no_shippers'])) {
+                    $order->update([
+                        'tinh_trang' => DonHang::TINH_TRANG_DA_HUY,
+                        'ly_do'      => 'no_shipper_available',
+                    ]);
+                }
+            } else {
+                \Illuminate\Support\Facades\Log::info("cascadeNext OK: đơn #{$order->ma_don_hang} → Shipper #{$result['shipper']->id} (ưu tiên #" . ($result['index'] + 1) . ")");
+            }
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Lỗi cascadeNext: ' . $e->getMessage());
+        }
+
+        return response()->json([
+            'status'  => 1,
+            'message' => 'Đã từ chối đơn. Đơn sẽ được chuyển cho shipper phù hợp tiếp theo.',
+        ]);
+    }
+
+    /**
+     * Trigger cascade khi 1 phút timeout hoặc khi cần chuyển shipper tiếp theo
+     * POST /shipper/don-hang/cascade-next
+     */
+    public function cascadeNextShipper(Request $request)
+    {
+        $request->validate(['id' => 'required|integer']);
+
+        $orderId = $request->id;
+
+        $order = DonHang::find($orderId);
+        if (!$order) {
+            return response()->json(['status' => 0, 'message' => 'Không tìm thấy đơn hàng']);
+        }
+
+        // Đơn đã có shipper → bỏ qua
+        if ($order->id_shipper != 0) {
+            return response()->json(['status' => 1, 'message' => 'Đơn đã có người nhận']);
+        }
+
+        try {
+            $dispatcher = new DispatcherService();
+            $result = $dispatcher->cascadeNext($orderId);
+
+            if (!$result['ok']) {
+                $reason = $result['reason'] ?? 'unknown';
+                if (in_array($reason, ['no_more_shippers', 'no_shippers'])) {
+                    // Không còn shipper → hủy đơn
+                    $order->update([
+                        'tinh_trang' => DonHang::TINH_TRANG_DA_HUY,
+                        'ly_do'      => 'no_shipper_available',
+                    ]);
+                    \Illuminate\Support\Facades\Log::warning("cascadeNext: không còn shipper cho đơn #{$order->ma_don_hang}, auto-hủy");
+                    return response()->json([
+                        'status'  => 0,
+                        'message' => 'Không còn shipper nào trong khu vực. Đơn sẽ được hủy.',
+                    ]);
+                }
+                return response()->json(['status' => 0, 'message' => 'Không thể chuyển đơn: ' . ($result['reason'] ?? '')]);
+            }
+
+            \Illuminate\Support\Facades\Log::info("cascadeNext: gửi đơn #{$order->ma_don_hang} cho shipper #{$result['shipper']->id} (ưu tiên #" . ($result['index'] + 1) . ")");
+
+            return response()->json([
+                'status'   => 1,
+                'message'  => 'Đã chuyển đơn cho shipper tiếp theo',
+                'shipper'  => [
+                    'id' => $result['shipper']->id,
+                    'ho_va_ten' => $result['shipper']->ho_va_ten,
+                ],
+                'index'    => $result['index'],
+                'total'    => $result['total'],
+                'expires_in' => $result['expires_in'] ?? 60,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Lỗi cascadeNextShipper: ' . $e->getMessage());
+            return response()->json(['status' => 0, 'message' => 'Lỗi hệ thống: ' . $e->getMessage()]);
+        }
     }
 
     public function getDonHangAdmin()
@@ -899,55 +1063,109 @@ class DonHangController extends Controller
     }
 
     /**
+     * Theo dõi đơn hàng cho Shipper — trả về thông tin đơn và vị trí hiện tại của shipper
+     * Được dùng bởi OrderDetailPanel để hiển thị marker shipper trên bản đồ
+     */
+    public function theoDoiDonHangShipper(Request $request)
+    {
+        $user = Auth::guard('sanctum')->user();
+
+        if (!$request->id) {
+            return response()->json(['status' => false, 'message' => 'Vui lòng cung cấp ID đơn hàng'], 400);
+        }
+
+        $donHang = DonHang::where('don_hangs.id', $request->id)
+            ->leftJoin('shippers', 'shippers.id', 'don_hangs.id_shipper')
+            ->leftJoin('quan_ans', 'quan_ans.id', 'don_hangs.id_quan_an')
+            ->leftJoin('dia_chis', 'dia_chis.id', 'don_hangs.id_dia_chi_nhan')
+            ->select(
+                'don_hangs.id',
+                'don_hangs.ma_don_hang',
+                'don_hangs.tinh_trang',
+                'don_hangs.created_at',
+                'shippers.id as shipper_id',
+                'shippers.ho_va_ten as shipper_name',
+                'shippers.lat as shipper_lat',
+                'shippers.lng as shipper_lng',
+                'quan_ans.ten_quan_an',
+                'quan_ans.toa_do_y as restaurant_lat',
+                'quan_ans.toa_do_x as restaurant_lng',
+                'dia_chis.toa_do_y as customer_lat',
+                'dia_chis.toa_do_x as customer_lng'
+            )
+            ->first();
+
+        if (!$donHang) {
+            return response()->json(['status' => false, 'message' => 'Không tìm thấy đơn hàng'], 404);
+        }
+
+        return response()->json([
+            'status' => true,
+            'order' => $donHang,
+            'tracking_channel' => 'order.' . $donHang->id,
+        ]);
+    }
+
+    /**
      * API cho shipper cập nhật vị trí real-time
      * Cho phép cập nhật vị trí dù có đơn hàng hay không
      */
     public function capNhatViTriShipper(Request $request)
     {
         $user = Auth::guard('sanctum')->user();
+        $shipper = Shipper::find($user->id);
 
-        // Validate - id_don_hang là optional
         $request->validate([
-            'lat' => 'required|numeric|between:-90,90',
-            'lng' => 'required|numeric|between:-180,180',
-            'id_don_hang' => 'nullable|exists:don_hangs,id'
+            'lat'         => 'required|numeric|between:-90,90',
+            'lng'         => 'required|numeric|between:-180,180',
+            'accuracy'    => 'nullable|numeric|min:0',
+            'id_don_hang' => 'nullable|exists:don_hangs,id',
         ]);
 
-        // Luôn update vị trí shipper trong DB (dù có đơn hay không)
-        DB::table('shippers')
-            ->where('id', $user->id)
-            ->update([
-                'lat' => $request->lat,
-                'lng' => $request->lng,
-                'last_location_update' => now()
-            ]);
+        // ── ShipperLocationService: fraud detection + Redis GEO + DB write ────
+        $locationService = new ShipperLocationService();
+        $result = $locationService->updateLocation(
+            $shipper,
+            floatval($request->lat),
+            floatval($request->lng),
+            $request->accuracy ? floatval($request->accuracy) : null,
+        );
 
-        // Nếu có id_don_hang, broadcast vị trí cho khách hàng theo dõi
+        if ($result['flagged']) {
+            return response()->json([
+                'status'  => 0,
+                'message'  => 'Vị trí không hợp lệ và đã được ghi nhận.',
+                'flagged'  => true,
+                'reason'   => $result['reason'],
+            ], 422);
+        }
+
+        // ── Broadcast GPS cho khách hàng theo dõi đơn ──────────────────────────
         if ($request->id_don_hang) {
-            // Kiểm tra shipper có đang giao đơn này không
             $donHang = DonHang::where('id', $request->id_don_hang)
                 ->where('id_shipper', $user->id)
-                ->whereIn('tinh_trang', [1, 2]) // Chỉ broadcast khi đơn đang giao
+                ->whereIn('tinh_trang', [1, 2, 3])
                 ->first();
 
             if ($donHang) {
-                // Broadcast vị trí mới qua WebSocket
                 try {
                     event(new ShipperLocationUpdated(
                         $donHang->id,
                         $user->id,
-                        $request->lat,
-                        $request->lng
+                        floatval($request->lat),
+                        floatval($request->lng)
                     ));
                 } catch (Exception $e) {
-                    \Illuminate\Support\Facades\Log::error('Lỗi khi phát sự kiện ShipperLocationUpdated: ' . $e->getMessage());
+                    \Illuminate\Support\Facades\Log::error('Lỗi phát ShipperLocationUpdated: ' . $e->getMessage());
                 }
             }
         }
 
         return response()->json([
-            'status' => true,
-            'message' => 'Đã cập nhật vị trí'
+            'status'  => 1,
+            'message'  => 'Đã cập nhật vị trí',
+            'lat'      => floatval($request->lat),
+            'lng'      => floatval($request->lng),
         ]);
     }
 
@@ -1092,6 +1310,307 @@ class DonHangController extends Controller
             'data' => $data,
             'tong_chi' => $tong_chi,
             'so_don_thanh_cong' => $so_don_thanh_cong,
+        ]);
+    }
+
+    /**
+     * Đơn hàng từ chatbot
+     * GET /api/admin/don-hang/chatbot
+     */
+    public function getDonHangChatbot()
+    {
+        $data = DonHang::where(function ($q) {
+                $q->where('don_hangs.is_chatbot', 1)
+                  ->orWhere(function ($sub) {
+                      // Đơn cũ chưa có is_chatbot: nhận diện bằng mã bắt đầu FOODBEE + id_shipper = 0
+                      $sub->where('don_hangs.is_chatbot', '!=', 1)
+                          ->where('don_hangs.id_shipper', 0)
+                          ->where('don_hangs.tinh_trang', 0)
+                          ->where('don_hangs.id_voucher', 0);
+                  });
+            })
+            ->leftJoin('quan_ans', 'quan_ans.id', 'don_hangs.id_quan_an')
+            ->leftJoin('khach_hangs', 'khach_hangs.id', 'don_hangs.id_khach_hang')
+            ->leftJoin('shippers', 'shippers.id', 'don_hangs.id_shipper')
+            ->leftJoin('vouchers', 'vouchers.id', 'don_hangs.id_voucher')
+            ->leftJoin('dia_chis', 'dia_chis.id', 'don_hangs.id_dia_chi_nhan')
+            ->select(
+                'don_hangs.*',
+                'quan_ans.ten_quan_an',
+                'khach_hangs.ho_va_ten as ho_va_ten_khach_hang',
+                'shippers.ho_va_ten as ho_va_ten_shipper',
+                DB::raw('COALESCE(dia_chis.dia_chi, don_hangs.ten_nguoi_nhan) as dia_chi_khach'),
+                DB::raw('(don_hangs.tien_hang + don_hangs.phi_ship - don_hangs.tong_tien - don_hangs.tien_giam_tu_xu) as chiet_khau_voucher')
+            )
+            ->orderBy('don_hangs.id', 'desc')
+            ->get();
+
+        return response()->json([
+            'status' => true,
+            'data'   => $data,
+        ]);
+    }
+
+    // ============================================================
+    // HÀM MỚI CHO ĐƠN TỪ CHATBOT
+    // Dùng LEFT JOIN thay vì INNER JOIN để đơn chatbot luôn hiển thị
+    // ============================================================
+
+    /**
+     * Đơn hàng shipper có thể nhận — dùng LEFT JOIN
+     * GET /api/shipper/don-hang/cho-nhan
+     */
+    public function getDonHangShipperChoNhan()
+    {
+        $user = Auth::guard('sanctum')->user();
+        if ($user) {
+            $shipper = \App\Models\Shipper::find($user->id);
+            if ($shipper && $shipper->is_open == 0) {
+                return response()->json([
+                    'list_don_hang_co_the_nhan' => [],
+                ]);
+            }
+        }
+
+        // *** SEQUENTIAL CASCADE 1-1: chỉ trả đơn mà cascade_shipper_id = shipper hiện tại ***
+        // Shipper khác KHÔNG thấy đơn này cho đến khi họ được chọn là người kế tiếp
+        $list = DonHang::where('don_hangs.id_shipper', 0)
+            ->where('don_hangs.tinh_trang', 0)
+            ->where('don_hangs.cascade_shipper_id', $user->id)
+            ->where(function ($query) {
+                $query->where('don_hangs.phuong_thuc_thanh_toan', DonHang::thanh_toan_tien_mat)
+                    ->orWhere(function ($q) {
+                        $q->whereIn('don_hangs.phuong_thuc_thanh_toan', [DonHang::thanh_toan_chuyen_khoan, 3])
+                            ->where('don_hangs.is_thanh_toan', 1);
+                    });
+            })
+            ->join('quan_ans', 'quan_ans.id', 'don_hangs.id_quan_an')
+            ->join('khach_hangs', 'khach_hangs.id', 'don_hangs.id_khach_hang')
+            ->leftJoin('dia_chis', 'dia_chis.id', 'don_hangs.id_dia_chi_nhan')
+            ->leftJoin('quan_huyens', 'quan_huyens.id', 'dia_chis.id_quan_huyen')
+            ->leftJoin('tinh_thanhs', 'tinh_thanhs.id', 'quan_huyens.id_tinh_thanh')
+            ->select(
+                'don_hangs.id',
+                'don_hangs.ma_don_hang',
+                'don_hangs.is_thanh_toan',
+                'don_hangs.phuong_thuc_thanh_toan',
+                'quan_ans.ten_quan_an',
+                'quan_ans.hinh_anh',
+                'quan_ans.dia_chi as dia_chi_quan',
+                'don_hangs.ten_nguoi_nhan',
+                'khach_hangs.avatar',
+                DB::raw("COALESCE(dia_chis.dia_chi, '') as dia_chi_khach"),
+                DB::raw("COALESCE(quan_huyens.ten_quan_huyen, '') as ten_quan_huyen"),
+                DB::raw("COALESCE(tinh_thanhs.ten_tinh_thanh, '') as ten_tinh_thanh"),
+                'don_hangs.tong_tien',
+                'don_hangs.phi_ship',
+                'don_hangs.created_at',
+                DB::raw('DATE_FORMAT(don_hangs.created_at, "%H:%i") as gio_tao_don')
+            )
+            ->orderBy('don_hangs.id', 'desc')
+            ->get();
+        return response()->json([
+            'list_don_hang_co_the_nhan' => $list,
+        ]);
+    }
+
+    /**
+     * Đơn hàng đang giao của shipper — dùng LEFT JOIN
+     * GET /api/shipper/don-hang/dang-giao
+     */
+    public function getDonHangShipperDangGiaoChiTiet()
+    {
+        $user = Auth::guard('sanctum')->user();
+
+        $dangGiao = DonHang::where('don_hangs.id_shipper', $user->id)
+            ->whereIn('don_hangs.tinh_trang', [1, 2, 3])
+            ->join('quan_ans', 'quan_ans.id', 'don_hangs.id_quan_an')
+            ->join('khach_hangs', 'khach_hangs.id', 'don_hangs.id_khach_hang')
+            ->leftJoin('dia_chis', 'dia_chis.id', 'don_hangs.id_dia_chi_nhan')
+            ->leftJoin('quan_huyens', 'quan_huyens.id', 'dia_chis.id_quan_huyen')
+            ->leftJoin('tinh_thanhs', 'tinh_thanhs.id', 'quan_huyens.id_tinh_thanh')
+            ->select(
+                'don_hangs.id',
+                'don_hangs.ma_don_hang',
+                'don_hangs.is_thanh_toan',
+                'don_hangs.phuong_thuc_thanh_toan',
+                'quan_ans.ten_quan_an',
+                'quan_ans.hinh_anh',
+                'quan_ans.dia_chi as dia_chi_quan',
+                'quan_ans.toa_do_y as restaurant_lat',
+                'quan_ans.toa_do_x as restaurant_lng',
+                'don_hangs.ten_nguoi_nhan',
+                'khach_hangs.avatar',
+                DB::raw("COALESCE(dia_chis.dia_chi, '') as dia_chi_khach"),
+                'dia_chis.toa_do_y as customer_lat',
+                'dia_chis.toa_do_x as customer_lng',
+                DB::raw("COALESCE(quan_huyens.ten_quan_huyen, '') as ten_quan_huyen"),
+                DB::raw("COALESCE(tinh_thanhs.ten_tinh_thanh, '') as ten_tinh_thanh"),
+                'don_hangs.tong_tien',
+                'don_hangs.tien_hang',
+                'don_hangs.phi_ship',
+                'don_hangs.tinh_trang',
+                'don_hangs.created_at',
+            )
+            ->orderBy('don_hangs.id', 'desc')
+            ->get();
+
+        $hoanThanh = DonHang::where('don_hangs.id_shipper', $user->id)
+            ->whereIn('don_hangs.tinh_trang', [4])
+            ->join('quan_ans', 'quan_ans.id', 'don_hangs.id_quan_an')
+            ->join('khach_hangs', 'khach_hangs.id', 'don_hangs.id_khach_hang')
+            ->leftJoin('dia_chis', 'dia_chis.id', 'don_hangs.id_dia_chi_nhan')
+            ->leftJoin('quan_huyens', 'quan_huyens.id', 'dia_chis.id_quan_huyen')
+            ->leftJoin('tinh_thanhs', 'tinh_thanhs.id', 'quan_huyens.id_tinh_thanh')
+            ->select(
+                'don_hangs.id', 'don_hangs.ma_don_hang', 'don_hangs.is_thanh_toan',
+                'don_hangs.phuong_thuc_thanh_toan', 'quan_ans.ten_quan_an', 'quan_ans.hinh_anh',
+                'quan_ans.dia_chi as dia_chi_quan', 'don_hangs.ten_nguoi_nhan', 'khach_hangs.avatar',
+                DB::raw("COALESCE(dia_chis.dia_chi, '') as dia_chi_khach"),
+                DB::raw("COALESCE(quan_huyens.ten_quan_huyen, '') as ten_quan_huyen"),
+                DB::raw("COALESCE(tinh_thanhs.ten_tinh_thanh, '') as ten_tinh_thanh"),
+                'don_hangs.tong_tien', 'don_hangs.phi_ship', 'don_hangs.tinh_trang', 'don_hangs.created_at',
+            )
+            ->orderBy('don_hangs.id', 'desc')
+            ->get();
+
+        $daHuy = DonHang::where('don_hangs.id_shipper', $user->id)
+            ->whereIn('don_hangs.tinh_trang', [5])
+            ->join('quan_ans', 'quan_ans.id', 'don_hangs.id_quan_an')
+            ->join('khach_hangs', 'khach_hangs.id', 'don_hangs.id_khach_hang')
+            ->leftJoin('dia_chis', 'dia_chis.id', 'don_hangs.id_dia_chi_nhan')
+            ->leftJoin('quan_huyens', 'quan_huyens.id', 'dia_chis.id_quan_huyen')
+            ->leftJoin('tinh_thanhs', 'tinh_thanhs.id', 'quan_huyens.id_tinh_thanh')
+            ->select(
+                'don_hangs.id', 'don_hangs.ma_don_hang', 'don_hangs.is_thanh_toan',
+                'don_hangs.phuong_thuc_thanh_toan', 'quan_ans.ten_quan_an', 'quan_ans.hinh_anh',
+                'quan_ans.dia_chi as dia_chi_quan', 'quan_ans.toa_do_y as restaurant_lat',
+                'quan_ans.toa_do_x as restaurant_lng', 'don_hangs.ten_nguoi_nhan', 'khach_hangs.avatar',
+                DB::raw("COALESCE(dia_chis.dia_chi, '') as dia_chi_khach"),
+                'dia_chis.toa_do_y as customer_lat', 'dia_chis.toa_do_x as customer_lng',
+                DB::raw("COALESCE(quan_huyens.ten_quan_huyen, '') as ten_quan_huyen"),
+                DB::raw("COALESCE(tinh_thanhs.ten_tinh_thanh, '') as ten_tinh_thanh"),
+                'don_hangs.tong_tien', 'don_hangs.tien_hang', 'don_hangs.phi_ship', 'don_hangs.tinh_trang', 'don_hangs.created_at',
+            )
+            ->orderBy('don_hangs.id', 'desc')
+            ->get();
+
+        return response()->json([
+            'data' => $dangGiao,
+            'list_don_hang_hoan_thanh' => $hoanThanh,
+            'list_don_hang_da_huy' => $daHuy,
+        ]);
+    }
+
+    /**
+     * Đơn hàng của khách hàng — dùng LEFT JOIN
+     * GET /api/khach-hang/don-hang/chi-tiet
+     */
+    public function getDonHangKhachHangChiTiet()
+    {
+        $user = Auth::guard('sanctum')->user();
+
+        $data = DonHang::where('don_hangs.id_khach_hang', $user->id)
+            ->join('quan_ans', 'quan_ans.id', 'don_hangs.id_quan_an')
+            ->leftJoin('shippers', 'shippers.id', 'don_hangs.id_shipper')
+            ->leftJoin('dia_chis', 'dia_chis.id', 'don_hangs.id_dia_chi_nhan')
+            ->leftJoin('chi_tiet_don_hangs', 'chi_tiet_don_hangs.id_don_hang', 'don_hangs.id')
+            ->leftJoin('mon_ans', 'mon_ans.id', 'chi_tiet_don_hangs.id_mon_an')
+            ->select(
+                'don_hangs.id',
+                'don_hangs.ma_don_hang',
+                'don_hangs.created_at',
+                'don_hangs.updated_at',
+                'don_hangs.tien_hang',
+                'don_hangs.phi_ship',
+                'don_hangs.tong_tien',
+                'don_hangs.is_thanh_toan',
+                'don_hangs.phuong_thuc_thanh_toan',
+                'don_hangs.tinh_trang',
+                'don_hangs.id_shipper',
+                'don_hangs.refund_status',
+                'don_hangs.refund_at',
+                'quan_ans.ten_quan_an',
+                'quan_ans.hinh_anh as hinh_anh_quan',
+                'quan_ans.dia_chi as dia_chi_quan',
+                'shippers.ho_va_ten as ho_va_ten_shipper',
+                'shippers.so_dien_thoai as sdt_shipper',
+                DB::raw("COALESCE(dia_chis.dia_chi, '') as dia_chi"),
+                DB::raw("COALESCE(dia_chis.ten_nguoi_nhan, don_hangs.ten_nguoi_nhan) as ten_nguoi_nhan"),
+                DB::raw("COALESCE(dia_chis.so_dien_thoai, don_hangs.so_dien_thoai) as so_dien_thoai"),
+                DB::raw('SUBSTRING_INDEX(GROUP_CONCAT(DISTINCT mon_ans.hinh_anh ORDER BY mon_ans.id SEPARATOR \',\'), \',\', 1) as hinh_anh_mon_an'),
+                DB::raw('COUNT(DISTINCT chi_tiet_don_hangs.id) as so_mon')
+            )
+            ->groupBy(
+                'don_hangs.id', 'don_hangs.ma_don_hang', 'don_hangs.created_at', 'don_hangs.updated_at',
+                'don_hangs.tien_hang', 'don_hangs.phi_ship', 'don_hangs.tong_tien', 'don_hangs.is_thanh_toan',
+                'don_hangs.phuong_thuc_thanh_toan', 'don_hangs.tinh_trang', 'don_hangs.id_shipper',
+                'don_hangs.refund_status', 'don_hangs.refund_at', 'quan_ans.ten_quan_an', 'quan_ans.hinh_anh',
+                'quan_ans.dia_chi', 'shippers.ho_va_ten', 'shippers.so_dien_thoai',
+                'don_hangs.ten_nguoi_nhan', 'don_hangs.so_dien_thoai'
+            )
+            ->orderBy('don_hangs.id', 'desc')
+            ->get();
+
+        return response()->json([
+            'status' => true,
+            'data' => $data,
+        ]);
+    }
+
+    /**
+     * Chi tiết đơn hàng cho khách hàng — dùng LEFT JOIN
+     * POST /api/khach-hang/don-hang/chi-tiet-single
+     */
+    public function getChiTietDonHangKhachHangMoi(Request $request)
+    {
+        $user = Auth::guard('sanctum')->user();
+        $request->validate(['id' => 'required|integer']);
+
+        $donHang = DonHang::where('don_hangs.id', $request->id)
+            ->where('don_hangs.id_khach_hang', $user->id)
+            ->leftJoin('khach_hangs', 'khach_hangs.id', 'don_hangs.id_khach_hang')
+            ->leftJoin('quan_ans', 'quan_ans.id', 'don_hangs.id_quan_an')
+            ->leftJoin('shippers', 'shippers.id', 'don_hangs.id_shipper')
+            ->leftJoin('dia_chis', 'dia_chis.id', 'don_hangs.id_dia_chi_nhan')
+            ->leftJoin('quan_huyens', 'quan_huyens.id', 'dia_chis.id_quan_huyen')
+            ->leftJoin('tinh_thanhs', 'tinh_thanhs.id', 'quan_huyens.id_tinh_thanh')
+            ->leftJoin('vouchers', 'vouchers.id', 'don_hangs.id_voucher')
+            ->select(
+                'don_hangs.*',
+                'quan_ans.ten_quan_an',
+                'quan_ans.hinh_anh as hinh_anh_quan',
+                'quan_ans.so_dien_thoai as sdt_quan',
+                'shippers.ho_va_ten as ho_va_ten_shipper',
+                'shippers.so_dien_thoai as sdt_shipper',
+                'shippers.hinh_anh as hinh_anh_shipper',
+                DB::raw("COALESCE(dia_chis.dia_chi, '') as dia_chi"),
+                DB::raw("COALESCE(quan_huyens.ten_quan_huyen, '') as ten_quan_huyen"),
+                DB::raw("COALESCE(tinh_thanhs.ten_tinh_thanh, '') as ten_tinh_thanh"),
+                DB::raw("COALESCE(dia_chis.ten_nguoi_nhan, don_hangs.ten_nguoi_nhan) as ten_nguoi_nhan"),
+                DB::raw("COALESCE(dia_chis.so_dien_thoai, don_hangs.so_dien_thoai) as sdt_nguoi_nhan"),
+                'vouchers.ma_code',
+                'vouchers.ten_voucher',
+                'vouchers.loai_giam',
+                'vouchers.so_giam_gia',
+                'vouchers.so_tien_toi_da',
+                'khach_hangs.avatar',
+                'khach_hangs.ho_va_ten'
+            )
+            ->first();
+
+        if (!$donHang) {
+            return response()->json(['status' => false, 'message' => 'Không tìm thấy đơn hàng'], 404);
+        }
+
+        $chiTiet = \App\Models\ChiTietDonHang::where('id_don_hang', $request->id)
+            ->with('monAn')
+            ->get();
+
+        return response()->json([
+            'status' => true,
+            'data' => $donHang,
+            'chi_tiet' => $chiTiet,
         ]);
     }
 }

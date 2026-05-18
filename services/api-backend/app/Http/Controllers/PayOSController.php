@@ -111,7 +111,7 @@ class PayOSController extends Controller
                             'checkout_url' => $thong_tin['data']['checkoutUrl']
                                 ?? ('https://pay.payos.vn/web/' . $don_hang->payos_payment_link_id),
                             'payment_link_id' => $don_hang->payos_payment_link_id,
-                            'qr_code' => $thong_tin['data']['qrCode'] ?? '',
+                            'qr_code' => $thong_tin['data']['qrUrl'] ?? '',
                             'order_code' => $don_hang->id,
                             'reused' => true,
                         ]);
@@ -253,6 +253,40 @@ class PayOSController extends Controller
     {
         $result = PayOSService::layThongTinPayout($payout_id);
         return response()->json($result);
+    }
+
+    /**
+     * Lấy ảnh QR thanh toán PayOS dạng base64
+     * GET /api/payos/qr-image?url=...
+     * BE fetch ảnh từ PayOS CDN về server để tránh browser anti-hotlinking
+     */
+    public function qrImage(Request $request)
+    {
+        $url = $request->query('url');
+        if (!$url) {
+            return response()->json(['status' => false, 'message' => 'Thiếu URL'], 400);
+        }
+
+        try {
+            $client = new \GuzzleHttp\Client(['timeout' => 10]);
+            $res = $client->get($url, [
+                'headers' => [
+                    'User-Agent' => 'Mozilla/5.0 (compatible; FoodBee/1.0)',
+                ],
+            ]);
+            $contentType = $res->getHeaderLine('Content-Type');
+            $body = $res->getBody()->getContents();
+            $base64 = base64_encode($body);
+            $dataUri = "data:{$contentType};base64,{$base64}";
+
+            return response()->json([
+                'status' => true,
+                'qr_image' => $dataUri,
+            ]);
+        } catch (\Exception $e) {
+            Log::error("PayOS qrImage error: " . $e->getMessage());
+            return response()->json(['status' => false, 'message' => 'Không lấy được ảnh QR'], 500);
+        }
     }
 
     /**

@@ -87,6 +87,12 @@ class Shipper extends Authenticatable
                       $q2->whereNull('hieu_luc_den')
                          ->orWhere('hieu_luc_den', '>', now());
                   });
+            })
+            // Loại shipper đang có đơn DANG_GIAO — chỉ nhận shipper chưa có đơn active
+            ->whereDoesntHave('donHangs', function ($q) {
+                $q->whereIn('tinh_trang', [
+                    DonHang::TINH_TRANG_DANG_GIAO,
+                ]);
             });
     }
 
