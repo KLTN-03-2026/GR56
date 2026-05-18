@@ -1,0 +1,11 @@
+2026-05-08 15:40:34,538 foodbee_bee INFO ✅ Groq AI ready | model=llama-3.1-8b-instant
+2026-05-08 15:40:34,539 foodbee_bee INFO 🚀 FoodBee Bee v11.5 — Smart Agent — port 5000
+2026-05-08 15:40:34,539 foodbee_bee INFO 🤖 ✅ Groq ON | llama-3.1-8b-instant
+2026-05-08 15:40:34,539 foodbee_bee INFO 🔧 Total tools: 21 | Max steps: 5
+ * Serving Flask app 'simple_chatbot_ai'
+ * Debug mode: off
+2026-05-08 15:40:39,550 werkzeug INFO [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://192.168.1.155:5000
+2026-05-08 15:40:39,550 werkzeug INFO [33mPress CTRL+C to quit[0m
